@@ -82,7 +82,7 @@ cd ai-supervisor && npm test
 
 </details>
 
-**More:** [DEMO.md](DEMO.md) · `SCENARIOS.md` (on the `scenarios` branch) · [backend/README.md](backend/README.md) · [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)
+**More:** [DEMO.md](DEMO.md) · [SCENARIOS.md](SCENARIOS.md) · [backend/README.md](backend/README.md) · [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)
 
 ## Honesty notes
 
