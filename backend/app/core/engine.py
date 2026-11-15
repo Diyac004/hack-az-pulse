@@ -186,12 +186,13 @@ class Engine:
             w = self.world
             if w.playing and not w.ended and not self.busy and self._queue.empty():
                 trigger = merge_triggers(w.step(real * w.speed))
+                self.flush()                    # breakdown status goes out before the re-plan op
                 if trigger:
                     self.submit_replan("events", self._trigger_message(trigger), trigger)
                 if w.ended:
                     self.other_runs[w.mode] = w.run_metrics()
                     self.hub.broadcast("clock", w.t, w.clock_view())
-            if now - last_progress >= PROGRESS_EVERY_S:
+            if now - last_progress >= PROGRESS_EVERY_S and not self.busy:
                 w.emit_progress()
                 last_progress = now
             self.flush()

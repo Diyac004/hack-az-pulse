@@ -673,6 +673,10 @@ class World:
         expl = m.Explanation(id=f"X{self._n_expl}", t=self.t, trigger=trigger.get("type", "replan"),
                              text=explain_fn(result), facts=facts, plan_version=self.plan.version)
         self.explanations.insert(0, m.dump(expl))
+        # Contract order (sections 8.3 and 13.3): plan, explanation, jobs, then other state.
+        self.emit("plan", m.dump(self.plan))
+        self.emit("explanation", m.dump(expl))
+        self._emit_dirty_jobs()
         if trigger.get("type") == "run":
             self.write_log("plan", plan_version=self.plan.version, solver="greedy",
                            solve_ms=self.plan.solve_ms, assigned=len(work))
@@ -680,10 +684,6 @@ class World:
             self.write_log("replan", trigger=trigger.get("type"), plan_version=self.plan.version,
                            replan_ms=round(result.solve_ms, 3), changes=result.facts.get("moved", []),
                            safety="pass", explanation_id=expl.id)
-        # Contract order (sections 8.3 and 13.3): plan, explanation, jobs, then other state.
-        self.emit("plan", m.dump(self.plan))
-        self.emit("explanation", m.dump(expl))
-        self._emit_dirty_jobs()
         if any(old_owner.get(j.id) != j.tractor for j in self.jobs.values()):
             self.emit("fleet", {"tractors": self.fleet_view()})
         self.emit("metrics", self.metrics_view())

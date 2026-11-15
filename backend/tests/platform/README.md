@@ -1,6 +1,6 @@
 # MockGateway tests
 
-Tests for [`app/gateway/mock.py`](../../app/gateway/mock.py), the fake tractor fleet the world service drives until AgOpenWeb is live. All 24 tests are in [`test_mock_gateway.py`](test_mock_gateway.py).
+Tests for [`app/gateway/mock.py`](../../app/gateway/mock.py), the fake tractor fleet the world service drives until AgOpenWeb is live. All 26 tests are in [`test_mock_gateway.py`](test_mock_gateway.py).
 
 ## How to run
 
@@ -56,6 +56,8 @@ T3 drives the 10-cell route `(15,3) → (15,6) → (10,6) → (10,8)` on its own
 |---|---|---|
 | `test_no_teleport` | Each 0.2-min tick moves at most `speed × dt`, and cells are reached in route order | Tractors never jump. This was a requirement from Diya's review |
 | `test_headings` | Heading is 180° going south, 270° going west, 180° going south again | The dashboard draws tractor direction from this (0 = north, 90 = east) |
+| `test_remaining_route_starts_at_anchor` | Mid-drive, `remaining_route()` starts at the anchor and ends at `(10,8)`; it's empty once arrived | The state store uses it to keep a driving tractor on its route when re-planning |
+| `test_wait_entries_are_skipped` | A plan's `wait` entry becomes no order; the next order's `not_before_t` does the waiting | Diya's planner inserts `wait` entries when two tractors need the same block |
 | `test_anchor_is_next_whole_cell` | 1.5 cells in: `cell = (15,4)`, `anchor = (15,5)`, `anchor_t = 164`, `y = 4.5` | The brain's router only accepts whole road cells, so a mid-move tractor is planned from its next cell and the time it gets there |
 
 ### `Breakdowns`: `stop()` and `resume()`

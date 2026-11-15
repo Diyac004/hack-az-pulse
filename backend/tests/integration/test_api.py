@@ -180,9 +180,13 @@ class WebSocket(ApiCase):
             i = kinds.index("plan")
             self.assertEqual(kinds[i:i + 3], ["plan", "explanation", "jobs"])
             self.assertLess(kinds.index("fleet"), i)            # broken status before re-plan
-            running = next(k for k, x in enumerate(seen) if x["type"] == "operation" and x["data"]["status"] == "running")
-            plan_at = next(k for k, x in enumerate(seen) if x["type"] == "plan")
-            self.assertLess(running, plan_at)
+            # 13.3: running -> plan -> explanation -> jobs -> other state -> succeeded
+            running = next(k for k, x in enumerate(seen) if x["type"] == "operation"
+                           and x["data"]["id"] == op_id and x["data"]["status"] == "running")
+            between = [x["type"] for x in seen[running + 1:-1] if x["type"] not in {"poses", "clock"}]
+            self.assertEqual(between[:3], ["plan", "explanation", "jobs"])
+            breakdown_log = next(k for k, x in enumerate(seen) if x["type"] == "log" and x["data"].get("type") == "breakdown")
+            self.assertLess(breakdown_log, running)
             for x in seen:
                 if x["type"] == "plan":
                     m.Plan.model_validate(x["data"])

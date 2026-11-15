@@ -1,0 +1,6 @@
+# Platform + brain. Exact versions this branch was tested with (Python 3.11+; tested on 3.14).
+fastapi==0.163.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+# tests (FastAPI TestClient)
+httpx==0.28.1
