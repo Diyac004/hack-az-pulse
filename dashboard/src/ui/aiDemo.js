@@ -120,7 +120,7 @@ export function createAiDemo({ stage, store, api, ops, sourceInfo, capabilities,
     dotsEl.innerHTML = v.steps.map((s, i) => '<li class="' + s.state + (i === v.index && v.status !== 'done' ? ' cur' : '') + '" title="' + esc(s.title) + '"></li>').join('');
     stepEl.textContent = v.status === 'done' ? 'Demo complete' : v.index >= 0 ? (v.index + 1) + ' of ' + v.steps.length + ' · ' + v.steps[v.index].title : '';
     const c = v.caption || {};
-    if (capEl.textContent !== (c.text || '')) { capEl.textContent = c.text || ''; pill.classList.remove('pop'); void pill.offsetWidth; pill.classList.add('pop'); }
+    if (capEl.textContent !== (c.text || '')) { capEl.textContent = c.text || ''; pill.classList.remove('adm-pop'); void pill.offsetWidth; pill.classList.add('adm-pop'); }
     detEl.textContent = c.detail || ''; detEl.hidden = !c.detail;
     pill.classList.toggle('skip', c.tone === 'skip'); pill.classList.toggle('err', c.tone === 'err');
     const running = v.status === 'playing' || v.status === 'paused';

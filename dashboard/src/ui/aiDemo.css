@@ -40,7 +40,7 @@
 .aidemo .adm-det[hidden]{display:none}
 .aidemo.skip .adm-cap{color:#6e6e73; font-weight:500}
 .aidemo.err .adm-cap{color:#B3261E}
-.aidemo.pop .adm-cap{animation:admIn .35s ease-out}
+.aidemo.adm-pop .adm-cap{animation:admIn .35s ease-out}
 @keyframes admIn{from{opacity:.25; transform:translateY(3px)} to{opacity:1; transform:none}}
 
 /* while the demo runs: toast above the pill, sheets leave room for it */
@@ -57,7 +57,7 @@ body.aidemo-plots .aimarks .aitag{animation:admFlash .7s ease-in-out infinite al
 
 @media (prefers-reduced-motion:reduce){
   .aidemo, .aidemo.on{transition:opacity .2s linear, visibility 0s; transform:translate(-50%,0)}
-  .aidemo.pop .adm-cap{animation:none}
+  .aidemo.adm-pop .adm-cap{animation:none}
   .aidemo .adm-dots li{transition:none}
   .aidemo .adm-dots li.cur{transform:none; box-shadow:0 0 0 2px rgba(191,90,242,.35)}
   #aisheet .aif.aidemo-hl{animation:none}
