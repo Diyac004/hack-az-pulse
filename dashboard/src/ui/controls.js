@@ -24,6 +24,32 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
   bBlock.onclick = () => ops.track(api.postEvent({ type: 'block_route' }), { els: bBlock });
   bHeat.onclick = () => ops.track(api.postEvent({ type: 'heat_alert', temp_f: 112, at_t: 480 }), { els: bHeat });
 
+  // Wind gust / calm (Change 6 demo moment): one click sends weather_change. The label follows the store's
+  // current wind, so it is right after a reset, a reconnect or a change made elsewhere.
+  const bWind = document.createElement('button'); bWind.id = 'bWind'; bWind.textContent = 'Wind gust';
+  bHeat.after(bWind);
+  const gusty = () => { const c = st().weather && st().weather.current; return !!(c && c.wind_mph > 10); };
+  bWind.onclick = () => {
+    const s = st();
+    const areas = (s.scenario && s.scenario.sensitive) || [];
+    if (gusty()) {
+      // calm: 6 mph from the direction that blows furthest from every sensitive area
+      let best = 0, bestGap = -1;
+      for (let from = 0; from < 360; from += 15) {
+        const toward = (from + 180) % 360;
+        const gap = Math.min(180, ...areas.map((a) => { const d = Math.abs(((toward - a.dir_deg) % 360 + 360) % 360); return d > 180 ? 360 - d : d; }));
+        if (gap > bestGap) { bestGap = gap; best = from; }
+      }
+      ops.track(api.postEvent({ type: 'weather_change', wind_mph: 6, wind_from_deg: best }), { els: bWind });
+      return;
+    }
+    // gust: 14 mph blowing toward the sensitive area of a block being sprayed now (else the first one)
+    const jobs = s.jobs || [];
+    const spraying = new Set((s.fleet || []).map((t) => t.current_job && jobs.find((j) => j.id === t.current_job)).filter((j) => j && j.implement === 'sprayer' && j.status === 'working').map((j) => j.block));
+    const area = areas.find((a) => spraying.has(a.block)) || areas[0];
+    ops.track(api.postEvent({ type: 'weather_change', wind_mph: 14, wind_from_deg: area ? (area.dir_deg + 180) % 360 : 270 }), { els: bWind });
+  };
+
   // Break-down picker: non-broken tractors, T1 (or first) highlighted as default.
   function renderPick() {
     const fleet = (st().fleet || []).map((t, i) => ({ t, i })).filter(({ t }) => !isDown(t.status) && t.status !== 'repairing' && t.status !== 'removing' && t.status !== 'offline');
@@ -51,6 +77,10 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
       bPlay.disabled = ended;
       const speed = slowmo ? slowmo.restore : c.speed;
       bFast.textContent = speed > 1 ? 'Normal speed' : 'Skip to sunset';
+      const g = gusty();
+      bWind.textContent = g ? 'Calm the wind' : 'Wind gust';
+      bWind.title = g ? 'Send weather_change: wind drops to 6 mph, away from sensitive areas' : 'Send weather_change: 14 mph gust toward a sensitive area (above the 10 mph spray limit)';
+      bWind.disabled = ended || !state.weather;
     },
     /** Brief slow motion: speed 0.15 for ~1.7 s, then restore the speed captured before. */
     slowMotion(ms = 1700) {

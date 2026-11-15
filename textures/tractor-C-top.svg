@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-168 -248 336 524" width="336" height="524" role="img">
+<title>C. Compact utility, top view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-130,88 -129,58.4 -105.1,-141.7 -102.7,-157.4 -99.3,-164 -44,-184 60,-184 112.7,-164 116.6,-160.1 120.1,-146.6 158.6,58.6 158.6,178.6 137.3,225.3 71,231 -49,231 -116.7,181.3 -121.8,170.1 -126.1,148.5 -129,119.6" fill="#000" opacity=".2" filter="url(#soft)"/><polygon points="-75.4,128 -132.6,128 -132.6,48 -75.4,48" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="132.6,128 75.4,128 75.4,48 132.6,48" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="-68.2,-94 -107.8,-94 -107.8,-146 -68.2,-146" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="107.8,-94 68.2,-94 68.2,-146 107.8,-146" fill="#000" opacity=".35" filter="url(#tight)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="axle"><polygon points="80,-132 -80,-132 -80,-108 80,-108" fill="#656567" stroke="#656567"/></g>
+<g data-part="wheel"><polygon points="106,-120 106,-142.6 70,-142.6 70,-120" fill="#59595B" stroke="#59595B"/><polygon points="106,-142.6 106,-160.7 70,-160.7 70,-142.6" fill="#4D4D4F" stroke="#4D4D4F"/><polygon points="106,-160.7 106,-170.7 70,-170.7 70,-160.7" fill="#2A2A2D" stroke="#2A2A2D"/><polygon points="106,-69.3 106,-79.3 70,-79.3 70,-69.3" fill="#111112" stroke="#111112"/><polygon points="106,-79.3 106,-97.4 70,-97.4 70,-79.3" fill="#222224" stroke="#222224"/><polygon points="106,-97.4 106,-120 70,-120 70,-97.4" fill="#1B1B1D" stroke="#1B1B1D"/></g>
+<g data-part="wheel"><polygon points="-70,-120 -70,-142.6 -106,-142.6 -106,-120" fill="#59595B" stroke="#59595B"/><polygon points="-70,-142.6 -70,-160.7 -106,-160.7 -106,-142.6" fill="#4D4D4F" stroke="#4D4D4F"/><polygon points="-70,-160.7 -70,-170.7 -106,-170.7 -106,-160.7" fill="#2A2A2D" stroke="#2A2A2D"/><polygon points="-70,-69.3 -70,-79.3 -106,-79.3 -106,-69.3" fill="#111112" stroke="#111112"/><polygon points="-70,-79.3 -70,-97.4 -106,-97.4 -106,-79.3" fill="#222224" stroke="#222224"/><polygon points="-70,-97.4 -70,-120 -106,-120 -106,-97.4" fill="#1B1B1D" stroke="#1B1B1D"/></g>
+<g data-part="hitch"><polygon points="60,206 -60,206 -60,220 60,220" fill="#858588" stroke="#858588"/></g>
+<g data-part="hitch"><polygon points="-46.7,157.4 -32.8,159.5 -33.3,162.6 -47.2,160.5" fill="#636366" stroke="#636366"/><polygon points="-41.3,214.6 -55.2,212.5 -47.2,160.5 -33.3,162.6" fill="#636366" stroke="#636366"/></g>
+<g data-part="hitch"><polygon points="32.8,159.5 46.7,157.4 47.2,160.5 33.3,162.6" fill="#636366" stroke="#636366"/><polygon points="55.2,212.5 41.3,214.6 33.3,162.6 47.2,160.5" fill="#636366" stroke="#636366"/></g>
+<g data-part="chassis"><polygon points="40,-168 -40,-168 -40,160 40,160" fill="#656567" stroke="#656567"/></g>
+<g data-part="bumper"><polygon points="52,-192 -52,-192 -52,-168 52,-168" fill="#5A5A5C" stroke="#5A5A5C"/></g>
+<g data-part="wheel"><polygon points="130,88 130,57.4 78,57.4 78,88" fill="#59595B" stroke="#59595B"/><polygon points="130,57.4 130,31.4 78,31.4 78,57.4" fill="#4D4D4F" stroke="#4D4D4F"/><polygon points="130,31.4 130,14.1 78,14.1 78,31.4" fill="#59595B" stroke="#59595B"/><polygon points="130,14.1 130,8 78,8 78,14.1" fill="#1B1B1D" stroke="#1B1B1D"/><polygon points="130,168 130,161.9 78,161.9 78,168" fill="#1A1A1C" stroke="#1A1A1C"/><polygon points="130,161.9 130,144.6 78,144.6 78,161.9" fill="#161617" stroke="#161617"/><polygon points="130,144.6 130,118.6 78,118.6 78,144.6" fill="#2A2A2D" stroke="#2A2A2D"/><polygon points="130,118.6 130,88 78,88 78,118.6" fill="#1B1B1D" stroke="#1B1B1D"/></g>
+<g data-part="wheel"><polygon points="-78,88 -78,57.4 -130,57.4 -130,88" fill="#59595B" stroke="#59595B"/><polygon points="-78,57.4 -78,31.4 -130,31.4 -130,57.4" fill="#4D4D4F" stroke="#4D4D4F"/><polygon points="-78,31.4 -78,14.1 -130,14.1 -130,31.4" fill="#59595B" stroke="#59595B"/><polygon points="-78,14.1 -78,8 -130,8 -130,14.1" fill="#1B1B1D" stroke="#1B1B1D"/><polygon points="-78,168 -78,161.9 -130,161.9 -130,168" fill="#1A1A1C" stroke="#1A1A1C"/><polygon points="-78,161.9 -78,144.6 -130,144.6 -130,161.9" fill="#161617" stroke="#161617"/><polygon points="-78,144.6 -78,118.6 -130,118.6 -130,144.6" fill="#2A2A2D" stroke="#2A2A2D"/><polygon points="-78,118.6 -78,88 -130,88 -130,118.6" fill="#1B1B1D" stroke="#1B1B1D"/></g>
+<g data-part="deck"><polygon class="b0" points="64,0 -64,0 -64,152 64,152" fill="#409FFF" stroke="#409FFF"/></g>
+<g data-part="hood"><polygon class="b0" points="44,-176 -44,-176 -54,0 54,0" fill="#409FFF" stroke="#409FFF"/></g>
+<g data-part="hitch"><polygon points="-7,149.5 7,149.5 7,154.5 -7,154.5" fill="#636366" stroke="#636366"/><polygon points="7,206.5 -7,206.5 -7,154.5 7,154.5" fill="#636366" stroke="#636366"/></g>
+<g data-part="seat"><polygon points="32,64 -32,64 -32,120 32,120" fill="#5A5A5C" stroke="#5A5A5C"/></g>
+<g data-part="fender"><polygon class="b0" points="-80,28 -128,28 -128,148 -80,148" fill="#409FFF" stroke="#409FFF"/></g>
+<g data-part="fender"><polygon class="b0" points="128,28 80,28 80,148 128,148" fill="#409FFF" stroke="#409FFF"/></g>
+<g data-part="seatback"><polygon points="32,112 -32,112 -32,124 32,124" fill="#5A5A5C" stroke="#5A5A5C"/></g>
+<g data-part="column"><polygon points="4,35.6 -4,35.6 -4,28.4 4,28.4" fill="#2C2C2E" stroke="#2C2C2E"/><polygon points="4,28.4 -4,28.4 -4,4.4 4,4.4" fill="#2C2C2E" stroke="#2C2C2E"/></g>
+<g data-part="rops"><polygon points="-58.8,132 -73.2,132 -73.2,148 -58.8,148" fill="#656567" stroke="#656567"/></g>
+<g data-part="rops"><polygon points="73.2,132 58.8,132 58.8,148 73.2,148" fill="#656567" stroke="#656567"/></g>
+<g data-part="steer"><polygon points="-24,36 -24,28 24,28 24,36" fill="#5A5A5C" stroke="#5A5A5C"/></g>
+<g data-part="exhaust"><polygon points="-38.8,-120 -36.8,-124.8 -32,-126.8 -27.2,-124.8 -25.2,-120 -27.2,-115.2 -32,-113.2 -36.8,-115.2" fill="#656567" stroke="#656567"/></g>
+<g data-part="canopy"><polygon class="b0" points="80,-16 -80,-16 -80,168 80,168" fill="#409FFF" stroke="#409FFF"/></g>
+<g data-part="beacon"><polygon points="42.4,144 45.2,137.2 52,134.4 58.8,137.2 61.6,144 58.8,150.8 52,153.6 45.2,150.8" fill="#FFB440" stroke="#FFB440"/></g></g>
+<g id="overlay"><g id="hitch-point"><circle cx="0" cy="220" r="9" fill="#fff" stroke="#1C1C1E" stroke-width="3"/><circle cx="0" cy="220" r="3" fill="#1C1C1E"/></g></g>
+</svg>

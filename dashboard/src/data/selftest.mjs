@@ -78,6 +78,8 @@ function harness(opts) {
         if (j.status === 'done') ok(holders.length === 0, `${j.id} done => not held`);
         ok(j.status !== 'dropped', `${j.id} never dropped by the mock`);
       }
+      // Weather Agent: spraying only ever happens while spraying is allowed on that block
+      for (const j of s.jobs) if (j.status === 'working' && j.implement === 'sprayer') ok(!s.weather || s.weather.spray_allowed_now[j.block] === true, `${j.id} sprays Block ${j.block} only while allowed`);
       const seen = new Set();
       for (const t of s.fleet) for (const id of [t.current_job, ...t.queue].filter(Boolean)) { ok(!seen.has(id) || s.jobs.find((j) => j.id === id)?.status === 'paused', `job ${id} held by two tractors`); seen.add(id); }
     },
@@ -311,6 +313,53 @@ const strip = (h) => JSON.stringify(h.msgs.map((m) => m.type === 'plan' ? { ...m
 ok(strip(B) === strip(B2), 'two clean runs produce identical streams (deterministic)');
 
 // ===================================================================
+section('weather: windows, live guard, gust + calm (Change 6 Part B)');
+{
+  ok([B.msgs[0].data.plan, ...B.msgs.filter((m) => m.type === 'plan').map((m) => m.data)].some((pl) => pl.entries.some((e) => e.kind === 'wait' && e.job === null && Array.isArray(e.route))), 'clean day plan has wait entries (job null) around no-spray periods');
+  ok(B.msgs.some((m) => m.type === 'fleet' && m.data.tractors.some((t) => t.status === 'waiting_weather')), 'a sprayer waits for wind at dawn (waiting_weather)');
+  ok(B.msgs.filter((m) => m.type === 'weather').length >= 5, 'scripted weather changes stream as weather messages');
+  const W0 = B.msgs[0].data.weather;
+  ok(W0.spray_allowed_now.E === false && /under the 3 mph minimum/.test(W0.spray_blocked_reason.E), 'dawn 2 mph: spraying blocked, reason cites the 3 mph minimum');
+  ok(W0.spray_windows.H.length >= 2 && W0.spray_windows.E.every(([s, e]) => s < e), 'per-block spray windows are ranges; H has gaps (houses downwind)');
+  ok(W0.forecast.every((p) => Object.keys(p).sort().join() === 'rain_prob,t,temp_f,wind_from_deg,wind_mph'), 'forecast points are WeatherPoint');
+
+  const G = harness();
+  const bad = await G.api.postEvent({ type: 'weather_change', wind_mph: 'strong' }).then(() => null, (e) => e);
+  ok(bad?.code === 'INVALID_INPUT', 'weather_change with non-number => INVALID_INPUT');
+  ok(G.until(() => { const t3 = G.w().tractors.find((x) => x.id === 'T3'); const j = t3.current_job && G.w().jobs.find((x) => x.id === t3.current_job);
+    return t3.status === 'working' && j.implement === 'sprayer' && j.progress > 0.1 && G.w().jobs.some((x) => x.implement === 'bin_trailer' && x.progress === 0 && x.status !== 'done'); }, 6000), 'T3 spraying with hauling still open');
+  const sprJob = G.w().tractors.find((x) => x.id === 'T3').current_job;
+  const pBefore = G.w().jobs.find((x) => x.id === sprJob).progress;
+  const opG = await G.api.postEvent({ type: 'weather_change', wind_mph: 14, wind_from_deg: 270 });
+  opOk(opG, 'weather_change 202');
+  ok(opG.status === 'queued' && opG.kind === 'replan' && opG.source === 'events', 'weather_change -> queued replan Operation');
+  G.tick();
+  const ms = opMsgs(G.msgs, opG.id), iRun = idxOf(G.msgs, ms[1]), iEnd = idxOf(G.msgs, ms[2]);
+  const order = G.msgs.slice(iRun + 1, iEnd).map((m) => m.type).filter((t) => t !== 'log');
+  ok(order[0] === 'plan' && order[1] === 'explanation' && order[2] === 'jobs' && order.includes('weather') && order.indexOf('weather') > 2 && ms[2].data.status === 'succeeded', `§13 order running>plan>explanation>jobs>weather..>succeeded (${order.join('>')})`);
+  const gs = G.store.get(), gx = gs.explanations[0];
+  console.log('    gust:', gx.text);
+  ok(gx.trigger === 'weather_change' && /14 mph/.test(gx.text) && /10 mph spray limit/.test(gx.text), 'explanation cites the 10 mph limit');
+  ok(/Tractor 3 paused spraying Block \w at \d+% and switched to hauling bins/.test(gx.text), 'explanation says T3 switched to hauling');
+  ok(gx.facts.context.weather.spray_max_wind_mph === 10 && gx.facts.context.paused.some((p) => p.job === sprJob), 'numbers in the text come from facts.context');
+  const pj = gs.jobs.find((j) => j.id === sprJob);
+  ok(pj.weather_blocked === true && pj.status === 'paused' && pj.progress >= pBefore - 1e-9, `paused spray job keeps progress, weather_blocked (${pj.status} ${pj.progress})`);
+  const t3 = gs.fleet.find((t) => t.id === 'T3'), t3job = gs.jobs.find((j) => j.id === (t3.current_job || t3.queue[0]));
+  ok(t3job && t3job.implement === 'bin_trailer', 'T3 now hauls bins');
+  ok(Object.values(gs.weather.spray_allowed_now).every((v) => v === false) && gs.weather.current.wind_mph === 14, 'weather: 14 mph, no block may spray');
+  ok(!gs.jobs.some((j) => j.status === 'working' && j.implement === 'sprayer'), 'no spray job working during the gust');
+  ok(gs.plan.entries.filter((e) => e.job === sprJob && e.kind === 'work').every((e) => e.start_t >= G.w().wx.overrides[0].to - 0.1), 'paused job re-planned after the gust window');
+  G.tick(30);
+  ok(!G.store.get().jobs.some((j) => j.status === 'working' && j.implement === 'sprayer'), 'still no spraying 30 ticks into the gust');
+  const opC = await G.api.postEvent({ type: 'weather_change', wind_mph: 6, wind_from_deg: 0 });
+  G.tick();
+  console.log('    calm:', G.store.get().explanations[0].text);
+  ok(opMsgs(G.msgs, opC.id).at(-1).data.status === 'succeeded' && G.store.get().weather.current.wind_mph === 6, 'calm applied');
+  ok(Object.values(G.store.get().weather.spray_allowed_now).some((v) => v), 'calm: spraying allowed again');
+  ok(G.until(() => G.w().jobs.find((j) => j.id === sprJob).status === 'done', 8000), 'paused spray job completes after calm');
+  ok(G.store.get().log.some((l) => l.kind === 'event' && l.type === 'weather_change'), 'weather_change event logged');
+}
+
 section('LiveSource adapter (index.js live path) with stub fetch/WebSocket');
 {
   const { createLiveSource, newIdempotencyKey } = await import('./liveSource.js');

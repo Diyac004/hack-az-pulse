@@ -22,6 +22,10 @@ export function createWorld(stage) {
   R.setPixelRatio(Math.min(devicePixelRatio, 2)); R.setSize(SW, SH);
   R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
   stage.insertBefore(R.domElement, stage.firstChild);
+  // ?debug=perf: every 5 s log GPU memory, draw calls/triangles summed over all passes of a frame, and FPS.
+  const PERF = typeof location !== 'undefined' && new URLSearchParams(location.search).get('debug') === 'perf';
+  const pf = { frames: 0, calls: 0, maxCalls: 0, tris: 0, t: 0 };
+  if (PERF) R.info.autoReset = false;
 
   const S = new THREE.Scene(); S.background = new THREE.Color('#BFDDF5');
   const cam = new THREE.PerspectiveCamera(38, SW / SH, 0.1, 400);
@@ -49,6 +53,9 @@ export function createWorld(stage) {
   } catch (e) { comp = null; }
 
   let camGoal = null;
+  // follow mode: camera target tracks fn() -> {x, z} (or null), keeping the current view angle; closes in to FOLLOW_DIST.
+  let followFn = null, lastFollowNow = 0;
+  const FOLLOW_DIST = 11, fv = new THREE.Vector3();
   const world = {
     THREE, R, S, cam, ctl, HOME,
     get fx() { return fx; }, set fx(v) { fx = !!v; },
@@ -59,6 +66,11 @@ export function createWorld(stage) {
     },
     overview(ms = 4000) { camGoal = { p: HOME.p.clone().multiplyScalar(1.2), t: HOME.t.clone(), until: performance.now() + ms, ret: true }; },
     home() { camGoal = { p: HOME.p.clone(), t: HOME.t.clone(), until: performance.now() + 1600, ret: true }; },
+    /** Drop any pending focus/overview/home camera move (used before another module drives the camera). */
+    cancelGoal() { camGoal = null; },
+    /** Follow: fn() -> {x, z} world position or null; pass null to stop. Follow wins over focus/overview moves. */
+    follow(fn) { followFn = typeof fn === 'function' ? fn : null; if (followFn) camGoal = null; },
+    get following() { return !!followFn; },
     /** dayFrac 0..1 drives sky + sun */
     sky(f) {
       f = Math.max(0, Math.min(1, f || 0));
@@ -73,6 +85,18 @@ export function createWorld(stage) {
       if (comp) { comp.setSize(SW, SH); if (hPass) hPass.uniforms.h.value = 1.8 / SW; if (vPass) vPass.uniforms.v.value = 1.8 / SH; }
     },
     render(now) {
+      if (followFn) {
+        camGoal = null;
+        const p = followFn();
+        const dt = lastFollowNow ? Math.min(0.05, (now - lastFollowNow) / 1000) : 0.016; lastFollowNow = now;
+        if (p) {
+          const k = 1 - Math.exp(-dt * 6);
+          fv.set((p.x - ctl.target.x) * k, 0, (p.z - ctl.target.z) * k);
+          ctl.target.add(fv); cam.position.add(fv);
+          fv.subVectors(cam.position, ctl.target); const d = fv.length();
+          if (d > FOLLOW_DIST + 0.05) { fv.multiplyScalar((d + (FOLLOW_DIST - d) * k) / d); cam.position.copy(ctl.target).add(fv); }
+        }
+      } else lastFollowNow = 0;
       if (camGoal) {
         if (now < camGoal.until) { cam.position.lerp(camGoal.p, 0.05); ctl.target.lerp(camGoal.t, 0.06); }
         else if (!camGoal.ret) camGoal = { p: HOME.p.clone(), t: HOME.t.clone(), until: now + 1600, ret: true };
@@ -80,6 +104,16 @@ export function createWorld(stage) {
       }
       ctl.update();
       if (fx && comp) comp.render(); else R.render(S, cam);
+      if (PERF) {
+        const c = R.info.render.calls; pf.frames++; pf.calls += c; pf.tris += R.info.render.triangles; if (c > pf.maxCalls) pf.maxCalls = c;
+        R.info.reset();
+        if (!pf.t) pf.t = now;
+        else if (now - pf.t >= 5000) {
+          const n = pf.frames;
+          console.log(`[perf] geometries=${R.info.memory.geometries} textures=${R.info.memory.textures} programs=${R.info.programs.length} calls/frame=${Math.round(pf.calls / n)} (max ${pf.maxCalls}) tris/frame=${Math.round(pf.tris / n)} fps=${Math.round((n * 1000) / (now - pf.t))} objects=${S.children.length}`);
+          pf.frames = pf.calls = pf.maxCalls = pf.tris = 0; pf.t = now;
+        }
+      }
     },
   };
   window.addEventListener('resize', () => world.resize());

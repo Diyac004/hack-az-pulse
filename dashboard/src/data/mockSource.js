@@ -65,7 +65,7 @@ const IMPL_VERB = { sprayer: 'spraying', mower: 'mowing', hedger: 'hedging', bin
 const TOOL_WIDTH = { sprayer: 6, mower: 4.5, hedger: 3, bin_trailer: 2.5 };
 const HEAT_BLOCKS = ['G', 'H'];
 const POOL_MAX = 24;
-const SCHEDULABLE = new Set(['ready', 'idle', 'traveling', 'working']);
+const SCHEDULABLE = new Set(['ready', 'idle', 'traveling', 'working', 'waiting_weather']);
 
 const BLOCKS = [
   ['A', 1, 2, 'Navel', 0.4], ['B', 6, 2, 'Valencia', 0.5], ['C', 11, 2, 'Navel', 0.72], ['D', 16, 2, 'Lemon', 0.3],
@@ -94,8 +94,41 @@ const MECHANICS = [
   { id: 'M4', name: 'Desert Heavy Equipment', source: 'Google', distance_mi: 16.2, rating: 4.5, reviews: 140, mobile: true, ag_equipment: false, eta_min: 70, est_cost: 460, repair_min_estimate: 80, url: null, score: 0.69, recommended: false, reason: 'Heavy diesel shop, not ag-specific' },
 ];
 
+// ---------------------------------------------------------------- weather (PROJECT.md Change 6 Part B)
+/** weather_rules.json defaults. Labels are the law: every threshold lives here, not in code. */
+export const WEATHER_RULES = {
+  spray: { min_wind_mph: 3, max_wind_mph: 10, max_temp_f: 100, max_rain_prob: 40, rain_lookahead_min: 120, sensitive_half_angle_deg: 45 },
+  mow: { max_wind_mph: 25 }, hedge: { max_wind_mph: 25 }, haul_bins: { max_wind_mph: 35 },
+  /** a weather_change event overrides the scripted timeline for this long (or until the next weather_change) */
+  override_hold_min: 120,
+};
+/** Scripted hourly timeline (deterministic; ours and baseline face the same weather). wind_from_deg is where the
+ *  wind comes FROM; it blows toward wind_from_deg + 180. Calm dawn (inversion risk), southerly morning that
+ *  pushes toward the houses north of H, a westerly afternoon toward the canal east of E, an 11 mph gust 1-2 PM. */
+export const WEATHER_SCRIPT = [
+  [0, 2, 90, 66, 0], [30, 3, 100, 68, 0], [60, 4, 120, 71, 0], [120, 5, 160, 75, 0], [180, 6, 180, 79, 0], [240, 7, 200, 84, 0],
+  [300, 8, 215, 88, 0], [360, 9, 240, 92, 5], [420, 11, 250, 95, 10], [480, 8, 250, 97, 5], [540, 6, 255, 98, 0],
+  [600, 5, 265, 96, 0], [660, 4, 270, 93, 0], [720, 3, 270, 90, 0],
+].map(([t, wind_mph, wind_from_deg, temp_f, rain_prob]) => ({ t, wind_mph, wind_from_deg, temp_f, rain_prob }));
+const SENSITIVE = [{ block: 'E', what: 'canal', dir_deg: 90 }, { block: 'H', what: 'houses', dir_deg: 0 }, { block: 'B', what: 'apiary', dir_deg: 270 }];
+const angDiff = (a, b) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return d > 180 ? 360 - d : d; };
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+const compassName = (deg) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+/** Split `R` minutes of work starting no earlier than `c` across allowed windows [[s,e],...]; what does not fit spills past sunset. */
+function splitWork(wins, c, R) {
+  const segs = [];
+  for (const [s, e] of wins) {
+    if (R <= 1e-9) break;
+    if (e <= c + 1e-9) continue;
+    const st = Math.max(s, c), en = Math.min(e, st + R);
+    segs.push([st, en]); R -= en - st; c = en;
+  }
+  if (R > 1e-9) { const st = Math.max(c, DAY_MIN); segs.push([st, st + R]); } // no window left today: spills past sunset (late)
+  return segs;
+}
+
 // ---------------------------------------------------------------- helpers
-const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
+const r1 =(v) => (v == null ? null : Math.round(v * 10) / 10);
 const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 const apiError = (code, message, details = {}) => ({ code, message, details });
@@ -176,8 +209,20 @@ const remainingMin = (j) => j.duration_min * (1 - j.progress);
  * Timeline of one tractor: current job then `queue`. Pure.
  * @returns {{entries: object[], end_t: number, x: number, y: number}}
  */
-function tractorSchedule(tr, byId, queue, now, blocked, includeCurrent = true) {
+function tractorSchedule(tr, byId, queue, now, blocked, includeCurrent = true, wx = null) {
   const entries = []; let c = now, x = tr.x, y = tr.y;
+  // work [c, ...]: spray work is split across the block's allowed windows with `wait` entries in the gaps
+  const work = (j, start, firstStart) => {
+    const R = remainingMin(j);
+    const segs = wx && j.implement === 'sprayer' ? wx.split(j.block, start, R) : [[start, start + R]];
+    let at = start;
+    segs.forEach(([s0, e], i) => {
+      if (s0 > at + 1e-6) entries.push({ tractor: tr.id, job: null, kind: 'wait', start_t: at, end_t: s0, route: [] });
+      entries.push({ tractor: tr.id, job: j.id, kind: 'work', start_t: i === 0 && firstStart != null ? Math.min(firstStart, s0) : s0, end_t: e, route: [] });
+      at = e;
+    });
+    return at;
+  };
   const cur = includeCurrent && tr.current_job ? byId.get(tr.current_job) : null;
   if (cur) {
     let ws;
@@ -186,9 +231,8 @@ function tractorSchedule(tr, byId, queue, now, blocked, includeCurrent = true) {
       const tt = travelMinutes(polyLen(pts), tr.speed);
       entries.push({ tractor: tr.id, job: cur.id, kind: 'travel', start_t: c, end_t: c + tt, route: pts });
       c += tt; ws = c;
-    } else ws = cur._s ?? c;
-    c += remainingMin(cur);
-    entries.push({ tractor: tr.id, job: cur.id, kind: 'work', start_t: ws, end_t: c, route: [] });
+    } else ws = tr.status === 'working' ? (cur._s ?? c) : null;
+    c = work(cur, c, ws);
     [x, y] = endPoint(cur);
   }
   for (const id of queue) {
@@ -197,9 +241,7 @@ function tractorSchedule(tr, byId, queue, now, blocked, includeCurrent = true) {
     const pts = [[r2(x), r2(y)], ...routeTo(x, y, tg, blocked).slice(1)];
     const tt = travelMinutes(polyLen(pts), tr.speed);
     entries.push({ tractor: tr.id, job: j.id, kind: 'travel', start_t: c, end_t: c + tt, route: pts });
-    c += tt;
-    entries.push({ tractor: tr.id, job: j.id, kind: 'work', start_t: c, end_t: c + remainingMin(j), route: [] });
-    c += remainingMin(j);
+    c = work(j, c + tt, null);
     [x, y] = endPoint(j);
   }
   return { entries, end_t: c, x, y };
@@ -233,21 +275,27 @@ function unassignedReason(j, tractors) {
  * the compatible schedulable tractor with the earliest finish.
  * @param {{tractors:object[], jobs:object[], blocked:Set<string>, t:number}} p
  */
-export function planAssign({ tractors, jobs, blocked, t }) {
+export function planAssign({ tractors, jobs, blocked, t, wx = null }) {
   const byId = new Map(jobs.map((j) => [j.id, j]));
   const sched = tractors.filter(schedulable);
   const frozen = new Set(sched.map((tr) => tr.current_job).filter(Boolean));
-  const tails = new Map(sched.map((tr) => [tr.id, tractorSchedule(tr, byId, [], t, blocked)]));
+  const tails = new Map(sched.map((tr) => [tr.id, tractorSchedule(tr, byId, [], t, blocked, true, wx)]));
+  // Weather Agent: spray jobs that cannot run right now go behind doable work, so sprayers haul instead of idling.
+  const waitsNow = (j) => !!(wx && j.implement === 'sprayer' && !wx.opensSoon(j.block, t));
+  const order = (a, b) => (waitsNow(a) ? 1 : 0) - (waitsNow(b) ? 1 : 0) || jobCmp(a, b);
   const assign = new Map(sched.map((tr) => [tr.id, []]));
   const unassigned = new Map();
   let rejected = 0;
-  for (const j of jobs.filter((j) => unfinished(j) && !frozen.has(j.id)).sort(jobCmp)) {
+  for (const j of jobs.filter((j) => unfinished(j) && !frozen.has(j.id)).sort(order)) {
+    const noWin = wx && j.implement === 'sprayer' ? wx.noWindowReason(j) : null;
+    if (noWin) { unassigned.set(j.id, noWin); continue; }
     let best = null;
     for (const tr of tractors) {
       if (!tr.implements.includes(j.implement) || !schedulable(tr) || (j.pinned_to && j.pinned_to !== tr.id)) { rejected++; continue; }
       const tail = tails.get(tr.id);
       const tt = travelMinutes(polyLen([[tail.x, tail.y], ...routeTo(tail.x, tail.y, entryPoint(j), blocked).slice(1)]), tr.speed);
-      const fin = tail.end_t + tt + remainingMin(j);
+      let fin = tail.end_t + tt + remainingMin(j);
+      if (wx && j.implement === 'sprayer') { const segs = wx.split(j.block, tail.end_t + tt, remainingMin(j)); fin = segs[segs.length - 1][1]; }
       if (!best || fin < best.fin - 1e-9 || (Math.abs(fin - best.fin) < 1e-9 && tt < best.tt)) best = { tr, fin, tt };
     }
     if (!best) { unassigned.set(j.id, unassignedReason(j, tractors)); continue; }
@@ -273,19 +321,89 @@ function safetyViolations(tractors, jobs) {
 }
 
 // ---------------------------------------------------------------- world
-function initialWeather() {
-  const forecast = [];
-  for (let t = 0; t <= DAY_MIN; t += 60) {
-    const temp = t <= 480 ? 68 + (36 * t) / 480 : 104 - (6 * (t - 480)) / 240;
-    forecast.push({ t, wind_mph: Math.round(2 + 7 * Math.sin((Math.PI * t) / DAY_MIN)), wind_from_deg: 200, temp_f: Math.round(temp), rain_prob: 0 });
+/** Weather state: scripted timeline + event overrides, as a step function of farm time. */
+function newWx() { return { script: WEATHER_SCRIPT.map((p) => ({ ...p })), overrides: [], wins: null, sig: '' }; }
+const WX_KEYS = ['wind_mph', 'wind_from_deg', 'temp_f', 'rain_prob'];
+function wxAt(wx, t) {
+  for (let i = wx.overrides.length - 1; i >= 0; i--) { const o = wx.overrides[i]; if (t >= o.from - 1e-9 && t < o.to - 1e-9) return o.v; }
+  let p = wx.script[0];
+  for (const q of wx.script) if (q.t <= t + 1e-9) p = q;
+  return p;
+}
+/** Times where any value (or the 2 h rain look-ahead) can change. */
+function wxChangePoints(wx, withRain) {
+  const L = WEATHER_RULES.spray.rain_lookahead_min;
+  const set = new Set([0]);
+  const add = (v) => { if (v > 0 && v < DAY_MIN) set.add(Math.round(v * 100) / 100); };
+  for (const p of wx.script) { add(p.t); if (withRain) add(p.t - L); }
+  for (const o of wx.overrides) { add(o.from); add(o.to); if (withRain) { add(o.from - L); add(o.to - L); } }
+  return [...set].sort((a, b) => a - b);
+}
+/** Why spraying `block` is not allowed at time t (null = allowed). {rule, text, ...numbers} */
+function sprayBlock(wx, block, t) {
+  const R = WEATHER_RULES.spray, v = wxAt(wx, t);
+  if (v.wind_mph < R.min_wind_mph) return { rule: 'min_wind', text: `Wind ${v.wind_mph} mph is under the ${R.min_wind_mph} mph minimum (inversion risk)`, wind_mph: v.wind_mph, limit: R.min_wind_mph };
+  if (v.wind_mph > R.max_wind_mph) return { rule: 'max_wind', text: `Wind ${v.wind_mph} mph exceeds the ${R.max_wind_mph} mph spray limit`, wind_mph: v.wind_mph, limit: R.max_wind_mph };
+  const toward = (v.wind_from_deg + 180) % 360;
+  const s = SENSITIVE.find((a) => a.block === block && angDiff(toward, a.dir_deg) <= R.sensitive_half_angle_deg);
+  if (s) return { rule: 'sensitive_area', text: `Wind blowing toward ${s.what} (sensitive area)`, what: s.what, dir_deg: s.dir_deg, wind_from_deg: v.wind_from_deg };
+  if (v.temp_f > R.max_temp_f) return { rule: 'max_temp', text: `${v.temp_f}°F is above the ${R.max_temp_f}°F product limit`, temp_f: v.temp_f, limit: R.max_temp_f };
+  let rain = v.rain_prob;
+  for (const cp of wxChangePoints(wx, false)) if (cp > t && cp < t + R.rain_lookahead_min) rain = Math.max(rain, wxAt(wx, cp).rain_prob);
+  if (rain >= R.max_rain_prob) return { rule: 'rain', text: `${rain}% chance of rain within ${R.rain_lookahead_min / 60} h`, rain_prob: rain, limit: R.max_rain_prob };
+  return null;
+}
+/** Allowed spray windows per block over the day (cached until the weather changes). */
+function wxWindows(wx) {
+  if (wx.wins) return wx.wins;
+  const cps = wxChangePoints(wx, true);
+  const out = {};
+  for (const b of BLOCKS) {
+    const list = [];
+    cps.forEach((s, i) => {
+      const e = cps[i + 1] ?? DAY_MIN;
+      if (e - s < 1e-6 || sprayBlock(wx, b.id, s)) return;
+      const last = list[list.length - 1];
+      if (last && Math.abs(last[1] - s) < 1e-6) last[1] = e; else list.push([s, e]);
+    });
+    out[b.id] = list;
+  }
+  return (wx.wins = out);
+}
+const sprayAllowed = (wx, block, t) => (wxWindows(wx)[block] || []).some(([s, e]) => t >= s - 1e-9 && t < e - 1e-9);
+/** Is a job allowed to run at t under the weather rules? (spray: windows; mow/hedge/haul: wind limits) */
+function jobWeatherOk(wx, j, t) {
+  if (j.implement === 'sprayer') return sprayAllowed(wx, j.block, t);
+  const lim = WEATHER_RULES[IMPL_TYPE[j.implement]];
+  return !lim || wxAt(wx, t).wind_mph < lim.max_wind_mph;
+}
+/** Planner-facing view of the weather (passed into planAssign / tractorSchedule). */
+function wxPlanner(wx, now) {
+  const wins = wxWindows(wx);
+  return {
+    allowed: (block, t) => sprayAllowed(wx, block, t),
+    /** a window is open now or opens within 45 min (about the drive to a block) */
+    opensSoon: (block, t) => (wins[block] || []).some(([s, e]) => e > t + 1e-6 && s < t + 45),
+    split: (block, c, R) => splitWork(wins[block] || [], c, R),
+    noWindowReason: (j) => {
+      if ((wins[j.block] || []).some(([, e]) => e > now + 1e-6)) return null;
+      const why = sprayBlock(wx, j.block, now);
+      return `No spray window left today for Block ${j.block}${why ? ': ' + why.text.charAt(0).toLowerCase() + why.text.slice(1) : ''}.`;
+    },
+  };
+}
+function weatherOut(wx, t) {
+  const v = wxAt(wx, t), wins = wxWindows(wx);
+  const allowed = {}, reason = {}, windows = {};
+  for (const b of BLOCKS) {
+    allowed[b.id] = sprayAllowed(wx, b.id, t);
+    if (!allowed[b.id]) { const why = sprayBlock(wx, b.id, t); reason[b.id] = why ? why.text : 'Spraying not allowed now'; }
+    windows[b.id] = wins[b.id].map(([s, e]) => [r1(s), r1(e)]);
   }
   return {
-    current: { wind_mph: 6, wind_from_deg: 200, temp_f: 78, rain_prob: 0 },
-    forecast,
-    spray_allowed_now: Object.fromEntries(BLOCKS.map((b) => [b.id, true])),
-    spray_blocked_reason: {},
-    spray_windows: Object.fromEntries(BLOCKS.map((b) => [b.id, [[0, DAY_MIN]]])),
-    live_conditions: null,
+    current: Object.fromEntries(WX_KEYS.map((k) => [k, v[k]])),
+    forecast: wxChangePoints(wx, false).concat(DAY_MIN).filter((x, i, a) => a.indexOf(x) === i).map((p) => ({ t: r1(p), ...Object.fromEntries(WX_KEYS.map((k) => [k, wxAt(wx, p)[k]])) })),
+    spray_allowed_now: allowed, spray_blocked_reason: reason, spray_windows: windows, live_conditions: null,
   };
 }
 
@@ -384,7 +502,7 @@ export function createMockSource(opts = {}) {
   function snapshotOut() {
     return {
       clock: clockOut(), scenario: scenarioOut(), fleet: w.tractors.map(tractorOut), jobs: w.jobs.map(jobOut), plan: w.plan,
-      explanations: w.explanations.slice(-10).reverse(), metrics: metricsOut(), weather: w.weather, pending: w.pending,
+      explanations: w.explanations.slice(-10).reverse(), metrics: metricsOut(), weather: weatherOut(w.wx, w.t), pending: w.pending,
       capacity: capacityOut(), log_tail: w.log.slice(-20).reverse(), operations: opsOut(),
     };
   }
@@ -392,6 +510,7 @@ export function createMockSource(opts = {}) {
   // ---------------- change tracking / throttled flushes
   const jobSig = (o) => JSON.stringify([o.status, o.tractor, o.priority, o.deadline_t, o.pinned_to, o.unassigned_reason, o.weather_blocked]);
   function primeTrackers() {
+    flushWeather(true, true);
     tracked = { jobs: new Map(), fleet: fleetSig(), poses: new Map() };
     for (const j of w.jobs) { const o = jobOut(j); tracked.jobs.set(j.id, { sig: jobSig(o), full: JSON.stringify(o), tick: tickN }); }
     for (const tr of w.tractors) tracked.poses.set(tr.id, JSON.stringify(poseOut(tr)));
@@ -431,7 +550,7 @@ export function createMockSource(opts = {}) {
       t: 0, playing: true, speed: w?.speed ?? 1, ended: false, mode, tractors: [], jobs: SEED_JOBS.map((a) => makeJob(...a)),
       blocked: new Set(), planVersion: 0,
       plan: { version: 0, entries: [], solver: 'greedy', solve_ms: 0, solver_status: 'feasible', diff: { moved: [], retimed: [], dropped: [], added: [] } },
-      explanations: [], pending: [], log: [], heat: false, weather: initialWeather(), created: 0,
+      explanations: [], pending: [], log: [], heat: false, wx: newWx(), created: 0,
       acc: { travel: 0, idle: 0, productive: 0, violations: 0, replanMs: null, rejected: null },
     };
     for (const e of SEED_TRACTORS) w.tractors.push(newTractor(e, w.created++));
@@ -439,14 +558,33 @@ export function createMockSource(opts = {}) {
   }
   const jobById = (id) => w.jobs.find((j) => j.id === id);
   const trById = (id) => w.tractors.find((t) => t.id === id);
+  const wxP = () => wxPlanner(w.wx, w.t);
+  /** weather_blocked: held and waiting for its window, paused mid-job by weather, or unassignable for weather. */
+  function refreshWeatherFlags() {
+    const held = new Map(w.tractors.filter((tr) => tr.current_job).map((tr) => [tr.current_job, tr]));
+    for (const j of w.jobs) {
+      if (!unfinished(j)) { j.weather_blocked = false; continue; }
+      const tr = held.get(j.id);
+      if (tr) j.weather_blocked = tr.status === 'waiting_weather' || (tr.status === 'traveling' && !jobWeatherOk(w.wx, j, w.t));
+      else j.weather_blocked = !jobWeatherOk(w.wx, j, w.t) && (j.progress > 0 || j.status === 'pending');
+    }
+  }
+  /** Emit `weather` when the current conditions or spray permissions change (scripted hours, events). */
+  function flushWeather(force = false, silent = false) {
+    const out = weatherOut(w.wx, w.t);
+    const sig = JSON.stringify([out.current, out.spray_allowed_now, out.spray_blocked_reason, out.forecast]);
+    if (!force && sig === w.wx.sig) return;
+    w.wx.sig = sig; if (!silent) emit('weather', out);
+  }
 
   function updateEstimates() {
     const byId = new Map(w.jobs.map((j) => [j.id, j]));
     for (const tr of w.tractors) {
       if (!schedulable(tr)) continue;
-      for (const e of tractorSchedule(tr, byId, tr.queue, w.t, w.blocked).entries) {
+      const seen = new Set();
+      for (const e of tractorSchedule(tr, byId, tr.queue, w.t, w.blocked, true, wxP()).entries) {
         if (e.kind !== 'work') continue;
-        const j = byId.get(e.job); j.start_t = e.start_t; j.end_t = e.end_t; j.eta_t = e.end_t;
+        const j = byId.get(e.job); if (!seen.has(j.id)) { seen.add(j.id); j.start_t = e.start_t; } j.end_t = e.end_t; j.eta_t = e.end_t;
       }
     }
     for (const j of w.jobs) if (j.status === 'done') { j.start_t = j._s; j.end_t = j._e; j.eta_t = j._e; }
@@ -457,7 +595,7 @@ export function createMockSource(opts = {}) {
     for (const j of w.jobs) if (j.status === 'done' && j.tractor) out.push({ tractor: j.tractor, job: j.id, kind: 'work', start_t: r1(j._s), end_t: r1(j._e), route: [] });
     for (const tr of w.tractors) {
       if (!includeAll && !schedulable(tr)) continue;
-      for (const e of tractorSchedule(tr, byId, tr.queue, w.t, w.blocked).entries) out.push({ ...e, start_t: r1(e.start_t), end_t: r1(e.end_t) });
+      for (const e of tractorSchedule(tr, byId, tr.queue, w.t, w.blocked, true, wxP()).entries) out.push({ ...e, start_t: r1(e.start_t), end_t: r1(e.end_t) });
     }
     return out;
   }
@@ -486,14 +624,27 @@ export function createMockSource(opts = {}) {
       if (tr.current_job) { const j = jobById(tr.current_job); if (j && unfinished(j)) j.status = 'paused'; tr.current_job = null; }
       tr.queue = []; tr.path = []; tr.pi = 0;
     }
-    const res = planAssign({ tractors: w.tractors, jobs: w.jobs, blocked: w.blocked, t: w.t });
+    // Weather Agent live guard: a held job that may not run now is released (progress kept) so the
+    // planner can give its tractor other work and put the job back into a later window.
+    const released = [];
+    for (const tr of w.tractors) {
+      if (!schedulable(tr) || !tr.current_job) continue;
+      const j = jobById(tr.current_job);
+      if (!j || !unfinished(j) || jobWeatherOk(w.wx, j, w.t)) continue;
+      released.push({ job: j.id, tractor: tr.id, progress: r2(j.progress), was: tr.status });
+      j.status = j.progress > 0 ? 'paused' : 'pending'; j.weather_blocked = j.progress > 0; j.tractor = null;
+      tr.current_job = null; tr.status = 'idle'; tr.path = []; tr.pi = 0;
+    }
+    const res = planAssign({ tractors: w.tractors, jobs: w.jobs, blocked: w.blocked, t: w.t, wx: wxP() });
     for (const tr of w.tractors) {
       if (!schedulable(tr)) continue;
       tr.queue = res.assign.get(tr.id) || [];
-      for (const id of tr.queue) { const j = jobById(id); j.tractor = tr.id; j.status = 'assigned'; j.unassigned_reason = null; }
+      for (const id of tr.queue) { const j = jobById(id); j.tractor = tr.id; j.status = j.weather_blocked && j.progress > 0 ? 'paused' : 'assigned'; j.unassigned_reason = null; }
       if (tr.current_job) jobById(tr.current_job).unassigned_reason = null;
     }
     for (const [id, reason] of res.unassigned) Object.assign(jobById(id), { status: 'pending', tractor: null, start_t: null, end_t: null, eta_t: null, unassigned_reason: reason });
+    ctx.released = released;
+    refreshWeatherFlags();
     updateEstimates();
     const v = safetyViolations(w.tractors, w.jobs);
     if (v) { w.acc.violations += v; addLog({ kind: 'violation', rule: 'plan_invariants', tractor: null, detail: { count: v } }); }
@@ -519,6 +670,20 @@ export function createMockSource(opts = {}) {
       unassigned: [...res.unassigned].map(([job, reason]) => ({ job, reason })),
       context: { makespan_old_t: r1(oldStats.makespan), makespan_new_t: r1(newStats.makespan), ...(ctx.facts || {}) },
     };
+    if (ctx.released && ctx.released.length) {
+      // what each paused tractor does now, and when the paused work is planned to resume (numbers for the text)
+      facts.context.paused = ctx.released.map((p) => {
+        const tr = trById(p.tractor), j = jobById(p.job), next = tr && (tr.current_job || tr.queue[0]);
+        let nj = next ? jobById(next) : null;
+        if (nj && !jobWeatherOk(w.wx, nj, w.t)) nj = null; // its next job also waits for weather: it did not switch
+        return { ...p, block: j.block, rule: (sprayBlock(w.wx, j.block, w.t) || {}).rule ?? null, resume_t: r1(j.start_t), resume_tractor: j.tractor, deadline_t: j.deadline_t, switched_to: nj && nj.id !== j.id ? nj.id : null };
+      });
+    }
+    if (trigger === 'weather_change') {
+      const R = WEATHER_RULES.spray;
+      facts.context.weather = { ...ctx.cur, prev_wind_mph: ctx.prev.wind_mph, until_t: r1(ctx.until), spray_min_wind_mph: R.min_wind_mph, spray_max_wind_mph: R.max_wind_mph, max_temp_f: R.max_temp_f,
+        blocked_now: Object.fromEntries(Object.entries(ctx.blockedNow).filter(([, v]) => v).map(([b, v]) => [b, v.rule])) };
+    }
     const expl = { id: 'X' + ++ctr.X, t: r2(w.t), trigger, text: explainText(trigger, ctx, facts, late), facts, plan_version: version };
     w.explanations.push(expl);
     if (trigger === 'initial_plan') addLog({ kind: 'plan', plan_version: version, solver: 'greedy', solve_ms: ms, assigned: w.jobs.filter((j) => j.tractor && unfinished(j)).length });
@@ -611,9 +776,41 @@ export function createMockSource(opts = {}) {
         const tn = nameOf(ctx.tractor); const back = mv.filter((m) => m.to === ctx.tractor);
         return `${tn} repaired at ${fmtClock(w.t)}. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${back.length === 1 ? 'moves' : 'move'} back to it, so work runs in parallel again.` : `No remaining work finishes sooner on ${tn}, so it stays on standby.`) + lateText(late);
       }
-      case 'weather_change': { const c = w.weather.current; return `Weather updated: wind ${c.wind_mph} mph from ${c.wind_from_deg}°, ${c.temp_f}°F. Plan rechecked; ${plural(mv.length, 'job')} moved.` + lateText(late); }
+      case 'weather_change': return weatherText(ctx, facts, late);
       default: return `Plan updated (${trigger}). ${plural(mv.length, 'job')} moved.` + lateText(late);
     }
+  }
+
+  /** "Wind rose to 14 mph at 1:00 PM, above the 10 mph spray limit. Tractor 3 paused spraying Block G at 55% and
+   *  switched to hauling bins in Block B. Spraying Block G resumes at 3:00 PM, still before its 4:40 PM deadline." */
+  function weatherText(ctx, facts, late) {
+    const c = ctx.cur, R = WEATHER_RULES.spray, at = fmtClock(w.t);
+    const blocked = Object.entries(ctx.blockedNow).filter(([, v]) => v);
+    const sens = blocked.find(([, v]) => v.rule === 'sensitive_area');
+    let s;
+    if (c.wind_mph > R.max_wind_mph) s = `Wind ${c.wind_mph > ctx.prev.wind_mph ? 'rose' : 'is'} to ${c.wind_mph} mph at ${at}, above the ${R.max_wind_mph} mph spray limit.`;
+    else if (c.wind_mph < R.min_wind_mph) s = `Wind dropped to ${c.wind_mph} mph at ${at}, under the ${R.min_wind_mph} mph minimum (inversion risk), so no spraying.`;
+    else if (c.temp_f > R.max_temp_f) s = `It is ${c.temp_f}°F at ${at}, above the ${R.max_temp_f}°F spray product limit.`;
+    else if (sens) s = `Wind is now ${c.wind_mph} mph from the ${compassName(c.wind_from_deg)}, blowing toward the ${ctx.blockedNow[sens[0]].what} by Block ${sens[0]}. Spraying there is off; other blocks stay inside the ${R.min_wind_mph} to ${R.max_wind_mph} mph range.`;
+    else s = `Wind eased to ${c.wind_mph} mph from the ${compassName(c.wind_from_deg)} at ${at}, inside the ${R.min_wind_mph} to ${R.max_wind_mph} mph spray range.${blocked.length ? '' : ' Spraying is allowed on every block.'}`;
+    const paused = facts.context.paused || [];
+    for (const p of paused) {
+      const tr = nameOf(p.tractor), j = jobById(p.job);
+      const nj = p.switched_to ? jobById(p.switched_to) : null;
+      const pct = Math.min(99, Math.round(p.progress * 100));
+      s += ` ${tr} ${p.was === 'working' ? `paused spraying Block ${p.block} at ${pct}%` : p.was === 'waiting_weather' ? `stopped waiting at Block ${p.block}` : `stopped heading to spray Block ${p.block}`}`;
+      s += nj ? ` and switched to ${IMPL_VERB[nj.implement]} ${nj.implement === 'bin_trailer' ? 'bins ' : ''}in Block ${nj.block}.` : ' and waits for the wind.';
+      if (p.resume_t != null && j.tractor) s += ` Spraying Block ${p.block} resumes at ${fmtClock(p.resume_t)}${j.tractor !== p.tractor ? ' on ' + nameOf(j.tractor) : ''}${j.end_t != null && j.end_t <= j.deadline_t + 1e-9 ? `, still before its ${fmtClock(j.deadline_t)} deadline` : ''}.`;
+      else if (j.unassigned_reason) s += ' ' + j.unassigned_reason;
+    }
+    const resumed = w.tractors.filter((tr) => tr.status === 'waiting_weather' && tr.current_job && jobWeatherOk(w.wx, jobById(tr.current_job), w.t));
+    for (const tr of resumed) { const j = jobById(tr.current_job); s += ` ${tr.name} resumes spraying Block ${j.block}${j.progress > 0 ? ` at ${Math.min(99, Math.round(j.progress * 100))}%` : ''}.`; }
+    const back = facts.moved.filter((m) => jobById(m.job).implement === 'sprayer' && m.progress_kept > 0 && !paused.some((p) => p.job === m.job));
+    for (const m of back) { const j = jobById(m.job); s += ` ${j.label} (${Math.round(m.progress_kept * 100)}% done) moves to ${nameOf(m.to)}, restarting at ${fmtClock(j.start_t)}.`; }
+    if (!paused.length && !resumed.length && !back.length) {
+      s += facts.moved.length || w.plan?.diff?.retimed?.length ? ' Spray jobs were re-timed around the new conditions.' : ' No spraying was underway, so nothing had to stop.';
+    }
+    return s + lateText(late);
   }
 
   // ---------------- operations (§13)
@@ -685,10 +882,13 @@ export function createMockSource(opts = {}) {
           if (L <= d) { tr.x = cx; tr.y = cy; tr.pi++; d -= L; } else { tr.x += (dx / L) * d; tr.y += (dy / L) * d; d = 0; }
         }
         if (tr.pi >= tr.path.length) {
-          tr.status = 'working'; j.status = 'working'; tr.path = []; tr.pi = 0;
-          if (j._s == null) j._s = w.t;
-          addLog({ kind: 'job_started', job: j.id, tractor: tr.id });
+          tr.path = []; tr.pi = 0;
+          if (jobWeatherOk(w.wx, j, w.t)) startWork(tr, j); else holdForWeather(tr, j);
         }
+      } else if (tr.status === 'waiting_weather') {
+        if (jobWeatherOk(w.wx, j, w.t)) startWork(tr, j);
+      } else if (tr.status === 'working' && !jobWeatherOk(w.wx, j, w.t)) {
+        holdForWeather(tr, j); // live guard: sections off, tractor holds, progress kept
       } else if (tr.status === 'working') {
         const inc = Math.min(dt / j.duration_min, 1 - j.progress);
         j.progress += inc; w.acc.productive += inc * j.duration_min; tr.fuel = Math.max(5, tr.fuel - dt * 0.07);
@@ -706,11 +906,19 @@ export function createMockSource(opts = {}) {
     }
   }
 
+  function startWork(tr, j) {
+    tr.status = 'working'; j.status = 'working'; j.weather_blocked = false;
+    if (j._s == null) { j._s = w.t; addLog({ kind: 'job_started', job: j.id, tractor: tr.id }); }
+  }
+  function holdForWeather(tr, j) {
+    tr.status = 'waiting_weather'; j.status = j.progress > 0 ? 'paused' : 'assigned'; j.weather_blocked = true;
+  }
+
   function endDay() {
     w.ended = true; w.playing = false;
     for (const tr of w.tractors) {
       if (tr.current_job) { const j = jobById(tr.current_job); if (j && unfinished(j)) j.status = 'paused'; }
-      if (tr.status === 'traveling' || tr.status === 'working') tr.status = 'idle';
+      if (tr.status === 'traveling' || tr.status === 'working' || tr.status === 'waiting_weather') tr.status = 'idle';
     }
     const m = metricsOut().ours; const left = w.jobs.filter(unfinished);
     const text = `Day complete. ${m.completed} of ${m.jobs_total} jobs finished, ${m.on_time} on time, with ${plural(m.violations, 'constraint violation')}.` +
@@ -745,7 +953,8 @@ export function createMockSource(opts = {}) {
     }
     if (w.t >= DAY_MIN && !w.ended) endDay();
     if (tickN % 10 === 0) updateEstimates();
-    flushJobs(); flushFleet();
+    refreshWeatherFlags();
+    flushJobs(); flushFleet(); flushWeather();
     if (jobDoneFlag || tickN % 20 === 0) { jobDoneFlag = false; emitMetrics(); }
     if (tickN % 2 === 0) flushPoses();
     if (tickN % 10 === 0) emitClock();
@@ -876,10 +1085,10 @@ export function createMockSource(opts = {}) {
             const raised = w.jobs.filter((j) => HEAT_BLOCKS.includes(j.block) && j.implement === 'sprayer' && (j.status === 'assigned' || j.status === 'pending') && j.progress === 0 && j.priority < 3);
             raised.forEach((j) => { j.priority = 3; });
             addLog({ kind: 'event', type: 'heat_alert', temp_f, at_t, jobs: raised.map((j) => j.id) });
-            w.weather = { ...w.weather, forecast: w.weather.forecast.map((p) => (p.t >= at_t - 60 && p.t <= at_t + 60 ? { ...p, temp_f } : p)) };
-            emit('weather', w.weather); addLog({ kind: 'weather', temp_f, at_t });
+            w.wx.script = w.wx.script.map((p) => (p.t >= at_t - 60 && p.t <= at_t + 60 ? { ...p, temp_f } : p)); w.wx.wins = null;
+            addLog({ kind: 'weather', temp_f, at_t });
             const r = replan('heat_alert', { event: { type: 'heat_alert', temp_f, at_t }, facts: { temp_f, at_t, raised: raised.map((j) => j.id) } });
-            afterReplan();
+            flushWeather(true); afterReplan();
             return planResult(r, `${plural(raised.length, 'job')} raised to high priority.`);
           }, meta);
         }
@@ -905,12 +1114,24 @@ export function createMockSource(opts = {}) {
         case 'weather_change': {
           const keys = ['wind_mph', 'wind_from_deg', 'temp_f', 'rain_prob'];
           if (keys.some((k) => ev[k] !== undefined && typeof ev[k] !== 'number')) throw apiError('INVALID_INPUT', 'Weather values must be numbers.', {});
-          return enqueue('replan', 'events', 'Weather change recorded. Rechecking plan.', () => {
-            const cur = { ...w.weather.current }; keys.forEach((k) => { if (ev[k] !== undefined) cur[k] = ev[k]; });
-            w.weather = { ...w.weather, current: cur }; emit('weather', w.weather);
-            addLog({ kind: 'weather', ...cur });
-            const r = replan('weather_change', { event: { type: 'weather_change', ...cur } }); afterReplan();
-            return planResult(r, 'Weather updated; plan rechecked.');
+          if (ev.wind_mph !== undefined && (ev.wind_mph < 0 || ev.wind_mph > 150)) throw apiError('INVALID_INPUT', 'wind_mph must be 0 to 150.', { field: 'wind_mph' });
+          if (ev.rain_prob !== undefined && (ev.rain_prob < 0 || ev.rain_prob > 100)) throw apiError('INVALID_INPUT', 'rain_prob must be 0 to 100.', { field: 'rain_prob' });
+          return enqueue('replan', 'events', 'Weather change recorded. Rechecking spray windows.', () => {
+            const prev = wxAt(w.wx, w.t);
+            const cur = Object.fromEntries(keys.map((k) => [k, ev[k] !== undefined ? ev[k] : prev[k]]));
+            cur.wind_from_deg = ((cur.wind_from_deg % 360) + 360) % 360;
+            // the new reading holds for override_hold_min (or until the next weather_change), then the script resumes
+            for (const o of w.wx.overrides) o.to = Math.min(o.to, w.t);
+            w.wx.overrides = w.wx.overrides.filter((o) => o.to > o.from + 1e-9);
+            const until = Math.min(DAY_MIN, w.t + WEATHER_RULES.override_hold_min);
+            w.wx.overrides.push({ from: w.t, to: until, v: { t: r2(w.t), ...cur } }); w.wx.wins = null;
+            addLog({ kind: 'event', type: 'weather_change', ...cur });
+            addLog({ kind: 'weather', ...cur, until_t: r1(until) });
+            const blockedNow = Object.fromEntries(BLOCKS.map((b) => [b.id, sprayBlock(w.wx, b.id, w.t)]));
+            const r = replan('weather_change', { event: { type: 'weather_change', ...cur }, prev: { ...prev }, cur, until, blockedNow });
+            flushWeather(true); afterReplan();
+            const paused = r.explanation.facts.context.paused || [];
+            return planResult(r, paused.length ? `Spraying paused on ${listText(paused.map((p) => nameOf(p.tractor)))}; plan v${r.version} applied.` : `Spray windows rechecked; plan v${r.version} applied.`);
           }, meta);
         }
         default:
@@ -1023,15 +1244,15 @@ export function createMockSource(opts = {}) {
   function counterfactual(jobId, trId) {
     const jobs = w.jobs.map((j) => ({ ...j, pinned_to: j.id === jobId ? trId : j.pinned_to }));
     const tractors = w.tractors.map((tr) => ({ ...tr, queue: [] }));
-    const res = planAssign({ tractors, jobs, blocked: w.blocked, t: w.t });
+    const res = planAssign({ tractors, jobs, blocked: w.blocked, t: w.t, wx: wxP() });
     const byId = new Map(jobs.map((j) => [j.id, j]));
     let travel = 0, finish = null; const ends = [];
     const late = [];
     for (const tr of tractors.filter(schedulable)) {
-      const s = tractorSchedule(tr, byId, res.assign.get(tr.id), w.t, w.blocked);
+      const s = tractorSchedule(tr, byId, res.assign.get(tr.id), w.t, w.blocked, true, wxP());
       for (const e of s.entries) {
         if (e.kind === 'travel') travel += e.end_t - e.start_t;
-        if (e.kind === 'work') { const j = byId.get(e.job); if (e.end_t > j.deadline_t + 1e-9) late.push(j.id); if (e.job === jobId) finish = e.end_t; }
+        if (e.kind === 'work') { const j = byId.get(e.job); if (e.end_t > j.deadline_t + 1e-9 && !late.includes(j.id)) late.push(j.id); if (e.job === jobId) finish = e.end_t; }
       }
       ends.push(s.end_t);
     }

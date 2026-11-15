@@ -18,6 +18,9 @@ import { createChips } from './ui/chips.js';
 import { createSheets } from './ui/sheets.js';
 import { createKeynote } from './ui/keynote.js';
 import { createControls } from './ui/controls.js';
+import { createLiveFeed } from './scene/livefeed.js';
+import { createViewToggle } from './ui/viewToggle.js';
+import { createWeather } from './ui/weather.js';
 
 const stage = document.getElementById('stage');
 const world = createWorld(stage);
@@ -32,6 +35,12 @@ const island = createIsland();
 const ops = createOps({ store, api, toast });
 const panel = createPanel();
 const keynote = createKeynote();
+// Live feed (M8): second view of the same fleet (+ its coverage/trails/AB/readout/follow in the 3D view).
+// Wraps world.focus/home/overview so they pan the map while it shows.
+// Only the toggle may change the view ('user'); the choice survives page reloads (see lib/viewState.js).
+const viewToggle = createViewToggle(stage, (v) => live.setView(v, 'user'));
+const live = createLiveFeed({ stage, world, store, sourceInfo, toggle: viewToggle, dioramaTractors: tractors });
+{ const setHeat0 = farm.setHeat; farm.setHeat = (b) => { setHeat0(b); live.setHeat(b); }; }
 
 const blockWorld = (b) => {
   const g = farm.grid, blk = g && g.blockById[b]; if (!blk) return null;
@@ -48,6 +57,7 @@ const sheets = createSheets({
 dock = createDock({ onPill: (id) => sheets.openWhy(id) });
 const chips = createChips({ api, ops, onFocus: (id) => { const p = tractors.worldPos(id); if (p) world.focus(p, 2400); } });
 const controls = createControls({ store, api, ops, toast, world, sheets });
+createWeather({ store, world, farm, tractors }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
 
 // ---------- source badge ----------
 const badge = document.getElementById('srcbadge');
@@ -258,7 +268,8 @@ function loop(now) {
   fx.tick(now, dt);
   if (now - lastSync > 200 || (dirty && now - lastSync > 100)) { lastSync = now; dirty = false; syncUI(state, now); }
   island.tick(state, now, (linkProblem(state) || {}).note);
-  world.render(now);
+  live.tick(now);
+  if (live.simVisible) world.render(now); // diorama isn't drawn while the Live feed fully covers it
 }
 
 // ---------- boot ----------
@@ -271,4 +282,4 @@ Promise.resolve()
   .catch((err) => { console.warn('[dashboard] start failed:', (err && (err.code ? err.code + ' ' : '') + err.message) || err); toast('Could not load data: ' + ((err && err.message) || err), 'err'); });
 
 // Debug handle for the console (read-only use).
-window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout };
+window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout, live };

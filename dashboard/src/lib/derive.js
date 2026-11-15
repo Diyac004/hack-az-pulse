@@ -206,6 +206,7 @@ export function logLine(e, state) {
       if (ty === 'heat_alert') return B('Heat alert') + (e.temp_f != null ? ': ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : '');
       if (ty === 'priority_change') return B('Priority changed') + ' on ' + esc(jlabel(state, e.job)) + (e.priority != null ? ' to P' + e.priority : '');
       if (ty === 'tractor_repaired') return B(tname(state, e.tractor) + ' marked repaired');
+      if (ty === 'weather_change') return B('Wind ' + (e.wind_mph ?? '?') + ' mph') + (e.wind_from_deg != null ? ' from the ' + compassName(e.wind_from_deg) : '') + (e.wind_mph > 10 ? ', above the spray limit' : '');
       return B('Event') + ': ' + esc(String(ty || '').replace(/_/g, ' '));
     }
     case 'job_started': return B(jlabel(state, e.job)) + ' started by ' + esc(tname(state, e.tractor));
@@ -218,7 +219,7 @@ export function logLine(e, state) {
     case 'mechanic_search': return 'Searching mechanics for ' + esc(tname(state, e.tractor));
     case 'mechanic_booked': return B('Booked') + ' ' + esc(e.name || e.mechanic_name || e.mechanic || 'a mechanic') + (e.arrival_t != null ? ', arriving ' + clock(e.arrival_t) : '') + (e.estimated_return_t != null ? ', estimated back ' + clock(e.estimated_return_t) : '');
     case 'tractor_repaired': return B(tname(state, e.tractor) + ' repaired');
-    case 'weather': return B('Weather') + ' update';
+    case 'weather': return e.wind_mph != null ? null : B('Weather') + ' update' + (e.temp_f != null ? ': ' + e.temp_f + '°F' : '');
     case 'safety_reject': return B('Safety') + ' rejected a candidate plan' + (e.rule ? ' (' + esc(e.rule) + ')' : '');
     case 'violation': return '<b style="font-weight:500;color:#FF453A">Violation</b> ' + esc(e.rule || '') + (e.tractor ? ' on ' + esc(e.tractor) : '');
     case 'agopenweb': return null;
@@ -235,6 +236,9 @@ export function islandMoment(e, state) {
     if (e.type === 'block_route') return { text: 'Road blocked · rerouting', dot: '#FF9F0A', ms: 2200 };
     if (e.type === 'heat_alert') return { text: 'Heat alert' + (e.temp_f != null ? ' · ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : ''), dot: '#FF9F0A', ms: 2600 };
     if (e.type === 'unblock_route') return { text: 'Road reopened', dot: '#30D158', ms: 1800 };
+    if (e.type === 'weather_change') return e.wind_mph > 10
+      ? { text: 'Wind ' + e.wind_mph + ' mph · spraying paused', dot: '#FF9F0A', ms: 2600 }
+      : { text: 'Wind ' + e.wind_mph + ' mph · rechecking spray windows', dot: '#64D2FF', ms: 2200 };
     return null;
   }
   if (e.kind === 'replan') {
@@ -280,3 +284,77 @@ export function errText(err) {
 export const SOLVER_LABEL = { feasible: 'Feasible', optimal: 'Optimal', fallback: 'Fallback', no_feasible_plan: 'No feasible plan' };
 
 export { PALETTE };
+
+// ---------- weather (PROJECT.md Change 6 Part B) ----------
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+export const compassName = (deg) => COMPASS[Math.round((((+deg || 0) % 360 + 360) % 360) / 45) % 8];
+export const compassShort = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((+deg || 0) % 360 + 360) % 360) / 45) % 8];
+export const angDiff = (a, b) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return d > 180 ? 360 - d : d; };
+/** Unit vector, in world x/z, of where a wind FROM `fromDeg` blows (meteorological; grid y = south = +z). */
+export const windToward = (fromDeg) => { const r = ((+fromDeg || 0) * Math.PI) / 180; return { x: -Math.sin(r), z: Math.cos(r) }; };
+/** Unit vector (world x/z) from a block toward compass bearing `deg` (0 = north = -z). */
+export const bearingVec = (deg) => { const r = ((+deg || 0) * Math.PI) / 180; return { x: Math.sin(r), z: -Math.cos(r) }; };
+
+/** Allowed spray windows of a block -> blocked (no-spray) ranges over [0, D]. */
+export function blockedRanges(windows, D = 720) {
+  const out = []; let at = 0;
+  for (const [s, e] of (windows || []).slice().sort((a, b) => a[0] - b[0])) { if (s > at + 0.01) out.push([at, s]); at = Math.max(at, e); }
+  if (at < D - 0.01) out.push([at, D]);
+  return out;
+}
+const isect = (a, b) => { const out = []; for (const [s1, e1] of a) for (const [s2, e2] of b) { const s = Math.max(s1, s2), e = Math.min(e1, e2); if (e > s + 0.01) out.push([s, e]); } return out; };
+const subtract = (a, cut) => { let out = a.map((r) => r.slice()); for (const [cs, ce] of cut) out = out.flatMap(([s, e]) => (ce <= s || cs >= e ? [[s, e]] : [...(cs > s + 0.01 ? [[s, cs]] : []), ...(ce < e - 0.01 ? [[ce, e]] : [])])); return out; };
+const union = (list) => { const out = []; for (const [s, e] of list.slice().sort((a, b) => a[0] - b[0])) { const l = out[out.length - 1]; if (l && s <= l[1] + 0.01) l[1] = Math.max(l[1], e); else out.push([s, e]); } return out; };
+
+/**
+ * Hatched no-spray bands per timeline lane: for each sprayer lane, times when none of the blocks it still has to spray
+ * may be sprayed, plus the blocked stretches inside each of its spray pills (the pill visibly waits for wind there).
+ * Lane-wide bands skip the lane's non-spray and finished pills, so they never cover hauling or mowing.
+ * @returns {Map<string, Array<[number, number]>>} tractor id -> merged [start_t, end_t] ranges
+ */
+export function noSprayBands(state, layout) {
+  const out = new Map();
+  const wx = state && state.weather; if (!wx || !wx.spray_windows) return out;
+  const D = (state.clock && state.clock.day_minutes) || 720;
+  const fleet = state.fleet || [], jobs = state.jobs || [];
+  const blockedOf = (b) => (wx.spray_windows[b] ? blockedRanges(wx.spray_windows[b], D) : []);
+  const openSprayBlocks = [...new Set(jobs.filter((j) => j.implement === 'sprayer' && j.status !== 'done' && j.status !== 'dropped').map((j) => j.block))];
+  for (const tr of fleet) {
+    if (!(tr.implements || []).includes('sprayer')) continue;
+    const pills = (layout ? layout.pills : []).filter((p) => p.tractor === tr.id && p.job.implement === 'sprayer' && !p.done);
+    const mine = [...new Set(pills.map((p) => p.job.block))];
+    const blocks = mine.length ? mine : openSprayBlocks;
+    let all = blocks.length ? blockedOf(blocks[0]) : [];
+    for (const b of blocks.slice(1)) all = isect(all, blockedOf(b));
+    const inPills = pills.flatMap((p) => isect(blockedOf(p.job.block), [[p.start, p.end]]));
+    // lane-wide bands never cover other work (hauling during a no-spray period is the point) or finished pills
+    const busy = (layout ? layout.pills : []).filter((p) => p.tractor === tr.id && (p.done || p.job.implement !== 'sprayer')).map((p) => [p.start, p.end]);
+    const merged = union([...subtract(union(all), union(busy)), ...inPills]);
+    if (merged.length) out.set(tr.id, merged);
+  }
+  return out;
+}
+
+/**
+ * Sensitive areas with their downwind state. `toward`: the wind blows toward it (within 45°);
+ * `active`: a sprayer is working/heading/waiting in that block or the backend says spraying there is blocked for it.
+ */
+export function sensitiveState(state) {
+  const sc = state && state.scenario, wx = state && state.weather;
+  const list = (sc && Array.isArray(sc.sensitive)) ? sc.sensitive : [];
+  if (!list.length) return [];
+  const cur = wx && wx.current;
+  const towardDeg = cur ? ((+cur.wind_from_deg || 0) + 180) % 360 : null;
+  const jobs = state.jobs || [];
+  const busy = new Set();
+  for (const tr of state.fleet || []) {
+    const j = tr.current_job && jobs.find((x) => x.id === tr.current_job);
+    if (j && j.implement === 'sprayer' && ['working', 'traveling', 'waiting_weather'].includes(tr.status)) busy.add(j.block);
+  }
+  return list.map((a) => {
+    const toward = towardDeg != null && cur.wind_mph >= 1 && angDiff(towardDeg, a.dir_deg) <= 45;
+    const reason = wx && wx.spray_blocked_reason ? wx.spray_blocked_reason[a.block] : null;
+    const said = !!(reason && /toward/i.test(reason) && reason.toLowerCase().includes(String(a.what || '').toLowerCase()));
+    return { ...a, toward: toward || said, active: (toward || said) && (busy.has(a.block) || said), sprayer: busy.has(a.block) };
+  });
+}
