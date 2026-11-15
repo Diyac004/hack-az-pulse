@@ -13,6 +13,8 @@ const FIELD_LABEL = { id: 'ID', type: 'type', implement: 'implement', block: 'bl
 
 /** "14:30" <-> farm t (minutes since 6:00 AM). */
 const hhmmToT = (v) => { const m = /^(\d{1,2}):(\d{2})/.exec(v || ''); return m ? +m[1] * 60 + +m[2] - 360 : null; };
+/** Muted line under the deadline: how far away it is, or that it is already past (allowed; the plan shows it late). */
+const deadlineHint = (t, now) => (t == null || t < 0 ? '' : t < now ? 'already past: the plan will show it late' : 'in ' + durText(t - now));
 const tToHhmm = (t) => { const tot = ((Math.round(t) + 360) % 1440 + 1440) % 1440; return String(Math.floor(tot / 60)).padStart(2, '0') + ':' + String(tot % 60).padStart(2, '0'); };
 
 export function createJobSheet({ store, api, ops, toast, sheets }) {
@@ -66,7 +68,7 @@ export function createJobSheet({ store, api, ops, toast, sheets }) {
     const bl = blocks();
     const blockOpts = (bl.length ? bl : [r.block]).map((id) => { const b = blockInfo(id); return '<option value="' + esc(id) + '"' + (id === r.block ? ' selected' : '') + '>Block ' + esc(id) + (b && b.variety ? ' · ' + esc(b.variety) : '') + '</option>'; }).join('');
     const t = hhmmToT(r.deadline), now = (st().clock && st().clock.t) || 0;
-    const hint = t == null ? '' : t < now ? 'already past: the plan will show it late' : 'in ' + durText(t - now);
+    const hint = deadlineHint(t, now);
     return '<div class="jrow" data-row="' + i + '">' +
       '<div class="jrh"><b>Job ' + (i + 1) + '</b><span class="jlab">' + esc(jobLabel(r.type, r.block)) + '</span>' + (rows.length > 1 ? '<button class="jx" data-del="' + i + '" aria-label="Remove job ' + (i + 1) + '">Remove</button>' : '') + '</div>' +
       '<div class="jgrid">' +
@@ -181,7 +183,7 @@ export function createJobSheet({ store, api, ops, toast, sheets }) {
     if (f === 'deadline') {
       r.deadline = t.value; clearErr(i, 'deadline_t');
       const h = row.querySelector('[data-hint]'), v = hhmmToT(t.value), now = (st().clock && st().clock.t) || 0;
-      if (h) h.textContent = v == null ? '' : v < now ? 'already past: the plan will show it late' : 'in ' + durText(v - now);
+      if (h) h.textContent = deadlineHint(v, now);
     }
   });
   el.addEventListener('change', (e) => {
