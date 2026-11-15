@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import os
 import time
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -37,6 +38,9 @@ PROGRESS_EVERY_S = 1.0
 class Engine:
     def __init__(self, scenario_path: Path | str, log_dir: Path | str):
         self.scenario = load_scenario(scenario_path)
+        self.scenario["max_tractors"] = int(os.environ.get("HFA_MAX_TRACTORS", self.scenario.get("max_tractors", 8)))
+        if os.environ.get("HFA_SCRIPTED", "1").lower() in {"0", "false", "no"}:
+            self.scenario["events"] = []
         self.log_dir = Path(log_dir)
         self.hub = Hub()
         self.ops = Operations()

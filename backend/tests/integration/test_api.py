@@ -99,7 +99,7 @@ class Rest(ApiCase):
         self.assertEqual(jobs["J1"]["tractor"], "T3")
         self.assertGreaterEqual(jobs["J1"]["progress"], before["J1"]["progress"])
         self.assertEqual(s["explanations"][0]["trigger"], "breakdown")
-        self.assertIn("J1 moves from T1 to T3", s["explanations"][0]["text"])
+        self.assertIn("Spray A moves from Tractor 1 to Tractor 3", s["explanations"][0]["text"])
 
     def test_scheduled_breakdown_full_day(self):
         self.start_run(speed=600)

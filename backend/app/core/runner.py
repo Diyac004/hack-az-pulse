@@ -41,9 +41,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", default=str(DEFAULT_SCENARIO))
     ap.add_argument("--mode", choices=["ours", "baseline", "both"], default="both")
+    ap.add_argument("--no-scripted", action="store_true", help="Disable scenario events for a manual-only demo")
     ap.add_argument("--logs", default=str(ROOT / "logs"))
     args = ap.parse_args()
     scenario = load_scenario(args.scenario)
+    if args.no_scripted:
+        scenario["events"] = []
     modes = ["ours", "baseline"] if args.mode == "both" else [args.mode]
     rows = {}
     for mode in modes:

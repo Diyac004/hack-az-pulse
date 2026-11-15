@@ -42,7 +42,9 @@ class Improvements(unittest.TestCase):
         r=plan(self.data)
         retimed=next(x for x in r.plan.diff['retimed'] if x['job']=='J9')
         self.assertEqual(retimed['old_start_t'],300)
-        self.assertIn('previously 300.00',explain(r))
+        self.assertIn('Start times changed for 2 jobs',explain(r))
+        from app.brain.explanations import farm_clock
+        self.assertEqual(farm_clock(300), '11:00 AM')
         self.assertNotIn('J4',[x['job'] for x in r.plan.diff['retimed']])
 
     def test_field_work_cannot_overlap(self):

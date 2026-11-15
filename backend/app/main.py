@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -58,6 +59,26 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
         where = ".".join(str(x) for x in first.get("loc", []) if x != "body")
         return _error(400, "INVALID_INPUT", f"Invalid request: {where} {first.get('msg', '')}".strip(),
                       {"errors": json.loads(json.dumps(e.errors(), default=str))})
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(_, exc: StarletteHTTPException):
+        code = "NOT_FOUND" if exc.status_code == 404 else "METHOD_NOT_ALLOWED" if exc.status_code == 405 else "HTTP_ERROR"
+        response = _error(exc.status_code, code, str(exc.detail))
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
+
+    @app.get("/api/capabilities")
+    async def capabilities():
+        return {
+            "backend": "fastapi",
+            "events": {"breakdown": True, "block_route": True, "unblock_route": True,
+                       "tractor_repaired": True, "priority_change": True,
+                       "heat_alert": False, "weather_change": False, "ripening_change": False},
+            "why": False, "controls": False, "mechanics": False, "approve": False,
+            "scaleTest": False, "submitJobs": True, "patchJob": True,
+            "weatherEnforced": False, "metricsMeasured": True,
+        }
 
     # ------------------------------------------------------------ async mutations (13.2)
 

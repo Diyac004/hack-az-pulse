@@ -90,7 +90,7 @@ class BreakdownRecovery(unittest.TestCase):
         x = self.w.explanations[0]
         self.assertEqual(x["trigger"], "breakdown")
         self.assertEqual(x["plan_version"], self.w.plan.version)
-        self.assertIn("J1 moves from T1 to T3", x["text"])
+        self.assertIn("Spray A moves from Tractor 1 to Tractor 3", x["text"])
 
     def test_broken_tractor_gets_no_work_and_stays_put(self):
         self.assertFalse([e for e in self.w.plan.entries if e.tractor == "T1"])

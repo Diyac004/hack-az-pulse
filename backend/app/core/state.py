@@ -123,6 +123,9 @@ class World:
         if mode not in POLICY:
             raise WorldError(400, "INVALID_INPUT", f"Run mode '{mode}' is not supported yet. Use 'ours' or 'baseline'.")
         self.scenario = scenario
+        self.max_tractors = int(scenario.get("max_tractors", 8))
+        if self.max_tractors < len(scenario["tractors"]) or self.max_tractors < 1:
+            raise ValueError("max_tractors must accommodate the initial fleet")
         self.mode = mode
         self.policy = POLICY[mode]
         self.day_minutes = float(scenario.get("day_minutes", 720))
@@ -214,6 +217,8 @@ class World:
     # ================================================================ fleet and jobs
 
     def _add_tractor(self, tid, name, implements, speed, fuel, burn, cell, announce=True) -> TractorRec:
+        if len(self.tractors) >= self.max_tractors:
+            raise WorldError(409, "AT_CAPACITY", f"Simulator limit reached ({self.max_tractors} tractors).")
         if tid in self.tractors:
             raise WorldError(409, "CONFLICT", f"Tractor {tid} already exists.")
         try:
@@ -229,6 +234,7 @@ class World:
             self.write_log("tractor_added", tractor=tid, host="mock", endpoint=None)
             self.write_log("tractor_ready", tractor=tid)
             self.emit("fleet", {"tractors": self.fleet_view()})
+            self.emit("capacity", self.capacity_view())
         return tr
 
     def add_tractor(self, entry: m.FleetEntry) -> dict:
@@ -252,6 +258,7 @@ class World:
         self.bump()
         self.write_log("tractor_removed", tractor=tid)
         self.emit("fleet", {"tractors": self.fleet_view()})
+        self.emit("capacity", self.capacity_view())
         self._emit_dirty_jobs()
 
     def _add_job(self, j: dict, announce=True) -> JobRec:
@@ -679,7 +686,7 @@ class World:
                 status = "unavailable"          # finishing a cell with no job; its Idle re-plans
                 x, y = p.anchor
             tractors.append({
-                "id": tr.id, "status": status, "manual": False, "implements": tr.implements,
+                "id": tr.id, "name": tr.name, "status": status, "manual": False, "implements": tr.implements,
                 "speed_cells_per_min": tr.speed, "x": x, "y": y, "fuel_pct": max(0.0, min(100.0, fuel)),
                 "fuel_burn_pct_per_min": {"travel": tr.burn_travel, "work": tr.burn_work},
                 "available_from_t": None,
@@ -690,7 +697,7 @@ class World:
             if j.status == "dropped":
                 continue
             jobs.append({
-                "id": j.id, "type": j.type, "implement": j.implement, "block": j.block,
+                "id": j.id, "label": self.label(j), "type": j.type, "implement": j.implement, "block": j.block,
                 "priority": j.priority, "deadline_t": j.deadline_t,
                 "status": j.status if j.id in frozen_jobs or j.status == "done" else "pending",
                 "pinned_to": j.pinned_to,
@@ -935,5 +942,5 @@ class World:
 
     def capacity_view(self) -> dict:
         n = len(self.tractors)
-        return m.dump(m.Capacity(used=n, max=n, hosts=[m.HostInfo(id="mock", docker="none", tractors=n,
-                                                                    max_tractors=n, online=True)]))
+        return m.dump(m.Capacity(used=n, max=self.max_tractors, hosts=[m.HostInfo(id="mock", docker="none", tractors=n,
+                                                                    max_tractors=self.max_tractors, online=True)]))

@@ -211,3 +211,19 @@ No new fields. Everything follows ARCHITECTURE.md section 13. Behaviour to rely 
 - **A failed edit** (e.g. a deadline that can't be met) never changes the job: watch for the operation's `failed` status and its `error.message`.
 - **HTTP statuses:** `INVALID_INPUT` 400, `NOT_FOUND` 404, `CONFLICT` 409, `SAFETY_REJECTED` 422, unbuilt endpoints 501 (code `INTERNAL`, `details.not_implemented: true`).
 - **Not on this server yet** (501 or 400): Why, Preview, cockpit controls, manual mode, mechanics, approvals, scale test, weather/heat events. The demo's mechanic, wind and Why moments need Divi's mock backend for now.
+
+## Frontend integration fixes (Diya's branch)
+
+- `GET /api/capabilities` explicitly reports supported actions using Divi's existing capability shape. Weather, mechanics, cockpit, approval, Why and scale-test remain disabled; no pending mechanic item is expected. They are optional features, not missing core recovery.
+- Simulator capacity defaults to **8 tractors**, configurable using `HFA_MAX_TRACTORS` (must fit the initial fleet). This is a configured simulation limit, not measured Docker capacity. `used` reflects current fleet size; add/remove sends `capacity`. Add at the limit returns 409 `AT_CAPACITY` without mutation.
+- Mock fleet creation is immediate: POST /fleet returns 202 with an `idle` tractor, plus readiness/fleet/capacity events. There is no fake startup delay. Real gateway provisioning may implement `starting` later.
+- `HFA_SCRIPTED=0` disables scenario-scripted events for a manual-only demonstration, for BOTH live execution and its baseline twin. Default remains scripted events enabled. A manual repair does not silently erase a future independent failure. For headless manual-only comparison use `python -m app.core.runner --mode both --no-scripted`.
+- Unknown routes and wrong methods return the normal error envelope, with `NOT_FOUND` / `METHOD_NOT_ALLOWED`; HTTP status and Allow headers remain correct.
+- Explanations use human job/tractor names, clock times and bounded summaries. Full IDs and plan differences remain available in structured facts. Fleet additions/removals/repairs name the event even when no work moves.
+- Startup planning has an Operation; clients that connect later recover it from `snapshot.operations`. While the matching baseline is computing, BOTH baseline and baseline_source are null; source becomes `simulated` when available.
+
+### Scheduling balance is an optimization tradeoff
+
+An idle tractor is not by itself an invalid plan. The current objective prefers weighted on-time completion, on-time job count, travel, then planned waiting. It does not minimize makespan or explicitly maximize fleet utilization. A repaired tractor joins the next search, but ongoing work is committed and queued jobs only move if the heuristic finds a preferred valid schedule. Shorter travel may favor keeping a tractor idle. Do not claim every repair transfers work, or that a local heuristic proves no better plan exists.
+
+Evaluate balance with completion, travel, measured idle and planning speed across scenarios before changing the objective. The UI now explains unchanged repair assignments; no forced reassignment or invented improvement is added.
