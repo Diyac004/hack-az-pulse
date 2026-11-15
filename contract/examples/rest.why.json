@@ -1,0 +1,34 @@
+{
+  "job": "J1",
+  "chosen": "T3",
+  "options": [
+    {
+      "tractor": "T3",
+      "feasible": true,
+      "reason": null,
+      "finish_t": 205,
+      "travel_delta_min": 0,
+      "idle_delta_min": 0,
+      "deadlines_missed": []
+    },
+    {
+      "tractor": "T1",
+      "feasible": false,
+      "reason": "Broken down",
+      "finish_t": null,
+      "travel_delta_min": null,
+      "idle_delta_min": null,
+      "deadlines_missed": []
+    },
+    {
+      "tractor": "T2",
+      "feasible": false,
+      "reason": "No sprayer",
+      "finish_t": null,
+      "travel_delta_min": null,
+      "idle_delta_min": null,
+      "deadlines_missed": []
+    }
+  ],
+  "method": "counterfactual"
+}

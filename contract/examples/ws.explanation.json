@@ -1,0 +1,29 @@
+{
+  "type": "explanation",
+  "t": 134.2,
+  "seq": 5812,
+  "data": {
+    "id": "X12",
+    "t": 141.5,
+    "trigger": "breakdown",
+    "text": "Tractor 1 broke down 60% of the way through spraying Block E. Tractor 3 has the only other sprayer and 81% fuel, so it finishes the remaining 40% right after its current job. All deadlines are still met.",
+    "facts": {
+      "event": {
+        "type": "breakdown",
+        "tractor": "T1"
+      },
+      "moved": [
+        {
+          "job": "J1",
+          "from": "T1",
+          "to": "T3",
+          "progress_kept": 0.6
+        }
+      ],
+      "deadlines_missed": [],
+      "travel_delta_min": 12,
+      "idle_delta_min": -5
+    },
+    "plan_version": 7
+  }
+}

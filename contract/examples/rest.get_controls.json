@@ -1,0 +1,43 @@
+{
+  "controls": [
+    {
+      "id": "steer",
+      "tab": "Drive",
+      "label": "Steering",
+      "type": "slider",
+      "min": -40,
+      "max": 40,
+      "step": 1,
+      "unit": "deg",
+      "options": null,
+      "needs_manual": true,
+      "replans": false,
+      "help": "Steering angle of the simulated tractor"
+    },
+    {
+      "id": "implements",
+      "tab": "Implement",
+      "label": "Implements",
+      "type": "select",
+      "min": null,
+      "max": null,
+      "step": null,
+      "unit": null,
+      "options": [
+        {
+          "value": "sprayer",
+          "label": "Sprayer"
+        }
+      ],
+      "needs_manual": false,
+      "replans": true,
+      "help": "Implements attached for planning"
+    }
+  ],
+  "values": {
+    "steer": 0,
+    "implements": [
+      "sprayer"
+    ]
+  }
+}

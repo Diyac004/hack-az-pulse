@@ -1,0 +1,17 @@
+{
+  "name": "harvest-fleet-mock-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Simulated backend for the dashboard's live mode. Wraps dashboard/src/data/mockSource.js behind the ARCHITECTURE.md REST + WS contract.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:auto-repair": "node server.mjs --auto-repair",
+    "smoke": "node smoke.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

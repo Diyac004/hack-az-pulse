@@ -1,0 +1,232 @@
+:root{--bg:#F2F2F7;--card:#FFFFFF;--text:#1d1d1f;--muted:#6e6e73;--faint:#8e8e93;--line:rgba(0,0,0,.08);--green:#1E7A3C;--greenbg:#E8F8EE;--blue:#0A84FF;--red:#FF453A}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#a1a1a6;--faint:#8e8e93;--line:rgba(255,255,255,.1);--green:#30D158;--greenbg:rgba(48,209,88,.15)}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:4px 2px 14px;flex-wrap:wrap}
+header h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+header p{margin:0;font-size:13px;color:var(--muted)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:980px){.layout{grid-template-columns:minmax(0,1fr) 340px}}
+#stage{position:relative;height:clamp(540px,calc(100vh - 90px),780px);border-radius:24px;overflow:hidden;background:#BFDDF5;touch-action:none;user-select:none;-webkit-user-select:none}
+#stage canvas{display:block}
+.gl{background:rgba(255,255,255,.62);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);border:0.5px solid rgba(255,255,255,.85);border-radius:16px;color:#1d1d1f}
+
+/* Dynamic Island */
+#island{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border-radius:16px;height:32px;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:12px;white-space:nowrap;transition:height .55s cubic-bezier(.34,1.56,.64,1),padding .55s cubic-bezier(.34,1.56,.64,1),border-radius .55s,font-size .3s;max-width:70%;overflow:hidden;z-index:3}
+#island.big{height:50px;border-radius:25px;padding:0 22px;font-size:14px}
+#idot{width:8px;height:8px;border-radius:50%;background:#30D158;flex:none;transition:background .3s}
+#itxt{overflow:hidden;text-overflow:ellipsis}
+
+/* MOCK / LIVE badge */
+#srcbadge{position:absolute;top:14px;right:12px;z-index:3;font-size:10px;font-weight:600;letter-spacing:.06em;padding:5px 9px;border-radius:10px;display:flex;align-items:center;gap:6px}
+#srcbadge i{width:7px;height:7px;border-radius:50%;display:inline-block;background:#8e8e93}
+#srcbadge.mock i{background:#FF9F0A}
+#srcbadge.live i{background:#30D158}
+#srcbadge.wait i{background:#8e8e93;animation:blink 1s infinite}
+#srcbadge.down i{background:#FF453A;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+
+/* Fleet chips */
+#chips{position:absolute;top:68px;left:10px;right:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:6px;z-index:2;max-width:760px;margin:0 auto;max-height:96px;overflow-y:auto;scrollbar-width:none}
+#chips::-webkit-scrollbar{display:none}
+.chip{padding:6px 8px;display:flex;gap:7px;align-items:center;border-radius:14px;position:relative;cursor:pointer;animation:chipIn .5s cubic-bezier(.34,1.56,.64,1)}
+.chip.out{animation:chipOut .35s forwards}
+@keyframes chipIn{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes chipOut{to{transform:scale(.6);opacity:0}}
+.chip p{margin:0;font-size:11px;line-height:1.3;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.chip .ctxt{min-width:0;flex:1}
+.chip .cx{position:absolute;top:2px;right:4px;border:none;background:none;font-size:12px;color:#8e8e93;cursor:pointer;opacity:0;transition:opacity .2s;padding:0 2px;font-family:inherit}
+.chip:hover .cx{opacity:1}
+.chip svg.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Timeline dock */
+#dock{position:absolute;left:10px;right:10px;bottom:10px;padding:7px 12px 9px;z-index:2}
+#axis{position:relative;height:13px;font-size:10px;color:#6e6e73;margin-left:28px}
+#axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+#axis span:first-child{transform:none}
+#axis span:last-child{transform:translateX(-100%)}
+#lanescroll{max-height:166px;overflow-y:auto;overflow-x:hidden;margin-top:3px;scrollbar-width:thin}
+#lanes{position:relative;margin-left:28px;height:26px;transition:height .5s cubic-bezier(.34,1.56,.64,1)}
+#lanewrap{position:absolute;inset:0;overflow:hidden;border-radius:13px}
+.lane{position:absolute;left:0;right:0;height:26px;border-radius:13px;background:rgba(0,0,0,.06);transition:top .5s cubic-bezier(.34,1.56,.64,1),opacity .4s}
+.lname{position:absolute;left:-28px;width:26px;font-size:10px;font-weight:600;line-height:26px;transition:top .5s cubic-bezier(.34,1.56,.64,1)}
+.pill{position:absolute;height:22px;border-radius:11px;font-size:10px;line-height:22px;padding:0 7px 0 9px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;text-shadow:0 0 2px rgba(0,0,0,.25);transition:left .8s cubic-bezier(.34,1.56,.64,1),width .8s cubic-bezier(.34,1.56,.64,1),top .8s cubic-bezier(.34,1.56,.64,1),background-color .6s,opacity .4s}
+.pill .pe{position:absolute;left:0;top:0;bottom:0;width:4px}
+.pill.flash{animation:pflash .9s}
+@keyframes pflash{0%,100%{filter:none}30%{filter:brightness(1.35)}}
+.pf{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.3)}
+.pill span{position:relative}
+#now{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:#FF453A;z-index:1;pointer-events:none}
+.empty{font-size:11px;color:#6e6e73;line-height:26px;padding-left:10px}
+
+/* Sheets */
+/* Sheets dock ABOVE the timeline (bottom = dock height + room for tray/plan badge) and below the chips.
+   --dockh / --chipsb are set on #stage by main.js. Closed sheets are visibility:hidden after the exit
+   transition so nothing inside them can take focus and scroll the stage. */
+.sheet{position:absolute;left:10px;right:10px;bottom:calc(var(--dockh,150px) + 44px);padding:14px 16px;transform:translateY(calc(100% + var(--dockh,150px) + 60px));visibility:hidden;opacity:0;transition:transform .65s cubic-bezier(.34,1.25,.64,1),opacity .3s,visibility 0s linear .65s;z-index:4;max-width:620px;margin:0 auto;max-height:max(150px,calc(100% - var(--dockh,150px) - 44px - var(--chipsb,170px) - 8px));overflow-y:auto;overscroll-behavior:contain}
+/* Short viewports: the sheet scrolls inside its max-height, and its action row (always the last child of
+   #mech / #addsheet) sticks to the sheet's bottom edge so Approve/Book/Add are never scrolled away. */
+#mech>div:last-child,#addsheet>div:last-child{position:sticky;bottom:-14px;margin:6px -16px -14px!important;padding:10px 16px 14px;background:rgba(246,246,248,.96);border-radius:0 0 16px 16px;z-index:1}
+.sheet.on{transform:translateY(0);visibility:visible;opacity:1;transition:transform .65s cubic-bezier(.34,1.25,.64,1),opacity .2s,visibility 0s}
+.shead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.shead p{margin:0;font-size:15px;font-weight:600}
+.mgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px}
+@media (min-width:700px){.mgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.mc{border-radius:12px;padding:8px;background:rgba(255,255,255,.75);border:1.5px solid transparent;font-size:11px;cursor:pointer;line-height:1.4}
+.mc.sel{border-color:#0A84FF}
+.bdg{display:inline-block;font-size:9px;padding:1px 6px;border-radius:6px;background:#E5F1FF;color:#0A63C9;margin:2px 3px 0 0}
+.bdg.g{background:#E8F8EE;color:#1E7A3C}
+.abtn{background:#0A84FF;color:#fff;border:none;border-radius:12px;padding:10px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.abtn:disabled{opacity:.5;cursor:default}
+.gbtn{background:rgba(0,0,0,.07);color:#1d1d1f;border:none;border-radius:12px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit}
+.gbtn.sm{padding:5px 12px}
+.seg{display:inline-flex;background:rgba(0,0,0,.07);border-radius:10px;padding:2px;gap:2px}
+.seg button{border:none;background:none;font-family:inherit;font-size:12px;padding:4px 12px;border-radius:8px;cursor:pointer;color:#1d1d1f;transition:background .25s,color .25s}
+.seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15);font-weight:600}
+.seg button:disabled{opacity:.5}
+.chkrow{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.chk{display:flex;align-items:center;gap:6px;font-size:12px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.75);border:1.5px solid transparent;cursor:pointer}
+.chk.sel{border-color:#0A84FF}
+.chk input{margin:0}
+.srow{display:flex;align-items:center;gap:10px;font-size:12px;margin-bottom:12px}
+.srow input[type=range]{flex:1}
+.sub{font-size:11px;color:#6e6e73;margin:0 0 6px}
+
+/* Keynote */
+#key{position:absolute;left:50%;top:var(--chipsb,170px);transform:translateX(-50%) scale(.85);transform-origin:50% 0;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .7s cubic-bezier(.34,1.4,.64,1),transform .7s cubic-bezier(.34,1.4,.64,1),visibility 0s linear .7s;width:min(84%,420px);padding:18px;z-index:5;text-align:center;max-height:calc(100% - var(--chipsb,170px) - var(--dockh,150px) - 44px);overflow-y:auto}
+#key.on{opacity:1;visibility:visible;transform:translateX(-50%) scale(1);pointer-events:auto;transition:opacity .7s cubic-bezier(.34,1.4,.64,1),transform .7s cubic-bezier(.34,1.4,.64,1),visibility 0s}
+
+/* Toast */
+/* Toast sits above whatever occupies the bottom (dock, or an open sheet): --toastb set by main.js. */
+#toast{position:absolute;left:50%;bottom:var(--toastb,200px);transform:translate(-50%,16px);opacity:0;z-index:6;background:rgba(28,28,30,.92);color:#fff;font-size:13px;padding:9px 14px;border-radius:14px;max-width:80%;pointer-events:none;transition:all .4s cubic-bezier(.34,1.4,.64,1)}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.warn{background:rgba(150,92,0,.94)}
+#toast.err{background:rgba(160,24,18,.94)}
+
+/* Side panel */
+.side{display:flex;flex-direction:column;gap:12px}
+@media (min-width:980px){
+  /* Same height as #stage; the activity feed takes what is left and scrolls inside. */
+  .side{position:sticky;top:16px;height:clamp(540px,calc(100vh - 90px),780px);overflow-y:auto;scrollbar-width:thin}
+  .side .card.feedcard{flex:1 1 0;min-height:120px;display:flex;flex-direction:column}
+  .side .card.feedcard #feed{flex:1;min-height:0;overflow-y:auto}
+  .side>*:not(.feedcard){flex:none}
+}
+.ctl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ctl button{width:100%;font-family:inherit;font-size:13px;font-weight:500;padding:11px 10px;border-radius:14px;border:0.5px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;transition:transform .15s}
+.ctl button:active{transform:scale(.97)}
+.ctl button.red{color:#FF453A}
+.ctl button.blue{color:#0A84FF}
+.popwrap{position:relative}
+.pop{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:10;padding:6px;display:none;flex-direction:column;gap:4px;box-shadow:0 8px 30px rgba(0,0,0,.18);background:rgba(255,255,255,.92)}
+.pop.on{display:flex}
+.pop button{padding:8px 10px;font-size:12px;border-radius:10px;text-align:left;display:flex;align-items:center;gap:8px;border:none;background:rgba(0,0,0,.04);color:#1d1d1f}
+.pop button.def{background:rgba(255,69,58,.12)}
+.pop i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.pop .none{font-size:12px;color:#6e6e73;padding:6px}
+.card{background:var(--card);border-radius:18px;padding:14px 16px}
+.card p{margin:0}
+.lbl{font-size:12px;color:var(--muted)}
+#exp{font-size:15px;line-height:1.55;min-height:72px;margin-top:4px}
+#score{display:grid;grid-template-columns:1fr auto auto;gap:5px 16px;font-size:13px}
+#feed p{margin:0 0 7px;font-size:13px;line-height:1.4}
+.ok{font-size:12px;padding:3px 9px;border-radius:9px;background:var(--greenbg);color:var(--green);font-weight:500}
+.ok.bad{background:rgba(255,69,58,.15);color:#FF453A}
+.tiny{font-size:11px;color:var(--faint);margin-top:8px !important}
+.hint{font-size:12px;color:var(--faint);margin:2px 2px 0}
+
+/* Busy (per-operation) spinners */
+@keyframes spin2{to{transform:rotate(360deg)}}
+.busy{position:relative}
+.ctl button.busy,.abtn.busy,.gbtn.busy,.seg button.busy{color:transparent !important}
+.ctl button.busy::after,.abtn.busy::after,.gbtn.busy::after,.seg button.busy::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid rgba(10,132,255,.25);border-top-color:#0A84FF;animation:spin2 .8s linear infinite}
+.abtn.busy::after{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+.pill.busy{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95)}
+.pill.busy::after{content:"";position:absolute;right:4px;top:5px;width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:spin2 .8s linear infinite}
+.chip.busy{opacity:.6}
+.mr.busy{opacity:.5;pointer-events:none}
+
+/* Plan badge + unassigned tray (float above the dock) */
+#planbadge,#tray{position:absolute;top:-30px;font-size:10px;padding:4px 9px;border-radius:10px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+#planbadge{right:6px}
+#planbadge b{font-weight:600}
+#planbadge.optimal b{color:#1E7A3C}
+#planbadge.feasible b{color:#0A63C9}
+#planbadge.fallback b{color:#C77C00}
+#planbadge .sp{width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(10,132,255,.25);border-top-color:#0A84FF;animation:spin2 .8s linear infinite;display:inline-block}
+#tray{left:6px;display:none;cursor:pointer;white-space:normal;max-width:min(420px,70%);flex-direction:column;align-items:stretch}
+#tray .trhead{display:flex;align-items:center;gap:6px;font-weight:600;color:#C2261C}
+#tray .trhead i{width:7px;height:7px;border-radius:50%;background:#FF453A;display:inline-block}
+#tray .trlist{display:none;margin-top:4px}
+#tray.open{top:auto;bottom:calc(100% + 4px)}
+#tray.open .trlist{display:block}
+.tritem{padding:4px 2px;border-top:0.5px solid rgba(0,0,0,.08);font-size:11px;line-height:1.35;color:#3a3a3c}
+.tritem b{font-weight:600;color:#1d1d1f}
+.tritem .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.unr{font-size:12px;margin:0 0 10px;padding:8px 10px;border-radius:10px;background:rgba(255,69,58,.1);color:#B3261E}
+
+/* timeline: late work + work past the end of the day (never silently hidden) */
+.pill.late{outline:2px solid #FF453A;outline-offset:-2px;background-image:repeating-linear-gradient(135deg,rgba(255,69,58,.0) 0 6px,rgba(255,69,58,.35) 6px 9px)}
+.pill.clip{border-top-right-radius:0;border-bottom-right-radius:0}
+.ovf{position:absolute;right:3px;height:20px;line-height:20px;padding:0 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff;background:rgba(194,38,28,.92);box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;white-space:nowrap;z-index:3;transition:top .5s cubic-bezier(.34,1.56,.64,1)}
+#planbadge .wchip{font-weight:600;padding:1px 6px;border-radius:7px;margin-left:2px}
+#planbadge .wchip.ot{background:#B86E00;color:#fff}
+#planbadge .wchip.late{background:#C2261C;color:#fff}
+#score .nm{font-weight:400;font-size:11px;color:var(--faint)}
+#score .bcol{transition:opacity .25s}
+#score .bcol.stale{opacity:.45}
+#score .upd{font-size:10px;font-weight:400;color:var(--faint);text-transform:none;letter-spacing:0}
+#score.bridge{grid-template-columns:1fr auto}
+#score .bnote{grid-column:1/-1;margin:0 0 6px;padding:9px 11px;border-radius:12px;font-size:12px;line-height:1.4;color:var(--text);background:rgba(120,120,128,.12)}
+#score .dtl{grid-column:1/-1;justify-self:start;background:none;border:0;padding:2px 0;font:inherit;font-size:11px;color:#0A84FF;cursor:pointer}
+/* down tractor chip: short status + a dedicated, always-visible Mark repaired button */
+.chip .cact{display:none;margin-top:3px}
+.chip.down .cact{display:block}
+.chip.down p:nth-child(2){display:none}
+.chip .mrb{font:inherit;font-size:10px;font-weight:600;line-height:1;padding:4px 9px;border-radius:9px;border:0;background:#0A84FF;color:#fff;cursor:pointer;white-space:nowrap;position:relative}
+.chip .mrb:hover{background:#0071E3}
+.chip .mrb.busy{opacity:.75;pointer-events:none;padding-right:22px}
+.chip .mrb.busy::after{content:"";position:absolute;right:6px;top:3px;width:8px;height:8px;border-radius:50%;border:1.5px solid rgba(255,255,255,.45);border-top-color:#fff;animation:spin2 .8s linear infinite}
+#chips{max-height:118px}
+#toast.act{pointer-events:auto}
+#toast .tact{margin-left:10px;font:inherit;font-size:12px;font-weight:600;padding:4px 10px;border-radius:9px;border:0;background:#0A84FF;color:#fff;cursor:pointer;position:relative}
+#toast .tact.busy{opacity:.7;pointer-events:none}
+.chip.down p:first-child{white-space:normal}
+
+/* Tractor Control Panel hooks: manual lane (hatched, out of AI planning), tappable lane labels, chip controls button */
+.lane.manual{background-image:repeating-linear-gradient(-45deg,rgba(255,159,10,.30) 0 5px,rgba(255,159,10,.06) 5px 10px) !important;box-shadow:inset 0 0 0 1px rgba(255,159,10,.45)}
+.lname.manual{color:#C77400 !important}
+.lname[role=button]{cursor:pointer;border-radius:6px}
+.lname[role=button]:hover{background:rgba(0,0,0,.06)}
+.lname[role=button]:focus-visible{outline:2px solid #0A84FF;outline-offset:1px}
+.chip .cpb{position:absolute;bottom:3px;right:4px;width:20px;height:20px;border:none;border-radius:7px;background:rgba(0,0,0,.05);padding:0;cursor:pointer;display:grid;place-items:center;opacity:.75;transition:opacity .2s,background .2s}
+.chip:hover .cpb,.chip .cpb:focus-visible{opacity:1}
+.chip .cpb:hover{background:rgba(0,0,0,.1)}
+.chip .cpb svg{width:12px;height:12px;stroke:#3a3a3c;stroke-width:1.5;stroke-linecap:round;fill:none}
+.chip .cpb svg circle{fill:#fff}
+.chip.manual{box-shadow:inset 0 0 0 1.5px rgba(255,159,10,.75)}
+.chip .mbdg{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:0 5px;border-radius:5px;background:#FF9F0A;color:#fff;margin-right:4px;line-height:14px;vertical-align:1px}
+.chip.down .cpb{display:none}
+
+/* Stage stacking order (low -> high): canvases 0 · chips, dock 2 · island, source badge, readout card 3 ·
+   bottom sheets 4 · Tractor Control Panel, keynote 5 · map-pick hint 6 · toast 7. */
+#toast{z-index:7}
+/* never the readout card on top of the open control panel: the panel replaces it */
+#stage.cp-open .lf-card{opacity:0 !important;visibility:hidden !important;pointer-events:none !important}
+/* chip text truncates before the controls button; MANUAL badge never shrinks */
+.chip.has-cpb .ctxt{padding-right:20px}
+.chip .mbdg{flex:none}
+.chip.has-cpb .cx{right:4px}
+/* Capability gating (data/capabilities.js): features the connected backend lacks are hidden, not error-tested. */
+.cap-no-controls .chip .cpb, .cap-no-controls .lf-card button.ctl{display:none}
+.cap-no-controls .chip.has-cpb .ctxt{padding-right:0}
+.cap-no-mechanics .hint.mech-hint{display:none}
+/* Restart day: in-app glass confirm (never window.confirm) */
+.pop.confirm{left:auto;right:0;width:240px;padding:12px;gap:10px}
+.pop.confirm .cq{margin:0;font-size:12px;line-height:1.45;color:#1d1d1f}
+.pop.confirm .crow{display:flex;gap:6px}
+.pop.confirm .crow button{flex:1;justify-content:center;font-weight:600}
+.pop.confirm .cyes{background:rgba(255,69,58,.14);color:#c4271c}
+.ctl button:disabled:not(.busy){opacity:.45;cursor:not-allowed}

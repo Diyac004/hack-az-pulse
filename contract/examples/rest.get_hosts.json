@@ -1,0 +1,15 @@
+{
+  "used": 7,
+  "max": 12,
+  "hosts": [
+    {
+      "id": "laptop-divi",
+      "docker": "local",
+      "tractors": 4,
+      "max_tractors": 5,
+      "cpu_pct": 71,
+      "online": true
+    }
+  ],
+  "warm": 2
+}

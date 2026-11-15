@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-312 -546 648 570" width="648" height="570" role="img">
+<title>Current depot shed, side view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-200,0 296.8,0" fill="#000" opacity=".2" filter="url(#soft)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="roof"><polygon points="-227.6,-320 227.6,-320 0,-520 0,-520" fill="#CF6F65" stroke="#CF6F65"/></g>
+<g data-part="walls"><polygon points="-200,0 200,0 200,-320 -200,-320" fill="#E9E4DA" stroke="#E9E4DA"/></g></g>
+</svg>

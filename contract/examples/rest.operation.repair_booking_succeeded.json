@@ -1,0 +1,18 @@
+{
+  "id": "O17",
+  "kind": "repair_booking",
+  "status": "succeeded",
+  "source": "mechanics_book",
+  "created_t": 120,
+  "updated_t": 120,
+  "message": "Example Mobile Diesel booked for Tractor 1.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": {
+    "tractor": "T1",
+    "mechanic": "M1",
+    "arrival_t": 196,
+    "estimated_return_t": 286
+  },
+  "error": null
+}

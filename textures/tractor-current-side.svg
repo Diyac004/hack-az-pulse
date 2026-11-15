@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-264 -388 512 412" width="512" height="412" role="img">
+<title>Current box tractor, side view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-151,0 199.8,0" fill="#000" opacity=".2" filter="url(#soft)"/><polygon points="-124,-0.8 -124,-0.8 -36,-0.8 -36,-0.8" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="-124,-0.8 -124,-0.8 -36,-0.8 -36,-0.8" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="80,-0.8 80,-0.8 136,-0.8 136,-0.8" fill="#000" opacity=".35" filter="url(#tight)"/><polygon points="80,-0.8 80,-0.8 136,-0.8 136,-0.8" fill="#000" opacity=".35" filter="url(#tight)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="wheel"><polygon points="-118.2,-167.3 -148.8,-142.9 -165.8,-107.6 -165.8,-68.4 -148.8,-33.1 -118.2,-8.7 -80,0 -41.8,-8.7 -11.2,-33.1 5.8,-68.4 5.8,-107.6 -11.2,-142.9 -41.8,-167.3 -80,-176" fill="#1C1C1E" stroke="#1C1C1E"/></g>
+<g data-part="wheel"><polygon points="83.7,-106.5 64.2,-90.9 53.4,-68.5 53.4,-43.5 64.2,-21.1 83.7,-5.5 108,0 132.3,-5.5 151.8,-21.1 162.6,-43.5 162.6,-68.5 151.8,-90.9 132.3,-106.5 108,-112" fill="#1C1C1E" stroke="#1C1C1E"/></g>
+<g data-part="body"><polygon class="b1" points="-160,-72 160,-72 160,-184 -160,-184" fill="#0A84FF" stroke="#0A84FF"/></g>
+<g data-part="body"><polygon class="b1" points="-148,-306 20,-306 20,-326 -148,-326" fill="#0A84FF" stroke="#0A84FF"/></g>
+<g data-part="body"><polygon points="-136,-176 8,-176 8,-304 -136,-304" fill="#2C2C2E" stroke="#2C2C2E"/></g>
+<g data-part="wheel"><polygon points="83.7,-106.5 64.2,-90.9 53.4,-68.5 53.4,-43.5 64.2,-21.1 83.7,-5.5 108,0 132.3,-5.5 151.8,-21.1 162.6,-43.5 162.6,-68.5 151.8,-90.9 132.3,-106.5 108,-112" fill="#1C1C1E" stroke="#1C1C1E"/></g>
+<g data-part="wheel"><polygon points="-118.2,-167.3 -148.8,-142.9 -165.8,-107.6 -165.8,-68.4 -148.8,-33.1 -118.2,-8.7 -80,0 -41.8,-8.7 -11.2,-33.1 5.8,-68.4 5.8,-107.6 -11.2,-142.9 -41.8,-167.3 -80,-176" fill="#1C1C1E" stroke="#1C1C1E"/></g></g>
+</svg>

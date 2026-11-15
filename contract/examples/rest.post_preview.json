@@ -1,0 +1,109 @@
+{
+  "allowed": true,
+  "refused_reason": null,
+  "plan": {
+    "version": 7,
+    "entries": [
+      {
+        "tractor": "T3",
+        "job": "J1",
+        "kind": "travel",
+        "start_t": 128,
+        "end_t": 140,
+        "route": [
+          [
+            5,
+            6
+          ],
+          [
+            4,
+            6
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            2,
+            6
+          ],
+          [
+            1,
+            6
+          ],
+          [
+            1,
+            7
+          ],
+          [
+            1,
+            8
+          ],
+          [
+            1,
+            8.5
+          ]
+        ]
+      },
+      {
+        "tractor": "T3",
+        "job": "J1",
+        "kind": "work",
+        "start_t": 140,
+        "end_t": 205,
+        "route": []
+      }
+    ],
+    "solver": "greedy",
+    "solve_ms": 42,
+    "solver_status": "feasible",
+    "diff": {
+      "moved": [
+        {
+          "job": "J1",
+          "from": "T1",
+          "to": "T3",
+          "progress_kept": 0.6
+        }
+      ],
+      "retimed": [
+        {
+          "job": "J5",
+          "old_start_t": 300,
+          "new_start_t": 345
+        }
+      ],
+      "dropped": [],
+      "added": []
+    }
+  },
+  "explanation": {
+    "id": "X12",
+    "t": 141.5,
+    "trigger": "breakdown",
+    "text": "Tractor 1 broke down 60% of the way through spraying Block E. Tractor 3 has the only other sprayer and 81% fuel, so it finishes the remaining 40% right after its current job. All deadlines are still met.",
+    "facts": {
+      "event": {
+        "type": "breakdown",
+        "tractor": "T1"
+      },
+      "moved": [
+        {
+          "job": "J1",
+          "from": "T1",
+          "to": "T3",
+          "progress_kept": 0.6
+        }
+      ],
+      "deadlines_missed": [],
+      "travel_delta_min": 12,
+      "idle_delta_min": -5
+    },
+    "plan_version": 7
+  },
+  "metrics_delta": {
+    "travel_min": -18,
+    "idle_min": -6,
+    "late_jobs": 1
+  }
+}

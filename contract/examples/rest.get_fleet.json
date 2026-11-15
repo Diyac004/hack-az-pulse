@@ -1,0 +1,42 @@
+[
+  {
+    "id": "T1",
+    "name": "Tractor 1",
+    "color": "#0A84FF",
+    "implements": [
+      "sprayer"
+    ],
+    "status": "working",
+    "manual": false,
+    "fuel_pct": 72.4,
+    "pose": {
+      "x": 4.2,
+      "y": 9.5,
+      "lat": 33.2041,
+      "lon": -111.6187,
+      "heading_deg": 91,
+      "speed_mph": 5.8
+    },
+    "tool": {
+      "lat": 33.204,
+      "lon": -111.6189,
+      "heading_deg": 91,
+      "width_m": 6
+    },
+    "current_job": "J1",
+    "queue": [
+      "J4",
+      "J7"
+    ],
+    "available_from_t": null,
+    "host": "laptop-divi",
+    "agopenweb": {
+      "endpoint": "ws://localhost:5174/ws",
+      "connected": true,
+      "heartbeat_age_ms": 120,
+      "autosteer": true,
+      "section_master": true,
+      "youturn": true
+    }
+  }
+]

@@ -1,0 +1,75 @@
+/* Live feed view: view toggle, map canvas, DOM labels, tractor readout card. */
+
+/* Segmented view toggle (top-left of the stage) */
+#viewseg{position:absolute;top:12px;left:12px;z-index:3;display:flex;gap:0;padding:3px;border-radius:12px;font-size:12px;user-select:none;-webkit-user-select:none}
+#viewseg .thumb{position:absolute;top:3px;left:3px;bottom:3px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.04);transition:transform .38s cubic-bezier(.3,1.15,.5,1),width .38s cubic-bezier(.3,1.15,.5,1)}
+#viewseg button{position:relative;z-index:1;border:none;background:none;font:inherit;font-weight:500;color:#3a3a3c;padding:5px 12px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:6px;letter-spacing:-.005em;transition:color .25s}
+#viewseg button.on{color:#1d1d1f;font-weight:600}
+#viewseg button:active{transform:scale(.97)}
+#viewseg button:focus-visible{outline:2px solid #0A84FF;outline-offset:1px}
+#viewseg .lf-dot{width:6px;height:6px;border-radius:50%;background:#8e8e93;transition:background .3s}
+#viewseg.live .lf-dot{background:#30D158;box-shadow:0 0 0 3px rgba(48,209,88,.18);animation:lfbreath 2.4s ease-in-out infinite}
+@keyframes lfbreath{50%{box-shadow:0 0 0 5px rgba(48,209,88,.06)}}
+
+/* Map canvas sits right above the diorama canvas, under every glass overlay */
+#stage canvas.lf-canvas{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none;cursor:grab}
+#stage canvas.lf-canvas.on{pointer-events:auto}
+#stage canvas.lf-canvas.drag{cursor:grabbing}
+#stage canvas.lf-canvas.hover{cursor:pointer}
+
+/* DOM labels over the map */
+.lf-ovl{position:absolute;inset:0;pointer-events:none;z-index:1;opacity:0;overflow:hidden}
+.lf-blk,.lf-tag{position:absolute;left:0;top:0;will-change:transform;white-space:nowrap}
+.lf-blk{display:flex;align-items:baseline;gap:5px;padding:3px 8px 3px 7px;border-radius:9px;background:rgba(20,20,22,.52);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#fff;font-size:10px;line-height:1.2;letter-spacing:.01em}
+.lf-blk b{font-size:12px;font-weight:600;letter-spacing:0}
+.lf-blk span{color:rgba(255,255,255,.72)}
+.lf-blk.heat{background:rgba(200,64,20,.78)}
+.lf-tag{font-size:10px;font-weight:600;color:#1d1d1f;padding:2px 6px;border-radius:7px;background:rgba(255,255,255,.86);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.lf-tag.down{background:#FF453A;color:#fff}
+
+/* Tractor readout card */
+.lf-card{position:absolute;left:0;top:0;z-index:3;width:232px;padding:12px 13px 11px;opacity:0;pointer-events:none;transform-origin:0 50%;transition:opacity .22s ease-out,scale .32s cubic-bezier(.3,1.2,.5,1);scale:.92;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.lf-card.on{opacity:1;pointer-events:auto;scale:1}
+.lf-card .hd{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+.lf-card .hd i{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.9)}
+.lf-card .hd b{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.lf-card .hd .st{font-size:11px;color:#6e6e73;margin-left:auto;white-space:nowrap}
+.lf-card .x{border:none;background:rgba(0,0,0,.06);width:20px;height:20px;border-radius:50%;font:inherit;font-size:13px;line-height:20px;color:#6e6e73;cursor:pointer;padding:0;flex:none}
+.lf-card .x:hover{background:rgba(0,0,0,.1)}
+.lf-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 10px;margin:0 0 9px}
+.lf-card dt{font-size:10px;color:#6e6e73;margin:0 0 1px}
+.lf-card dd{margin:0;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lf-card dd small{font-size:10px;color:#6e6e73;font-weight:500;margin-left:2px}
+.lf-card .job{font-size:12px;margin:0 0 9px}
+.lf-card .job p{margin:0 0 4px;display:flex;justify-content:space-between;gap:8px}
+.lf-card .job p span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lf-card .job p span:last-child{font-variant-numeric:tabular-nums;color:#6e6e73}
+.lf-card .bar{height:4px;border-radius:2px;background:rgba(0,0,0,.08);overflow:hidden}
+.lf-card .bar u{display:block;height:100%;border-radius:2px;transition:width .5s ease-out}
+.lf-card .aow{display:flex;align-items:center;gap:6px;font-size:10px;line-height:1.35;padding:5px 8px;border-radius:9px;background:rgba(0,0,0,.05);color:#3a3a3c;margin-bottom:9px}
+.lf-card .aow i{width:6px;height:6px;border-radius:50%;flex:none;background:#8e8e93}
+.lf-card .aow.on i{background:#30D158}
+.lf-card .aow.off i{background:#FF453A}
+.lf-card .aow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lf-card .fol{width:100%;border:none;border-radius:10px;padding:7px 10px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:#0A84FF;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .2s,transform .1s}
+.lf-card .fol:active{transform:scale(.97)}
+.lf-card .fol[aria-pressed=true]{background:rgba(10,132,255,.12);color:#0A63C9}
+.lf-card .fol:focus-visible,.lf-card .x:focus-visible{outline:2px solid #0A84FF;outline-offset:2px}
+
+@media (prefers-reduced-motion:reduce){
+  #viewseg .thumb,.lf-card{transition:opacity .15s linear}
+  #viewseg.live .lf-dot{animation:none}
+}
+@media (prefers-reduced-transparency:reduce){
+  .lf-blk{background:rgba(20,20,22,.85);-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+.lf-card .mrep{width:100%;border:none;border-radius:10px;padding:7px 10px;margin-bottom:6px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:#30D158;color:#fff;position:relative}
+.lf-card .mrep.busy{opacity:.7;pointer-events:none}
+.lf-card .mrep.busy::after{content:"";position:absolute;right:12px;top:9px;width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;animation:spin2 .8s linear infinite}
+/* readout card actions: Follow + Controls (opens the Tractor Control Panel) */
+.lf-card .lf-acts{display:flex;gap:6px}
+.lf-card .lf-acts .fol{flex:1;width:auto}
+.lf-card .ctl{border:none;border-radius:10px;padding:7px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:rgba(0,0,0,.07);color:#1d1d1f;transition:background .2s,transform .1s}
+.lf-card .ctl:hover{background:rgba(0,0,0,.11)}
+.lf-card .ctl:active{transform:scale(.97)}
+.lf-card .ctl:focus-visible{outline:2px solid #0A84FF;outline-offset:2px}

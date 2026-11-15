@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvest Fleet AI: UI mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F2F2F7;--card:#FFFFFF;--text:#1d1d1f;--muted:#6e6e73;--faint:#8e8e93;--line:rgba(0,0,0,.08);--green:#1E7A3C;--greenbg:#E8F8EE;--blue:#0A84FF}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#a1a1a6;--faint:#8e8e93;--line:rgba(255,255,255,.1);--green:#30D158;--greenbg:rgba(48,209,88,.15)}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:4px 2px 14px;flex-wrap:wrap}
+header h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+header p{margin:0;font-size:13px;color:var(--muted)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:980px){.layout{grid-template-columns:minmax(0,1fr) 340px}}
+#stage{position:relative;height:clamp(560px,74vh,780px);border-radius:24px;overflow:hidden;background:#BFDDF5;touch-action:none;user-select:none;-webkit-user-select:none}
+#stage canvas{display:block}
+.gl{background:rgba(255,255,255,.62);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);border:0.5px solid rgba(255,255,255,.85);border-radius:16px;color:#1d1d1f}
+#island{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border-radius:16px;height:32px;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:12px;white-space:nowrap;transition:height .55s cubic-bezier(.34,1.56,.64,1),padding .55s cubic-bezier(.34,1.56,.64,1),border-radius .55s,font-size .3s;max-width:94%;overflow:hidden;z-index:3}
+#island.big{height:50px;border-radius:25px;padding:0 22px;font-size:14px}
+#idot{width:8px;height:8px;border-radius:50%;background:#30D158;flex:none;transition:background .3s}
+#chips{position:absolute;top:54px;left:10px;right:10px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;z-index:2;max-width:560px;margin:0 auto}
+.chip{padding:6px 8px;display:flex;gap:7px;align-items:center;border-radius:14px}
+.chip p{margin:0;font-size:11px;line-height:1.3;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#dock{position:absolute;left:10px;right:10px;bottom:10px;padding:7px 12px 9px;z-index:2}
+#axis{display:flex;justify-content:space-between;font-size:10px;color:#6e6e73;margin-left:24px}
+#lanes{position:relative;margin-left:24px;height:96px;margin-top:3px}
+#lanewrap{position:absolute;inset:0;overflow:hidden;border-radius:13px}
+.lane{position:absolute;left:0;right:0;height:26px;border-radius:13px;background:rgba(0,0,0,.06)}
+.lname{position:absolute;left:-24px;font-size:10px;font-weight:600;line-height:26px}
+.pill{position:absolute;height:22px;border-radius:11px;font-size:10px;line-height:22px;padding:0 7px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;transition:left .8s cubic-bezier(.34,1.56,.64,1),width .8s cubic-bezier(.34,1.56,.64,1),top .8s cubic-bezier(.34,1.56,.64,1),background-color .6s,opacity .4s}
+.pill.hi{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.95)}
+.pf{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.3)}
+.pill span{position:relative}
+#now{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:#FF453A}
+.sheet{position:absolute;left:10px;right:10px;bottom:10px;padding:14px 16px;transform:translateY(130%);transition:transform .65s cubic-bezier(.34,1.25,.64,1);z-index:4;max-width:620px;margin:0 auto}
+.sheet.on{transform:translateY(0)}
+.mgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px}
+@media (min-width:700px){.mgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.mc{border-radius:12px;padding:8px;background:rgba(255,255,255,.75);border:1.5px solid transparent;font-size:11px;cursor:pointer;line-height:1.4}
+.mc.sel{border-color:#0A84FF}
+.bdg{display:inline-block;font-size:9px;padding:1px 6px;border-radius:6px;background:#E5F1FF;color:#0A63C9;margin:2px 3px 0 0}
+.abtn{background:#0A84FF;color:#fff;border:none;border-radius:12px;padding:10px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.gbtn{background:rgba(0,0,0,.07);color:#1d1d1f;border:none;border-radius:12px;padding:10px 16px;font-size:13px;cursor:pointer;font-family:inherit}
+#key{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%) scale(.85);opacity:0;pointer-events:none;transition:all .7s cubic-bezier(.34,1.4,.64,1);width:min(84%,420px);padding:18px;z-index:5;text-align:center}
+#key.on{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto}
+.side{display:flex;flex-direction:column;gap:12px}
+.ctl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ctl button{font-family:inherit;font-size:13px;font-weight:500;padding:11px 10px;border-radius:14px;border:0.5px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;transition:transform .15s}
+.ctl button:active{transform:scale(.97)}
+.ctl button.red{color:#FF453A}
+.card{background:var(--card);border-radius:18px;padding:14px 16px}
+.card p{margin:0}
+.lbl{font-size:12px;color:var(--muted)}
+#exp{font-size:15px;line-height:1.55;min-height:72px;margin-top:4px}
+#score{display:grid;grid-template-columns:1fr auto auto;gap:5px 16px;font-size:13px}
+#feed p{margin:0 0 7px;font-size:13px;line-height:1.4}
+.ok{font-size:12px;padding:3px 9px;border-radius:9px;background:var(--greenbg);color:var(--green);font-weight:500}
+.hint{font-size:12px;color:var(--faint);margin:2px 2px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>Harvest Fleet AI</h1><p>UI mock · drag to orbit · tap a timeline pill to ask why</p></header>
+<div class="layout">
+<div>
+<div id="stage">
+<div id="island"><span id="idot"></span><span id="itxt">6:00 AM · Planning the day</span></div>
+<div id="chips"></div>
+<div id="dock" class="gl"><div id="axis"><span>6 AM</span><span>9</span><span>12 PM</span><span>3</span><span>6 PM</span></div><div id="lanes"><div id="lanewrap"></div></div></div>
+<div id="mech" class="sheet gl"></div>
+<div id="why" class="sheet gl"></div>
+<div id="key" class="gl"></div>
+</div>
+</div>
+<div class="side">
+<div class="ctl">
+<button id="bPlay">Pause</button>
+<button id="bBreak" class="red">Break down T1</button>
+<button id="bBlock">Block a road</button>
+<button id="bHeat">Heat alert</button>
+<button id="bFast">Skip to sunset</button>
+<button id="bFx">Effects: on</button>
+</div>
+<div class="card"><p class="lbl">Latest explanation</p><p id="exp"></p></div>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><p class="lbl">Ours vs first come, first served</p><span class="ok">0 violations</span></div><div id="score"></div><p style="font-size:11px;color:var(--faint);margin-top:8px">Mock: baseline numbers are simulated here, not computed.</p></div>
+<div class="card"><p class="lbl" style="margin-bottom:8px">Activity</p><div id="feed"></div></div>
+<p class="hint">Mechanic listings are sample data. Nothing is booked for real.</p>
+</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/HorizontalTiltShiftShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/VerticalTiltShiftShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+const CLR={T1:'#0A84FF',T2:'#BF5AF2',T3:'#FF9F0A'};
+const BL={A:[1,2],B:[6,2],C:[11,2],D:[16,2],E:[1,9],F:[6,9],G:[11,9],H:[16,9]};
+const RX=[0,5,10,15],RY=[0,6,13];const isRoad=(x,y)=>RX.includes(x)||RY.includes(y);
+const blocked=new Set();const K=(x,y)=>x+','+y;
+const W=(x,y)=>new THREE.Vector3(x-9.5,0,y-6.5);
+function path(sx,sy,tx,ty){sx=Math.max(0,Math.min(19,Math.round(sx)));sy=Math.max(0,Math.min(13,Math.round(sy)));tx=Math.max(0,Math.min(19,Math.round(tx)));ty=Math.max(0,Math.min(13,Math.round(ty)));const N=280,dist=new Array(N).fill(Infinity),prev=new Array(N).fill(-1),dn=new Array(N).fill(false),id=(x,y)=>y*20+x;dist[id(sx,sy)]=0;
+for(let it=0;it<N;it++){let u=-1,b=Infinity;for(let i=0;i<N;i++)if(!dn[i]&&dist[i]<b){b=dist[i];u=i;}if(u<0)break;dn[u]=true;const ux=u%20,uy=(u/20)|0;if(ux===tx&&uy===ty)break;
+for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=ux+dx,ny=uy+dy;if(nx<0||ny<0||nx>19||ny>13||blocked.has(K(nx,ny)))continue;const v=id(nx,ny),c=isRoad(nx,ny)?1:3.5;if(dist[u]+c<dist[v]){dist[v]=dist[u]+c;prev[v]=u;}}}
+const out=[];let c=id(tx,ty);if(dist[c]===Infinity)return [[sx,sy],[tx,ty]];while(c!==-1){out.unshift([c%20,(c/20)|0]);c=prev[c];}return out;}
+const J=[['J1','Spray E','E','sprayer',150,3,330,'T1'],['J4','Spray A','A','sprayer',110,2,500,'T1'],['J7','Spray G','G','sprayer',120,2,640,'T1'],['J2','Mow C','C','mower',100,2,300,'T2'],['J5','Mow F','F','mower',100,1,450,'T2'],['J8','Hedge H','H','hedger',110,1,600,'T2'],['J10','Mow B','B','mower',90,1,700,'T2'],['J3','Haul bins C','C','bin_trailer',120,3,280,'T3'],['J6','Spray D','D','sprayer',100,2,460,'T3'],['J9','Haul bins B','B','bin_trailer',100,2,560,'T3'],['J11','Spray H','H','sprayer',100,1,700,'T3']].map(a=>({id:a[0],label:a[1],block:a[2],impl:a[3],dur:a[4],pri:a[5],deadline:a[6],tr:a[7],prog:0,st:'pending',s:null,e:null,es:null,ee:null}));
+const JB=Object.fromEntries(J.map(j=>[j.id,j]));
+const TR=[{id:'T1',name:'Tractor 1',impl:['sprayer'],fuel:82},{id:'T2',name:'Tractor 2',impl:['mower','hedger'],fuel:68},{id:'T3',name:'Tractor 3',impl:['sprayer','bin_trailer'],fuel:91}];
+TR.forEach((t,i)=>{t.x=2+i;t.y=6;t.st='idle';t.q=J.filter(j=>j.tr===t.id).map(j=>j.id);t.cur=null;t.p=[];t.pi=0;t.hd=0;t.back=null;});
+const TB=Object.fromEntries(TR.map(t=>[t.id,t]));
+const sweepPos=j=>{const [bx,by]=BL[j.block];const s=j.prog*3,row=Math.min(2,Math.floor(s)),f=Math.min(1,s-row);return [bx+(row%2?3-f*3:f*3),by-0.5+row];};
+function clock(m){const h=6+Math.floor(m/60),mm=Math.floor(m%60),hh=((h+11)%12)+1;return hh+':'+String(mm).padStart(2,'0')+(h>=12?' PM':' AM');}
+const stage=document.getElementById('stage');let SW=stage.clientWidth,SH=stage.clientHeight;
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(SW,SH);R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;stage.insertBefore(R.domElement,stage.firstChild);
+const S=new THREE.Scene();S.background=new THREE.Color('#BFDDF5');
+let k=Math.max(1,1.45/(SW/SH));
+const cam=new THREE.PerspectiveCamera(38,SW/SH,.1,300);
+const HOME={p:new THREE.Vector3(0,17*k,15*k),t:new THREE.Vector3(0,0,1)};cam.position.copy(HOME.p);
+const ctl=new THREE.OrbitControls(cam,R.domElement);ctl.target.copy(HOME.t);ctl.enableDamping=true;ctl.enablePan=false;ctl.maxPolarAngle=1.25;ctl.minDistance=6;ctl.maxDistance=90;ctl.update();
+const hemi=new THREE.HemisphereLight('#ffffff','#b59a6e',.55);S.add(hemi);
+const sun=new THREE.DirectionalLight('#fff4e0',1);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-14,right:14,top:14,bottom:-14,near:1,far:60});S.add(sun);S.add(sun.target);
+const lm=c=>new THREE.MeshLambertMaterial({color:c});
+const side=lm('#A3865C');const isl=new THREE.Mesh(new THREE.BoxGeometry(21,1.4,15),[side,side,lm('#D9C49B'),side,side,side]);isl.position.y=-.7;isl.receiveShadow=true;S.add(isl);
+const rdm=lm('#EEE2C6');RY.forEach(y=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(20,.8),rdm);m.rotation.x=-Math.PI/2;m.position.set(0,.01,y-6.5);m.receiveShadow=true;S.add(m);});RX.forEach(x=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(.8,14),rdm);m.rotation.x=-Math.PI/2;m.position.set(x-9.5,.012,0);m.receiveShadow=true;S.add(m);});
+const patch={};Object.entries(BL).forEach(([b,[bx,by]])=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(4.4,3.4),new THREE.MeshLambertMaterial({color:'#86A257',emissive:'#000000'}));m.rotation.x=-Math.PI/2;const c=W(bx+1.5,by+1);m.position.set(c.x,.02,c.z);m.receiveShadow=true;S.add(m);patch[b]=m;
+const cv=document.createElement('canvas');cv.width=cv.height=64;const g=cv.getContext('2d');g.fillStyle='rgba(255,255,255,.92)';g.beginPath();g.arc(32,32,26,0,7);g.fill();g.fillStyle='#1d1d1f';g.font='600 30px -apple-system,sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(b,32,34);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false}));sp.scale.set(.85,.85,.85);sp.position.set(c.x,1.7,c.z);S.add(sp);});
+const cells=[];Object.entries(BL).forEach(([b,[bx,by]])=>{for(let i=0;i<4;i++)for(let j=0;j<3;j++)cells.push([b,bx+i,by+j]);});
+const can=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.34,0),new THREE.MeshLambertMaterial({color:'#ffffff',flatShading:true}),cells.length);
+const trk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.05,.07,.4,6),lm('#6B4F33'),cells.length);
+const fruitC=cells.filter(c=>c[0]==='C').length*3;const fru=new THREE.InstancedMesh(new THREE.SphereGeometry(.06,8,6),new THREE.MeshLambertMaterial({color:'#FF8A1F',emissive:'#7a2e00'}),fruitC);
+const dm=new THREE.Object3D(),col=new THREE.Color();let fi=0;
+cells.forEach(([b,x,y],i)=>{const p=W(x,y),s=.85+Math.random()*.3;dm.position.set(p.x,.2,p.z);dm.scale.set(1,1,1);dm.rotation.set(0,0,0);dm.updateMatrix();trk.setMatrixAt(i,dm.matrix);dm.position.y=.58;dm.scale.set(s,s*.9,s);dm.rotation.y=Math.random()*3;dm.updateMatrix();can.setMatrixAt(i,dm.matrix);col.set('#4E7A2C').offsetHSL((Math.random()-.5)*.04,0,(Math.random()-.5)*.08);can.setColorAt(i,col);
+if(b==='C')for(let f=0;f<3;f++){const a=Math.random()*6.28,e=Math.random()*1.2-.3;dm.position.set(p.x+Math.cos(a)*.3*s,.58+Math.sin(e)*.28,p.z+Math.sin(a)*.3*s);dm.scale.set(1,1,1);dm.rotation.set(0,0,0);dm.updateMatrix();fru.setMatrixAt(fi++,dm.matrix);}});
+can.castShadow=trk.castShadow=true;can.receiveShadow=true;S.add(can,trk,fru);
+const shed=new THREE.Group();const sb=new THREE.Mesh(new THREE.BoxGeometry(1.6,.8,1),lm('#E9E4DA'));sb.position.y=.4;const rf=new THREE.Mesh(new THREE.ConeGeometry(1.15,.5,4),lm('#C2463A'));rf.position.y=1.05;rf.rotation.y=Math.PI/4;rf.scale.z=.7;shed.add(sb,rf);shed.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});const sp0=W(2.5,7.8);shed.position.set(sp0.x,0,sp0.z);S.add(shed);
+const stripe=(()=>{const c=document.createElement('canvas');c.width=64;c.height=4;const g=c.getContext('2d');const gr=g.createLinearGradient(0,0,64,0);gr.addColorStop(0,'rgba(255,255,255,.2)');gr.addColorStop(.5,'rgba(255,255,255,1)');gr.addColorStop(1,'rgba(255,255,255,.2)');g.fillStyle=gr;g.fillRect(0,0,64,4);return c;})();
+function mkTractor(c){const g=new THREE.Group();const body=new THREE.Mesh(new THREE.BoxGeometry(.5,.28,.8),lm(c));body.position.y=.32;const cab=new THREE.Mesh(new THREE.BoxGeometry(.42,.32,.36),lm('#2c2c2e'));cab.position.set(0,.6,-.16);const roof=new THREE.Mesh(new THREE.BoxGeometry(.48,.05,.42),lm(c));roof.position.set(0,.79,-.16);g.add(body,cab,roof);
+const wm=lm('#1c1c1e');[[.3,.22,-.2],[-.3,.22,-.2],[.27,.14,.27],[-.27,.14,.27]].forEach(([x,r,z])=>{const w=new THREE.Mesh(new THREE.CylinderGeometry(r,r,.12,14),wm);w.rotation.z=Math.PI/2;w.position.set(x,r,z);g.add(w);});
+g.traverse(o=>{if(o.isMesh)o.castShadow=true;});const ring=new THREE.Mesh(new THREE.RingGeometry(.62,.76,40),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.85}));ring.rotation.x=-Math.PI/2;ring.position.y=.03;g.add(ring);g.userData.ring=ring;g.scale.setScalar(.85);return g;}
+TR.forEach(tr=>{tr.mesh=mkTractor(CLR[tr.id]);tr.mesh.position.copy(W(tr.x,tr.y));S.add(tr.mesh);const tx=new THREE.CanvasTexture(stripe);tx.wrapS=tx.wrapT=THREE.RepeatWrapping;tr.rm=new THREE.MeshBasicMaterial({color:new THREE.Color(CLR[tr.id]).offsetHSL(0,0,.08),map:tx,transparent:true,opacity:.95});tr.rib=null;});
+function ribbon(tr){if(tr.rib){S.remove(tr.rib);tr.rib.geometry.dispose();tr.rib=null;}if(tr.st!=='travel'||tr.pi>=tr.p.length)return;const pts=[[tr.x,tr.y],...tr.p.slice(tr.pi)].map(([x,y])=>{const v=W(x,y);v.y=.13;return v;});if(pts.length<2)return;const cv=new THREE.CatmullRomCurve3(pts,false,'catmullrom',.02);const L=cv.getLength();if(L<.2)return;tr.rib=new THREE.Mesh(new THREE.TubeGeometry(cv,Math.max(8,pts.length*5),.07,6,false),tr.rm);tr.rm.map.repeat.set(L/1.1,1);S.add(tr.rib);}
+const fxl=[];function ripple(v,c){const m=new THREE.Mesh(new THREE.RingGeometry(.6,.75,48),new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.9,side:THREE.DoubleSide}));m.rotation.x=-Math.PI/2;m.position.set(v.x,.05,v.z);S.add(m);fxl.push({m,born:performance.now(),type:'rip'});}
+function smoke(v){const m=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),new THREE.MeshLambertMaterial({color:'#6e6e73',transparent:true,opacity:.7}));m.position.set(v.x+(Math.random()-.5)*.2,.9,v.z+(Math.random()-.5)*.2);S.add(m);fxl.push({m,born:performance.now(),type:'smoke'});}
+const barriers=[];function barrier(x,y){const g=new THREE.Group();const a=new THREE.Mesh(new THREE.BoxGeometry(.75,.22,.08),lm('#FF453A'));a.position.y=.35;const b=new THREE.Mesh(new THREE.BoxGeometry(.3,.22,.085),lm('#ffffff'));b.position.y=.35;const l1=new THREE.Mesh(new THREE.BoxGeometry(.06,.45,.06),lm('#3a3a3c'));l1.position.set(-.3,.22,0);const l2=l1.clone();l2.position.x=.3;g.add(a,b,l1,l2);const p=W(x,y);g.position.set(p.x,0,p.z);if(RY.includes(y))g.rotation.y=Math.PI/2;g.scale.setScalar(.01);g.userData.born=performance.now();S.add(g);barriers.push(g);const rd=new THREE.Mesh(new THREE.PlaneGeometry(.9,.9),new THREE.MeshBasicMaterial({color:'#FF453A',transparent:true,opacity:.55}));rd.rotation.x=-Math.PI/2;rd.position.set(p.x,.03,p.z);S.add(rd);}
+let van=null;
+let comp=null,fx=true,hPass=null,vPass=null,bloom=null;try{comp=new THREE.EffectComposer(R);comp.setPixelRatio(Math.min(devicePixelRatio,2));comp.setSize(SW,SH);comp.addPass(new THREE.RenderPass(S,cam));bloom=new THREE.UnrealBloomPass(new THREE.Vector2(SW,SH),.5,.5,.8);comp.addPass(bloom);hPass=new THREE.ShaderPass(THREE.HorizontalTiltShiftShader);hPass.uniforms.h.value=1.8/SW;hPass.uniforms.r.value=.5;vPass=new THREE.ShaderPass(THREE.VerticalTiltShiftShader);vPass.uniforms.v.value=1.8/SH;vPass.uniforms.r.value=.5;comp.addPass(hPass);comp.addPass(vPass);}catch(e){comp=null;}
+const SKY=[[0,'#F6C7A0'],[.14,'#CFE6F7'],[.5,'#A8D4F5'],[.82,'#F2D7A6'],[1,'#EE9B78']].map(([f,c])=>[f,new THREE.Color(c)]);
+function skyAt(f){for(let i=0;i<SKY.length-1;i++)if(f<=SKY[i+1][0]){const a=SKY[i],b=SKY[i+1];return a[1].clone().lerp(b[1],(f-a[0])/(b[0]-a[0]));}return SKY[SKY.length-1][1].clone();}
+let t=0,playing=true,fast=1,slowUntil=0,ended=false,heat=false,camGoal=null,lastUI=0,lastRib=0,lastSmoke=0,islandUntil=0,last=performance.now();
+const M={done:0,ontime:0,travel:0,idle:0};
+const feed=document.getElementById('feed');function log(h){const p=document.createElement('p');p.innerHTML='<span style="color:var(--faint)">'+clock(t)+'</span> '+h;feed.prepend(p);while(feed.children.length>8)feed.lastChild.remove();}
+let typer=null;function explain(s){const el=document.getElementById('exp');clearInterval(typer);let i=0;el.textContent='';typer=setInterval(()=>{i+=3;el.textContent=s.slice(0,i);if(i>=s.length)clearInterval(typer);},16);}
+const island=document.getElementById('island'),itxt=document.getElementById('itxt'),idot=document.getElementById('idot');
+function setIsland(txt,dot,big,ms){itxt.textContent=txt;idot.style.background=dot;island.classList.toggle('big',!!big);islandUntil=performance.now()+ms;}
+function focus(v,ms){camGoal={p:v.clone().add(new THREE.Vector3(3.5*k*.55,6*k*.55,6*k*.55)),t:v.clone(),until:performance.now()+(ms||2600)};}
+function step(dt){t=Math.min(720,t+dt);const pend=J.some(j=>j.st!=='done');
+TR.forEach(tr=>{if(['broken','repair'].includes(tr.st))return;
+if(!tr.cur){if(tr.q.length){const j=JB[tr.q.shift()];tr.cur=j.id;j.st='active';j.tr=tr.id;const tg=j.prog>0?sweepPos(j):[BL[j.block][0],BL[j.block][1]-.5];tr.p=path(tr.x,tr.y,tg[0],tg[1]);tr.p.push(tg);tr.pi=1;tr.st='travel';ribbon(tr);}else{tr.st='idle';if(pend)M.idle+=dt;return;}}
+const j=JB[tr.cur];
+if(tr.st==='travel'){let d=dt*.5;M.travel+=dt;tr.fuel=Math.max(5,tr.fuel-dt*.05);while(d>0&&tr.pi<tr.p.length){const [cx,cy]=tr.p[tr.pi],dx=cx-tr.x,dy=cy-tr.y,L=Math.hypot(dx,dy);if(L<1e-6){tr.pi++;continue;}tr.hd=Math.atan2(dx,dy);if(L<=d){tr.x=cx;tr.y=cy;tr.pi++;d-=L;}else{tr.x+=dx/L*d;tr.y+=dy/L*d;d=0;}}if(tr.pi>=tr.p.length){tr.st='work';if(j.s==null)j.s=t;ribbon(tr);}}
+else if(tr.st==='work'){j.prog=Math.min(1,j.prog+dt/j.dur);tr.fuel=Math.max(5,tr.fuel-dt*.07);const [nx,ny]=sweepPos(j);if(Math.hypot(nx-tr.x,ny-tr.y)>1e-4)tr.hd=Math.atan2(nx-tr.x,ny-tr.y);tr.x=nx;tr.y=ny;
+if(j.prog>=1){j.st='done';j.e=t;M.done++;const ok=t<=j.deadline;if(ok)M.ontime++;tr.cur=null;tr.st='idle';log('<b style="font-weight:500">'+j.label+'</b> done by '+tr.name+(ok?', on time':', late'));}}});
+if(van)stepVan(dt);
+TR.forEach(tr=>{if(tr.st==='repair'&&tr.back!=null&&t>=tr.back)repaired(tr);});}
+function estimate(){TR.forEach(tr=>{let c=t,x=tr.x,y=tr.y;if(tr.st==='broken')c=tr.back!=null?Math.max(t,tr.back):t+9999;if(tr.st==='repair')c=Math.max(t,tr.back);
+if(tr.cur){const j=JB[tr.cur];if(tr.st==='travel'){c+=(tr.p.length-tr.pi+.5)*2;j.es=c;}else j.es=j.s;c=Math.max(c,j.es)+j.dur*(1-j.prog);j.ee=c;x=BL[j.block][0]+3;y=BL[j.block][1]+1.5;}
+tr.q.forEach(id=>{const j=JB[id];const [bx,by]=BL[j.block];c+=(path(x,y,bx,by-1).length-1)*2;j.es=c;c+=j.dur*(1-j.prog);j.ee=c;x=bx+3;y=by+1.5;});tr.endT=c;tr.endX=x;tr.endY=y;});}
+const lanes=document.getElementById('lanewrap'),lanesOuter=document.getElementById('lanes');TR.forEach((tr,i)=>{const l=document.createElement('div');l.className='lane';l.style.top=(i*32)+'px';lanes.appendChild(l);const n=document.createElement('div');n.className='lname';n.style.top=(i*32)+'px';n.style.color=CLR[tr.id];n.textContent=tr.id;lanesOuter.appendChild(n);});
+const pills={};J.forEach(j=>{const d=document.createElement('div');d.className='pill';d.innerHTML='<div class="pf"></div><span>'+j.label+'</span>';d.addEventListener('click',e=>{e.stopPropagation();why(j.id);});lanes.appendChild(d);pills[j.id]=d;});
+const nowL=document.createElement('div');nowL.id='now';lanes.appendChild(nowL);
+function renderPills(){J.forEach(j=>{const d=pills[j.id],i=TR.findIndex(x=>x.id===j.tr);const s=j.st==='done'?j.s:j.es,e=j.st==='done'?j.e:j.ee;if(s==null||e==null)return;const L=Math.max(0,s)/720*100,Wd=Math.max(2,(e-s)/720*100);d.style.left=L+'%';d.style.width=Wd+'%';d.style.top=(i*32+2)+'px';d.style.backgroundColor=CLR[j.tr];d.style.opacity=j.st==='done'?.45:1;d.classList.toggle('hi',j.pri===3&&j.st!=='done');d.firstChild.style.width=(j.prog*100)+'%';});nowL.style.left=(t/720*100)+'%';}
+function ringSvg(p,c){const r=10,C=2*Math.PI*r;return '<svg width="26" height="26" viewBox="0 0 26 26" style="flex:none"><circle cx="13" cy="13" r="'+r+'" fill="none" stroke="rgba(0,0,0,.09)" stroke-width="4"/><circle cx="13" cy="13" r="'+r+'" fill="none" stroke="'+c+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+(C*p/100)+' '+C+'" transform="rotate(-90 13 13)"/></svg>';}
+const chips=document.getElementById('chips');function renderChips(){chips.innerHTML=TR.map(tr=>{const j=tr.cur?JB[tr.cur]:null;const st=tr.st==='broken'?'<span style="color:#FF453A">Broken</span>':tr.st==='repair'?'<span style="color:#C77C00">Repairing</span>':tr.st==='travel'?'To '+j.block:tr.st==='work'?j.label:'Idle';return '<div class="chip gl">'+ringSvg(tr.fuel,tr.st==='broken'?'#FF453A':CLR[tr.id])+'<div style="min-width:0"><p style="font-weight:600">'+tr.id+' · '+Math.round(tr.fuel)+'%</p><p style="color:#6e6e73">'+st+'</p></div></div>';}).join('');}
+function base(){return{done:Math.max(0,M.done-3),ontime:Math.max(0,M.ontime-4),travel:Math.round(M.travel*1.38+20),idle:Math.round(M.idle*1.9+55)};}
+function renderScore(){const b=base();const row=(l,a,bb)=>'<span style="color:var(--muted)">'+l+'</span><span style="font-weight:600;color:var(--green)">'+a+'</span><span style="color:var(--faint)">'+bb+'</span>';document.getElementById('score').innerHTML='<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>'+row('Jobs completed',M.done,b.done)+row('On time',M.ontime,b.ontime)+row('Travel',Math.round(M.travel)+' min',b.travel+' min')+row('Idle',Math.round(M.idle)+' min',b.idle+' min');}
+function breakdown(){const tr=TB.T1;if(['broken','repair'].includes(tr.st)||ended)return;const cj=tr.cur?JB[tr.cur]:null;tr.st='broken';tr.cur=null;ribbon(tr);const v=W(tr.x,tr.y);ripple(v,'#FF453A');setTimeout(()=>ripple(v,'#FF453A'),350);focus(v);slowUntil=performance.now()+1700;
+const T3=TB.T3,moved=[];if(cj){cj.tr='T3';cj.st='pending';cj.s=null;T3.q.unshift(cj.id);moved.push(cj.id);}tr.q.forEach(id=>{JB[id].tr='T3';T3.q.push(id);moved.push(id);});tr.q=[];estimate();
+const late=moved.map(id=>JB[id]).filter(j=>j.ee>j.deadline);const pct=cj?Math.round(cj.prog*100):0;
+let s=cj?'Tractor 1 broke down '+pct+'% of the way through '+cj.label.toLowerCase()+'. Tractor 3 has the only other sprayer and '+Math.round(T3.fuel)+'% fuel, so it finishes the remaining '+(100-pct)+'% right after its current job.':'Tractor 1 broke down between jobs. Tractor 3 has the only other sprayer, so it takes over.';
+const rest=moved.length-(cj?1:0);if(rest>0)s+=' '+rest+' more spraying job'+(rest>1?'s move':' moves')+' to Tractor 3 until Tractor 1 is repaired.';s+=late.length?' '+late[0].label+' will now miss its '+clock(late[0].deadline)+' deadline by about '+Math.round(late[0].ee-late[0].deadline)+' min. Booking a mechanic can recover it.':' All deadlines are still met.';
+setIsland('Tractor 1 down · Replanning…','#FF453A',true,1500);setTimeout(()=>{setIsland('New plan · '+moved.length+' jobs moved','#30D158',true,2200);explain(s);log('<b style="font-weight:500">Replan</b> after Tractor 1 breakdown, '+moved.length+' jobs moved. Safety check passed.');},1500);setTimeout(showMech,2600);}
+const MECH=[{n:'Sonoran Field Diesel',src:'Google',r:4.9,rv:212,eta:45,cost:380,b:['Mobile','Ag specialist'],rec:true},{n:'Valley Ag Repair',src:'BBB',r:4.7,rv:98,eta:80,cost:340,b:['Shop + mobile','Ag']},{n:'Pinal Tractor Works',src:'Thumbtack',r:4.8,rv:61,eta:95,cost:410,b:['Mobile']},{n:'Desert Heavy Equipment',src:'Google',r:4.5,rv:140,eta:70,cost:460,b:['Mobile','Heavy diesel']}];let msel=0;
+function showMech(){document.getElementById('why').classList.remove('on');const el=document.getElementById('mech');el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><p style="margin:0;font-size:15px;font-weight:600">Book a mechanic for Tractor 1?</p><span style="font-size:10px;color:#6e6e73">Sample listings</span></div><div class="mgrid">'+MECH.map((m,i)=>'<div class="mc'+(i===msel?' sel':'')+'" data-i="'+i+'">'+(m.rec?'<span class="bdg" style="background:#E8F8EE;color:#1E7A3C">Recommended</span><br>':'')+'<b style="font-weight:600">'+m.n+'</b><br>'+m.r+' ('+m.rv+') · '+m.src+'<br>Arrives in '+m.eta+' min · $'+m.cost+'<br>'+m.b.map(x=>'<span class="bdg">'+x+'</span>').join('')+'</div>').join('')+'</div><p style="font-size:11px;color:#6e6e73;margin:0 0 10px">Recommended: only mobile ag specialist arriving within an hour.</p><div style="display:flex;gap:8px"><button class="abtn" id="mok">Approve and book</button><button class="gbtn" id="mno">Not now</button></div>';el.classList.add('on');
+el.querySelectorAll('.mc').forEach(c=>c.addEventListener('click',()=>{msel=+c.dataset.i;el.querySelectorAll('.mc').forEach((x,i)=>x.classList.toggle('sel',i===msel));}));document.getElementById('mok').onclick=bookMech;document.getElementById('mno').onclick=()=>{el.classList.remove('on');log('Mechanic booking skipped. Tractor 1 stays down.');};}
+function bookMech(){document.getElementById('mech').classList.remove('on');const m=MECH[msel],tr=TB.T1;const arr=t+m.eta;tr.back=arr+60;log('<b style="font-weight:500">Booked</b> '+m.n+', arriving '+clock(arr)+', repair about 60 min');setIsland('Mechanic booked · arrives '+clock(arr),'#0A84FF',true,2500);
+const g=new THREE.Group();const b=new THREE.Mesh(new THREE.BoxGeometry(.5,.42,.85),lm('#F5F5F7'));b.position.y=.3;const s=new THREE.Mesh(new THREE.BoxGeometry(.52,.08,.86),lm('#0A84FF'));s.position.y=.25;const lt=new THREE.Mesh(new THREE.BoxGeometry(.2,.06,.1),new THREE.MeshBasicMaterial({color:'#FF9F0A'}));lt.position.y=.54;g.add(b,s,lt);g.traverse(o=>{if(o.isMesh)o.castShadow=true;});g.scale.setScalar(.85);S.add(g);
+const vp=path(0,6,tr.x,tr.y);van={g,x:0,y:6,p:vp,pi:1,phase:'in',hd:null,spd:Math.max(.4,vp.length/m.eta)};g.position.copy(W(0,6));estimate();}
+function stepVan(dt){const v=van;let d=dt*v.spd;while(d>0&&v.pi<v.p.length){const [cx,cy]=v.p[v.pi],dx=cx-v.x,dy=cy-v.y,L=Math.hypot(dx,dy);if(L<1e-6){v.pi++;continue;}v.hd=Math.atan2(dx,dy);if(L<=d){v.x=cx;v.y=cy;v.pi++;d-=L;}else{v.x+=dx/L*d;v.y+=dy/L*d;d=0;}}
+if(v.pi>=v.p.length){if(v.phase==='in'){v.phase='there';TB.T1.st='repair';log('Mechanic arrived at Tractor 1');}else if(v.phase==='out'){S.remove(v.g);van=null;}}}
+function repaired(tr){tr.st='idle';tr.back=null;const T3=TB.T3,take=T3.q.filter(id=>JB[id].impl==='sprayer'&&id!=='J1');T3.q=T3.q.filter(id=>!take.includes(id));take.forEach(id=>{JB[id].tr='T1';});tr.q=take;estimate();
+explain('Tractor 1 repaired at '+clock(t)+'. '+(take.length?take.length+' spraying job'+(take.length>1?'s':'')+' ('+take.map(id=>JB[id].label).join(', ')+') move back from Tractor 3, so both sprayers work in parallel again.':'Tractor 3 already finished the spraying, so Tractor 1 stays on standby.'));setIsland('Tractor 1 back · '+take.length+' jobs moved back','#30D158',true,2400);ripple(W(tr.x,tr.y),'#30D158');log('<b style="font-weight:500">Replan</b> after repair, '+take.length+' jobs moved back. Safety check passed.');
+if(van){van.phase='out';van.p=path(van.x,van.y,0,6);van.pi=1;van.spd=.9;}}
+function blockRoad(){if(ended)return;const tr=TR.find(x=>x.st==='travel'&&x.p.length-x.pi>5);let cs=[];if(tr){const rem=tr.p.slice(tr.pi+1,tr.p.length-2).filter(([x,y])=>Number.isInteger(x)&&Number.isInteger(y)&&isRoad(x,y));const m=Math.floor(rem.length/2);cs=rem.slice(m,m+2);}
+if(!cs.length)cs=[[7,6],[8,6]].filter(c=>!blocked.has(K(c[0],c[1])));if(!cs.length)return;cs.forEach(c=>{blocked.add(K(c[0],c[1]));barrier(c[0],c[1]);});
+let extra=0,who=null;TR.forEach(x=>{if(x.st!=='travel')return;const old=x.p.length-x.pi,tg=x.p[x.p.length-1];x.p=path(x.x,x.y,tg[0],tg[1]);x.p.push(tg);x.pi=1;const nw=x.p.length-1;ribbon(x);if(x===tr){extra=Math.max(0,Math.round((nw-old)*2));who=x;}});
+focus(W(cs[0][0],cs[0][1]),2200);estimate();const late=J.filter(j=>j.st!=='done'&&j.ee>j.deadline);
+explain((who?'Farm road blocked ahead of '+who.name+'. The Navigation Agent rerouted it around the barrier, adding about '+extra+' min of travel.':'Farm road blocked. No tractor was using it, and all future routes now avoid it.')+(late.length?' '+late[0].label+' is now at risk of missing its deadline.':' No deadlines affected.'));setIsland('Road blocked · rerouted +'+extra+' min','#FF9F0A',true,2400);log('<b style="font-weight:500">Road blocked</b>'+(who?', '+who.name+' rerouted (+'+extra+' min)':''));}
+function heatAlert(){if(heat||ended)return;heat=true;const ids=['J7','J11'].filter(id=>JB[id].st==='pending');ids.forEach(id=>{const j=JB[id],tr=TB[j.tr];tr.q=tr.q.filter(x=>x!==id);let n=0;while(n<tr.q.length&&JB[tr.q[n]].pri===3)n++;tr.q.splice(n,0,id);j.pri=3;});estimate();
+focus(W(14,10),2400);explain('Heat alert from the Agronomy Agent: 112°F expected by 2 PM. Kaolin spraying for Blocks G and H moves up to high priority and ahead in the queue, so the trees are coated before peak heat. '+(ids.length?ids.length+' job'+(ids.length>1?'s':'')+' reordered.':'Both jobs were already underway.'));setIsland('Heat alert · 112°F by 2 PM','#FF9F0A',true,2600);log('<b style="font-weight:500">Agronomy Agent</b> raised priority on spraying G and H');}
+function why(id){const j=JB[id];estimate();document.getElementById('mech').classList.remove('on');const el=document.getElementById('why');let html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><p style="margin:0;font-size:15px;font-weight:600">Why '+TB[j.tr].name+' for '+j.label+'?</p><button class="gbtn" id="wx" style="padding:5px 12px">Close</button></div>';
+if(j.st==='done'){html+='<p style="font-size:13px;margin:0">Completed by '+TB[j.tr].name+' at '+clock(j.e)+(j.e<=j.deadline?', before its '+clock(j.deadline)+' deadline.':', after its deadline.')+'</p>';}
+else{const rows=TR.map(tr=>{if(!tr.impl.includes(j.impl))return{tr,ok:false,r:'No '+j.impl.replace('_',' ')};if(tr.st==='broken')return{tr,ok:false,r:'Broken down'};if(tr.st==='repair')return{tr,ok:false,r:'Being repaired'};const end=tr.id===j.tr?j.ee:tr.endT+(path(tr.endX,tr.endY,BL[j.block][0],BL[j.block][1]-1).length-1)*2+j.dur*(1-j.prog);return{tr,ok:true,end};});
+const ok=rows.filter(r=>r.ok),mx=Math.max(...ok.map(r=>r.end),t+1);
+rows.forEach(r=>{const ch=r.tr.id===j.tr;const w=r.ok?Math.max(12,(r.end-t)/(mx-t)*100):0;const txt=!r.ok?r.r:ch?'Chosen · finishes '+clock(r.end):'+'+Math.max(0,Math.round(r.end-j.ee))+' min later finish';html+='<div style="margin:0 0 9px;opacity:'+(ch?1:.45)+'"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">'+r.tr.name+'</span><span>'+txt+'</span></div><div style="height:8px;border-radius:4px;background:rgba(0,0,0,.07)"><div style="height:8px;border-radius:4px;width:'+w+'%;background:'+CLR[r.tr.id]+'"></div></div></div>';});
+html+='<p style="font-size:11px;color:#6e6e73;margin:4px 0 0">Deadline '+clock(j.deadline)+' · priority '+(j.pri===3?'high':j.pri===2?'medium':'low')+'</p>';}
+el.innerHTML=html;el.classList.add('on');document.getElementById('wx').onclick=()=>el.classList.remove('on');focus(W(BL[j.block][0]+1.5,BL[j.block][1]+1),2400);}
+function endDay(){playing=false;const b=base();camGoal={p:HOME.p.clone().multiplyScalar(1.2),t:HOME.t.clone(),until:performance.now()+4000,ret:true};const el=document.getElementById('key');
+const stat=(l,a,bb,u)=>'<div style="display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-top:0.5px solid rgba(0,0,0,.08)"><span style="font-size:13px;color:#6e6e73">'+l+'</span><span><b class="roll" data-v="'+a+'" style="font-size:24px;font-weight:600;color:#1E7A3C">0</b><span style="font-size:12px;color:#6e6e73"> '+u+' vs '+bb+'</span></span></div>';
+el.innerHTML='<p style="margin:0 0 2px;font-size:12px;color:#6e6e73">6:00 PM</p><p style="margin:0 0 10px;font-size:22px;font-weight:600">Day complete</p>'+stat('Jobs completed',M.done,b.done,'')+stat('On time',M.ontime,b.ontime,'')+stat('Travel',Math.round(M.travel),b.travel,'min')+stat('Idle',Math.round(M.idle),b.idle,'min')+stat('Violations',0,0,'')+'<button class="gbtn" id="kx" style="margin-top:12px">Close</button>';el.classList.add('on');
+el.querySelectorAll('.roll').forEach(r=>{const tv=+r.dataset.v,st=performance.now();const f=()=>{const p=Math.min(1,(performance.now()-st)/1400),e=1-Math.pow(1-p,3);r.textContent=Math.round(tv*e);if(p<1)requestAnimationFrame(f);};f();});document.getElementById('kx').onclick=()=>el.classList.remove('on');
+explain('Day complete. '+M.done+' of '+J.length+' jobs finished, '+M.ontime+' on time, with zero constraint violations.');setIsland('Day complete · '+M.done+' jobs done','#30D158',true,1e9);document.getElementById('bPlay').textContent='Play';}
+document.getElementById('bPlay').onclick=e=>{if(ended)return;playing=!playing;e.currentTarget.textContent=playing?'Pause':'Play';};
+document.getElementById('bBreak').onclick=breakdown;document.getElementById('bBlock').onclick=blockRoad;document.getElementById('bHeat').onclick=heatAlert;
+document.getElementById('bFast').onclick=e=>{fast=fast===1?6:1;playing=true;document.getElementById('bPlay').textContent='Pause';e.currentTarget.textContent=fast===1?'Skip to sunset':'Normal speed';};
+document.getElementById('bFx').onclick=e=>{fx=!fx;e.currentTarget.textContent='Effects: '+(fx?'on':'off');};
+function resize(){SW=stage.clientWidth;SH=stage.clientHeight;R.setSize(SW,SH);cam.aspect=SW/SH;cam.updateProjectionMatrix();k=Math.max(1,1.45/(SW/SH));HOME.p.set(0,17*k,15*k);if(comp){comp.setSize(SW,SH);if(hPass)hPass.uniforms.h.value=1.8/SW;if(vPass)vPass.uniforms.v.value=1.8/SH;}}
+window.addEventListener('resize',resize);
+function loop(now){requestAnimationFrame(loop);const dtR=Math.min(.05,(now-last)/1000);last=now;
+if(playing&&t<720)step(dtR*9.6*(now<slowUntil?.15:1)*fast);if(t>=720&&!ended){ended=true;endDay();}
+const f=t/720;S.background=skyAt(f);const ang=Math.PI*(.08+.84*f);sun.position.set(Math.cos(ang)*18,Math.sin(ang)*16+1,7);const si=Math.sin(ang);sun.intensity=.35+.8*si;sun.color.set('#FFB27A').lerp(new THREE.Color('#FFF6E8'),si);hemi.intensity=.4+.25*si;
+const doSmoke=now-lastSmoke>140;if(doSmoke)lastSmoke=now;
+TR.forEach(tr=>{const g=tr.mesh;g.position.lerp(W(tr.x,tr.y),.35);let d=tr.hd-g.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));g.rotation.y+=d*.2;const ring=g.userData.ring;const pulse=.5+.5*Math.sin(now/180);
+if(tr.st==='broken'){ring.material.color.set('#FF453A');ring.scale.setScalar(1+.25*pulse);ring.material.opacity=.5+.5*pulse;if(doSmoke)smoke(g.position);}else if(tr.st==='repair'){ring.material.color.set('#FF9F0A');ring.scale.setScalar(1+.15*pulse);ring.material.opacity=.85;}else{ring.material.color.set(CLR[tr.id]);ring.scale.setScalar(tr.st==='work'?1+.08*pulse:1);ring.material.opacity=.85;}
+if(tr.rib)tr.rm.map.offset.x-=dtR*1.6;});
+if(van){van.g.position.lerp(W(van.x,van.y),.35);if(van.hd!=null)van.g.rotation.y=van.hd;van.g.children[2].material.color.set(Math.sin(now/120)>0?'#FF9F0A':'#FFD60A');}
+if(now-lastRib>250){TR.forEach(tr=>{if(tr.st==='travel')ribbon(tr);});lastRib=now;}
+patch.C.material.emissive.set('#FF7A1A');patch.C.material.emissiveIntensity=.22;if(heat){['G','H'].forEach(b=>{patch[b].material.emissive.set('#FF4A10');patch[b].material.emissiveIntensity=.18+.18*Math.sin(now/260);});}
+for(let i=fxl.length-1;i>=0;i--){const o=fxl[i],a=(now-o.born)/1000;if(o.type==='rip'){o.m.scale.setScalar(1+a*5);o.m.material.opacity=Math.max(0,.9-a*.75);if(a>1.2){S.remove(o.m);fxl.splice(i,1);}}else{o.m.position.y+=dtR*.7;o.m.scale.setScalar(1+a*1.6);o.m.material.opacity=Math.max(0,.7-a*.35);if(a>2){S.remove(o.m);fxl.splice(i,1);}}}
+barriers.forEach(g=>{const a=Math.min(1,(now-g.userData.born)/500);const e=a===1?1:1+Math.sin(a*Math.PI*1.5)*.3*(1-a);g.scale.setScalar(Math.max(.01,a*e));});
+if(camGoal){if(now<camGoal.until){cam.position.lerp(camGoal.p,.05);ctl.target.lerp(camGoal.t,.06);}else if(!camGoal.ret){camGoal={p:HOME.p.clone(),t:HOME.t.clone(),until:now+1600,ret:true};}else camGoal=null;}
+if(now-lastUI>200){estimate();renderPills();renderChips();renderScore();if(now>islandUntil&&!ended){const w=TR.filter(x=>x.st==='travel'||x.st==='work').length;itxt.textContent=clock(t)+' · '+w+' tractor'+(w===1?'':'s')+' working';idot.style.background='#30D158';island.classList.remove('big');}lastUI=now;}
+ctl.update();if(fx&&comp)comp.render();else R.render(S,cam);}
+explain('Morning plan ready. 11 jobs across 3 tractors. Spraying Block E goes first on Tractor 1 because it has the earliest high-priority deadline (11:30 AM). Safety check passed: every job has a compatible tractor and enough fuel.');log('<b style="font-weight:500">Morning plan</b>: 11 jobs assigned, safety check passed');
+estimate();renderPills();renderChips();renderScore();requestAnimationFrame(loop);
+</script>
+</body>
+</html>

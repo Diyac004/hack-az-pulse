@@ -1,0 +1,38 @@
+{
+  "type": "poses",
+  "t": 134.2,
+  "seq": 5812,
+  "data": {
+    "tractors": [
+      {
+        "id": "T1",
+        "status": "working",
+        "manual": false,
+        "pose": {
+          "x": 4.2,
+          "y": 9.5,
+          "lat": 33.2041,
+          "lon": -111.6187,
+          "heading_deg": 91,
+          "speed_mph": 5.8
+        },
+        "tool": {
+          "lat": 33.204,
+          "lon": -111.6189,
+          "heading_deg": 91,
+          "width_m": 6
+        },
+        "fuel_pct": 72.4,
+        "current_job": "J1",
+        "agopenweb": {
+          "endpoint": "ws://localhost:5174/ws",
+          "connected": true,
+          "heartbeat_age_ms": 120,
+          "autosteer": true,
+          "section_master": true,
+          "youturn": true
+        }
+      }
+    ]
+  }
+}

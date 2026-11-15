@@ -1,0 +1,14 @@
+{
+  "name": "agopenweb-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Real AgOpenWeb tractors (headless, Docker) -> Harvest Fleet contract. Client, decoder, demo, contract server.",
+  "scripts": {
+    "test": "node --test test/",
+    "demo": "node demo.mjs",
+    "server": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

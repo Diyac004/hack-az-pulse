@@ -1,0 +1,22 @@
+{
+  "type": "log",
+  "t": 134.2,
+  "seq": 5812,
+  "data": {
+    "t": 120,
+    "kind": "replan",
+    "trigger": "breakdown",
+    "plan_version": 2,
+    "replan_ms": 840,
+    "changes": [
+      {
+        "job": "J1",
+        "from": "T1",
+        "to": "T3",
+        "progress_kept": 0.6
+      }
+    ],
+    "safety": "pass",
+    "explanation_id": "X2"
+  }
+}

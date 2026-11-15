@@ -1,0 +1,13 @@
+{
+  "id": "O17",
+  "kind": "repair_booking",
+  "status": "queued",
+  "source": "mechanics_book",
+  "created_t": 120,
+  "updated_t": 120,
+  "message": "Booking Example Mobile Diesel for Tractor 1.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": null,
+  "error": null
+}

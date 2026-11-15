@@ -1,0 +1,33 @@
+/* Mock | Live mode switch (ui/modeSwitch.js). Sits where the MOCK/LIVE badge was (#srcbadge). */
+#srcbadge.modesw{display:block;padding:4px;border-radius:13px;letter-spacing:0;font-weight:500;max-width:min(260px,calc(100% - 24px))}
+#srcbadge.modesw .msrow{display:flex;align-items:center;gap:4px}
+#srcbadge.modesw .seg2{display:flex;background:rgba(120,120,128,.16);border-radius:9px;padding:2px}
+#srcbadge.modesw .seg2 button{border:0;background:none;font:inherit;font-size:11px;font-weight:600;color:#3a3a3c;padding:4px 10px;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:5px;min-height:24px}
+#srcbadge.modesw .seg2 button.on{background:#fff;color:#1d1d1f;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+#srcbadge.modesw .seg2 button i{width:7px;height:7px;border-radius:50%;display:none;background:#8e8e93}
+#srcbadge.modesw .seg2 button.on i{display:inline-block}
+#srcbadge.modesw[data-st="mock"] .seg2 button.on i{background:#FF9F0A}
+#srcbadge.modesw[data-st="live"] .seg2 button.on i{background:#30D158}
+#srcbadge.modesw[data-st="wait"] .seg2 button.on i{background:#8e8e93;animation:blink 1s infinite}
+#srcbadge.modesw[data-st="down"] .seg2 button.on i{background:#FF453A;animation:blink 1s infinite}
+#srcbadge.modesw .msmore{border:0;background:none;font:inherit;font-size:14px;line-height:1;color:#3a3a3c;padding:4px 7px;border-radius:7px;cursor:pointer;min-height:24px}
+#srcbadge.modesw .msmore:hover,#srcbadge.modesw .seg2 button:not(.on):hover{background:rgba(120,120,128,.14)}
+#srcbadge.modesw .mscap{margin:3px 6px 2px;font-size:10px;color:#3a3a3c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srcbadge.modesw .mstomock{display:block;margin:2px 4px 3px;border:0;border-radius:7px;background:#0A84FF;color:#fff;font:inherit;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer}
+#srcbadge.modesw .mstomock[hidden]{display:none}
+#srcbadge.modesw .mspop{display:none;position:absolute;right:0;top:calc(100% + 6px);width:260px;padding:10px;z-index:20;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#srcbadge.modesw .mspop.on{display:block}
+#srcbadge.modesw .msh{margin:0 2px 6px;font-size:11px;font-weight:600;color:#6e6e73}
+#srcbadge.modesw .mspre{display:grid;grid-template-columns:1fr auto;gap:1px 8px;width:100%;text-align:left;border:0;background:none;border-radius:9px;padding:6px 8px;font:inherit;cursor:pointer;color:#1d1d1f}
+#srcbadge.modesw .mspre:hover{background:rgba(120,120,128,.14)}
+#srcbadge.modesw .mspre b{font-size:12px;font-weight:600}
+#srcbadge.modesw .mspre span{font-size:11px;color:#6e6e73;font-variant-numeric:tabular-nums}
+#srcbadge.modesw .mspre em{grid-column:1/-1;font-style:normal;font-size:10px;color:#6e6e73}
+#srcbadge.modesw .msurl{display:block;margin:8px 2px 0}
+#srcbadge.modesw .msurl span{display:block;font-size:10px;color:#6e6e73;margin-bottom:3px}
+#srcbadge.modesw .msurl input{width:100%;box-sizing:border-box;font:inherit;font-size:12px;padding:6px 8px;border-radius:8px;border:0.5px solid rgba(0,0,0,.15);background:rgba(255,255,255,.8);color:#1d1d1f}
+#srcbadge.modesw .mserr{margin:5px 2px 0;font-size:11px;color:#C2261C}
+#srcbadge.modesw .msact{display:flex;gap:6px;margin-top:8px}
+#srcbadge.modesw .msact button{border:0;border-radius:8px;font:inherit;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;min-height:28px}
+#srcbadge.modesw .msgo{background:#0A84FF;color:#fff}
+#srcbadge.modesw .mscancel{background:rgba(120,120,128,.16);color:#1d1d1f}

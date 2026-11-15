@@ -1,0 +1,81 @@
+{
+  "type": "plan",
+  "t": 134.2,
+  "seq": 5812,
+  "data": {
+    "version": 7,
+    "entries": [
+      {
+        "tractor": "T3",
+        "job": "J1",
+        "kind": "travel",
+        "start_t": 128,
+        "end_t": 140,
+        "route": [
+          [
+            5,
+            6
+          ],
+          [
+            4,
+            6
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            2,
+            6
+          ],
+          [
+            1,
+            6
+          ],
+          [
+            1,
+            7
+          ],
+          [
+            1,
+            8
+          ],
+          [
+            1,
+            8.5
+          ]
+        ]
+      },
+      {
+        "tractor": "T3",
+        "job": "J1",
+        "kind": "work",
+        "start_t": 140,
+        "end_t": 205,
+        "route": []
+      }
+    ],
+    "solver": "greedy",
+    "solve_ms": 42,
+    "solver_status": "feasible",
+    "diff": {
+      "moved": [
+        {
+          "job": "J1",
+          "from": "T1",
+          "to": "T3",
+          "progress_kept": 0.6
+        }
+      ],
+      "retimed": [
+        {
+          "job": "J5",
+          "old_start_t": 300,
+          "new_start_t": 345
+        }
+      ],
+      "dropped": [],
+      "added": []
+    }
+  }
+}

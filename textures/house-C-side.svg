@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-312 -546 648 570" width="648" height="570" role="img">
+<title>C. Container yard, side view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-264,0 289.7,0 -94.8,0" fill="#000" opacity=".2" filter="url(#soft)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="pad"><polygon points="-264,0 288,0 288,-8 -264,-8" fill="#D6D2C9" stroke="#D6D2C9"/></g>
+<g data-part="saddle"><polygon points="-168,-8 -32,-8 -32,-40 -168,-40" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="tank"><polygon points="-140,-173.3 -169.3,-144 -180,-104 -169.3,-64 -140,-34.7 -100,-24 -60,-34.7 -30.7,-64 -20,-104 -30.7,-144 -60,-173.3 -100,-184" fill="#E5E5EA" stroke="#E5E5EA"/><polygon points="-100,-132 -86,-128.2 -75.8,-118 -72,-104 -75.8,-90 -86,-79.8 -100,-76 -114,-79.8 -124.2,-90 -128,-104 -124.2,-118 -114,-128.2" fill="#636366" stroke="none"/></g>
+<g data-part="pump"><polygon points="32,-8 80,-8 80,-144 32,-144" fill="#E5E5EA" stroke="#E5E5EA"/></g>
+<g data-part="saddle"><polygon points="-168,-8 -32,-8 -32,-40 -168,-40" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="stairs"><polygon points="27.1,-179.8 -30.8,-179.8 -27.1,-188.2 30.8,-188.2" fill="#858588" stroke="#858588"/><polygon points="99.1,-7.8 27.1,-179.8 30.8,-188.2 102.8,-16.2" fill="#3D3D3F" stroke="#3D3D3F"/><polygon points="99.1,-7.8 41.2,-7.8 -30.8,-179.8 27.1,-179.8" fill="#3D3D3F" stroke="#3D3D3F"/></g>
+<g data-part="rail"><polygon points="25.4,-270.3 21.1,-270.3 22.6,-273.7 26.9,-273.7" fill="#656567" stroke="#656567"/><polygon points="97.4,-98.3 25.4,-270.3 26.9,-273.7 98.9,-101.7" fill="#242425" stroke="#242425"/><polygon points="97.4,-98.3 93.1,-98.3 21.1,-270.3 25.4,-270.3" fill="#242425" stroke="#242425"/></g>
+<g data-part="landing"><polygon points="-32,-176 16,-176 16,-188 -32,-188" fill="#636366" stroke="#636366"/></g>
+<g data-part="post"><polygon points="152,-8 168,-8 168,-224 152,-224" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="container"><polygon class="b1" points="-220,-8 -20,-8 -20,-184 -220,-184" fill="#0A84FF" stroke="#0A84FF"/><polygon points="-204,-18.6 -36,-18.6 -36,-173.4 -204,-173.4" fill="#3A3A3C" stroke="none"/><polygon points="-122,-18.6 -118,-18.6 -118,-173.4 -122,-173.4" fill="#000" stroke="none" opacity="0.4"/></g>
+<g data-part="roof"><polygon points="-20,-248 168,-224 168,-234 -20,-258" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="office"><polygon points="-208,-184 -32,-184 -32,-352 -208,-352" fill="#C7C7CC" stroke="#C7C7CC"/></g>
+<g data-part="post"><polygon points="152,-8 168,-8 168,-224 152,-224" fill="#3A3A3C" stroke="#3A3A3C"/></g></g>
+</svg>

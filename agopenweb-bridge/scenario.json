@@ -1,0 +1,129 @@
+{
+ "_source": "Copied from dashboard/src/data/mockSource.js (static farm layout) so the 3D farm matches; edit both together.",
+ "name": "queen_creek_citrus_day1",
+ "grid": {
+  "width": 20,
+  "height": 14
+ },
+ "depot": {
+  "x": 1,
+  "y": 6
+ },
+ "roads": {
+  "rows": [
+   0,
+   6,
+   13
+  ],
+  "cols": [
+   0,
+   5,
+   10,
+   15
+  ]
+ },
+ "blocks": [
+  {
+   "id": "A",
+   "x": 1,
+   "y": 2,
+   "w": 4,
+   "h": 3,
+   "variety": "Navel",
+   "ripeness": 0.4
+  },
+  {
+   "id": "B",
+   "x": 6,
+   "y": 2,
+   "w": 4,
+   "h": 3,
+   "variety": "Valencia",
+   "ripeness": 0.5
+  },
+  {
+   "id": "C",
+   "x": 11,
+   "y": 2,
+   "w": 4,
+   "h": 3,
+   "variety": "Navel",
+   "ripeness": 0.72
+  },
+  {
+   "id": "D",
+   "x": 16,
+   "y": 2,
+   "w": 4,
+   "h": 3,
+   "variety": "Lemon",
+   "ripeness": 0.3
+  },
+  {
+   "id": "E",
+   "x": 1,
+   "y": 8,
+   "w": 4,
+   "h": 4,
+   "variety": "Valencia",
+   "ripeness": 0.55
+  },
+  {
+   "id": "F",
+   "x": 6,
+   "y": 8,
+   "w": 4,
+   "h": 4,
+   "variety": "Grapefruit",
+   "ripeness": 0.6
+  },
+  {
+   "id": "G",
+   "x": 11,
+   "y": 8,
+   "w": 4,
+   "h": 4,
+   "variety": "Navel",
+   "ripeness": 0.45
+  },
+  {
+   "id": "H",
+   "x": 16,
+   "y": 8,
+   "w": 4,
+   "h": 4,
+   "variety": "Mandarin",
+   "ripeness": 0.35
+  }
+ ],
+ "blocked_cells": [],
+ "sensitive": [
+  {
+   "block": "E",
+   "what": "canal",
+   "dir_deg": 90
+  },
+  {
+   "block": "H",
+   "what": "houses",
+   "dir_deg": 0
+  },
+  {
+   "block": "B",
+   "what": "apiary",
+   "dir_deg": 270
+  }
+ ],
+ "basemap": {
+  "image_url": "/static/naip.png",
+  "west": -111.74666891,
+  "east": -111.73374758,
+  "south": 33.45461238,
+  "north": 33.4632364
+ },
+ "geo": {
+  "origin_lat": 33.46126,
+  "origin_lon": -111.7443,
+  "cell_m": 40
+ }
+}

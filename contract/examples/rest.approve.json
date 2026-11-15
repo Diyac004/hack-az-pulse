@@ -1,0 +1,13 @@
+{
+  "id": "O17",
+  "kind": "approval",
+  "status": "queued",
+  "source": "approve",
+  "created_t": 120,
+  "updated_t": 120,
+  "message": "Decision approve on P3.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": null,
+  "error": null
+}
