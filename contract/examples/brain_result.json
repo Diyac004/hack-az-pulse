@@ -1,0 +1,56 @@
+{
+  "_comment": "DRAFT for Anay + Diya to agree on. Returned by Diya's brain.plan(brain_snapshot.json). Anay applies it only if source_state_version still matches and validation.passed is true, then adds plan.version and broadcasts plan -> explanation -> jobs. status: feasible | optimal | timeout | infeasible.",
+
+  "source_state_version": 42,
+  "status": "feasible",
+  "solver": "greedy",
+  "solve_ms": 38,
+
+  "plan": {
+    "solver": "greedy",
+    "solve_ms": 38,
+    "solver_status": "feasible",
+    "entries": [
+      { "tractor": "T3", "job": "J4", "kind": "work",   "start_t": 120, "end_t": 160, "route": [] },
+      { "tractor": "T3", "job": "J1", "kind": "travel", "start_t": 160, "end_t": 172,
+        "route": [[15, 3], [15, 6], [10, 6], [10, 8]] },
+      { "tractor": "T3", "job": "J1", "kind": "work",   "start_t": 172, "end_t": 232, "route": [] },
+      { "tractor": "T2", "job": "J9", "kind": "travel", "start_t": 141.5, "end_t": 149,
+        "route": [[1, 6], [3, 6]] },
+      { "tractor": "T2", "job": "J9", "kind": "work",   "start_t": 149, "end_t": 194, "route": [] }
+    ],
+    "diff": {
+      "moved":   [ { "job": "J1", "from": "T1", "to": "T3" } ],
+      "retimed": [],
+      "dropped": [],
+      "added":   []
+    }
+  },
+
+  "unassigned": [],
+
+  "facts": {
+    "event": { "type": "breakdown", "tractor": "T1" },
+    "moved": [ { "job": "J1", "from": "T1", "to": "T3", "progress_kept": 0.6 } ],
+    "deadlines_missed": [],
+    "travel_delta_min": 12,
+    "idle_delta_min": -5
+  },
+
+  "validation": {
+    "passed": true,
+    "violations": []
+  },
+
+  "_example_unassigned_entry": {
+    "job": "J9",
+    "reason": "no_compatible_tractor",
+    "detail": "needs bin_trailer; only T2 has one and it is broken"
+  },
+  "_example_violation_entry": {
+    "rule": "fuel_reserve",
+    "tractor": "T3",
+    "job": "J1",
+    "detail": "would end at 7% fuel, reserve is 10%"
+  }
+}

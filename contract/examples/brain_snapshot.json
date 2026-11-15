@@ -1,0 +1,114 @@
+{
+  "_comment": "DRAFT for Anay + Diya to agree on. Built by Anay's state store, passed to brain.plan(). Positions are grid cells (same grid as scenario.json); times are sim minutes from 6:00 AM. Example moment: T1 broke down at t=141.5, 60% through spraying Block E.",
+
+  "state_version": 42,
+  "map_version": 3,
+  "t": 141.5,
+  "horizon_t": 720,
+  "trigger": { "event_id": "E7", "type": "breakdown", "tractor": "T1" },
+
+  "map": {
+    "grid": { "width": 20, "height": 14 },
+    "roads": { "rows": [0, 6, 13], "cols": [0, 5, 10, 15] },
+    "blocked_cells": [[7, 6]],
+    "depot": { "x": 1, "y": 6 },
+    "entrances": { "A": [[3, 6]], "C": [[15, 4]], "E": [[10, 8]] },
+    "cell_m": 40
+  },
+
+  "tractors": [
+    {
+      "id": "T1",
+      "status": "broken",
+      "manual": false,
+      "implements": ["sprayer"],
+      "speed_cells_per_min": 0.5,
+      "x": 10.4,
+      "y": 8.0,
+      "fuel_pct": 61.0,
+      "fuel_burn_pct_per_min": { "travel": 0.08, "work": 0.15 },
+      "available_from_t": null
+    },
+    {
+      "id": "T2",
+      "status": "idle",
+      "manual": false,
+      "implements": ["bin_trailer"],
+      "speed_cells_per_min": 0.6,
+      "x": 1.0,
+      "y": 6.0,
+      "fuel_pct": 95.0,
+      "fuel_burn_pct_per_min": { "travel": 0.07, "work": 0.10 },
+      "available_from_t": 141.5
+    },
+    {
+      "id": "T3",
+      "status": "working",
+      "manual": false,
+      "implements": ["sprayer", "mower"],
+      "speed_cells_per_min": 0.5,
+      "x": 15.0,
+      "y": 3.0,
+      "fuel_pct": 81.0,
+      "fuel_burn_pct_per_min": { "travel": 0.08, "work": 0.15 },
+      "available_from_t": 160
+    }
+  ],
+
+  "jobs": [
+    {
+      "id": "J1",
+      "type": "spray",
+      "implement": "sprayer",
+      "block": "E",
+      "priority": 3,
+      "deadline_t": 330,
+      "status": "paused",
+      "pinned_to": null,
+      "work_units": [
+        { "unit": 1, "minutes": 30, "done_min": 30 },
+        { "unit": 2, "minutes": 30, "done_min": 30 },
+        { "unit": 3, "minutes": 30, "done_min": 30 },
+        { "unit": 4, "minutes": 30, "done_min": 0 },
+        { "unit": 5, "minutes": 30, "done_min": 0 }
+      ]
+    },
+    {
+      "id": "J4",
+      "type": "mow",
+      "implement": "mower",
+      "block": "C",
+      "priority": 2,
+      "deadline_t": 400,
+      "status": "working",
+      "pinned_to": null,
+      "work_units": [
+        { "unit": 1, "minutes": 20, "done_min": 20 },
+        { "unit": 2, "minutes": 20, "done_min": 1.5 }
+      ]
+    },
+    {
+      "id": "J9",
+      "type": "haul_bins",
+      "implement": "bin_trailer",
+      "block": "A",
+      "priority": 1,
+      "deadline_t": 600,
+      "status": "pending",
+      "pinned_to": null,
+      "work_units": [
+        { "unit": 1, "minutes": 45, "done_min": 0 }
+      ]
+    }
+  ],
+
+  "frozen": [
+    { "tractor": "T3", "job": "J4", "kind": "work", "start_t": 120, "end_t": 160 }
+  ],
+
+  "constraints": {
+    "fuel_reserve_pct": 10,
+    "refuel": true,
+    "weather": false
+  }
+}
