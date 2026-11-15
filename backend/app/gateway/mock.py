@@ -107,6 +107,21 @@ class MockGateway:
         first Travel route must start at pose().anchor. Validates everything
         before changing anything.
         """
+        self.check(tractor_id, orders)
+        tr = self._tractors[tractor_id]
+        if tr.mid_cell:
+            tr.path = deque([tr.path[0]])      # finish the current segment only
+        else:
+            tr.path.clear()
+            tr.frac = 0.0
+        tr.orders = deque(orders)
+        tr.current = None
+        tr.work_left = 0.0
+        tr.reported_idle = False
+        tr.status = "traveling" if tr.path else "idle"
+
+    def check(self, tractor_id: str, orders: list[Order]) -> None:
+        """Dry run of assign(): raises GatewayError if it would be refused, changes nothing."""
         tr = self._get(tractor_id)
         if tr.status == "broken":
             raise GatewayError(f"{tractor_id} is broken; resume() it first")
@@ -120,17 +135,6 @@ class MockGateway:
                     raise GatewayError("work minutes must be >= 0")
             else:
                 raise GatewayError(f"unknown order {o!r}")
-
-        if tr.mid_cell:
-            tr.path = deque([tr.path[0]])      # finish the current segment only
-        else:
-            tr.path.clear()
-            tr.frac = 0.0
-        tr.orders = deque(orders)
-        tr.current = None
-        tr.work_left = 0.0
-        tr.reported_idle = False
-        tr.status = "traveling" if tr.path else "idle"
 
     def stop(self, tractor_id: str) -> None:
         """Breakdown: freeze in place. Keeps a mid-move segment so the tractor
