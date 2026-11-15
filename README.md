@@ -109,7 +109,7 @@ PYTHONPATH=backend .venv/bin/python backend/scripts/package_submission.py
 PYTHONPATH=backend python -m app.core.runner --mode both
 ```
 
-Backend test suites: `PYTHONPATH=backend python -m unittest discover -s backend/tests/{brain,platform,integration} -v` (run each directory), and `node --test ai-supervisor/test/*.test.mjs`.
+Backend tests: `PYTHONPATH=backend python -m unittest discover -s backend/tests/<brain|platform|integration> -v`, and `node --test ai-supervisor/test/*.test.mjs`.
 
 **Limitations.** This is a heuristic simulation, not a globally optimal scheduler or real-tractor safety controller. Speeds, fuel rates and work durations are illustrative. Healthy driving tractors stay committed to their current destination. Refueling, weather enforcement, implement swaps and some optional supervisor actions are not implemented in the scored path. The comparison is one scenario with identical rules and events; no improvement on every scenario is claimed.
 
