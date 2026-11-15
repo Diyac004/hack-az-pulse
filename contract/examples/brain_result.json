@@ -1,5 +1,5 @@
 {
-  "_comment": "DRAFT for Anay + Diya to agree on. Returned by Diya's brain.plan(brain_snapshot.json). Anay applies it only if source_state_version still matches and validation.passed is true, then adds plan.version and broadcasts plan -> explanation -> jobs. status: feasible | optimal | timeout | infeasible.",
+  "_comment": "DRAFT for Anay + Diya to agree on. Returned by Diya's brain.plan(brain_snapshot.json). Hand-written illustration, not computed by the scheduler; routes and travel times match RoadRouter output (T3: 10 cells at 0.5/min = 20 min; T2: 2 cells at 0.6/min = 3.333 min). Anay applies it only if source_state_version still matches and validation.passed is true, then adds plan.version and broadcasts plan -> explanation -> jobs. Internal status (feasible | optimal | timeout | infeasible | unsupported) is mapped by Anay's operation layer; only plan.solver_status uses the public enum. Travel/idle deltas are omitted until both plans are measured with the shared definitions.",
 
   "source_state_version": 42,
   "status": "feasible",
@@ -11,13 +11,13 @@
     "solve_ms": 38,
     "solver_status": "feasible",
     "entries": [
-      { "tractor": "T3", "job": "J4", "kind": "work",   "start_t": 120, "end_t": 160, "route": [] },
-      { "tractor": "T3", "job": "J1", "kind": "travel", "start_t": 160, "end_t": 172,
-        "route": [[15, 3], [15, 6], [10, 6], [10, 8]] },
-      { "tractor": "T3", "job": "J1", "kind": "work",   "start_t": 172, "end_t": 232, "route": [] },
-      { "tractor": "T2", "job": "J9", "kind": "travel", "start_t": 141.5, "end_t": 149,
-        "route": [[1, 6], [3, 6]] },
-      { "tractor": "T2", "job": "J9", "kind": "work",   "start_t": 149, "end_t": 194, "route": [] }
+      { "tractor": "T3", "job": "J4", "kind": "work",   "start_t": 141.5, "end_t": 160, "route": [] },
+      { "tractor": "T3", "job": "J1", "kind": "travel", "start_t": 160, "end_t": 180,
+        "route": [[15, 3], [15, 4], [15, 5], [15, 6], [14, 6], [13, 6], [12, 6], [11, 6], [10, 6], [10, 7], [10, 8]] },
+      { "tractor": "T3", "job": "J1", "kind": "work",   "start_t": 180, "end_t": 240, "route": [] },
+      { "tractor": "T2", "job": "J9", "kind": "travel", "start_t": 141.5, "end_t": 144.833,
+        "route": [[1, 6], [2, 6], [3, 6]] },
+      { "tractor": "T2", "job": "J9", "kind": "work",   "start_t": 144.833, "end_t": 189.833, "route": [] }
     ],
     "diff": {
       "moved":   [ { "job": "J1", "from": "T1", "to": "T3" } ],
@@ -32,9 +32,8 @@
   "facts": {
     "event": { "type": "breakdown", "tractor": "T1" },
     "moved": [ { "job": "J1", "from": "T1", "to": "T3", "progress_kept": 0.6 } ],
-    "deadlines_missed": [],
-    "travel_delta_min": 12,
-    "idle_delta_min": -5
+    "newly_assigned": [ { "job": "J9", "to": "T2" } ],
+    "deadlines_missed": []
   },
 
   "validation": {

@@ -1,5 +1,5 @@
 {
-  "_comment": "DRAFT for Anay + Diya to agree on. Built by Anay's state store, passed to brain.plan(). Positions are grid cells (same grid as scenario.json); times are sim minutes from 6:00 AM. Example moment: T1 broke down at t=141.5, 60% through spraying Block E.",
+  "_comment": "DRAFT for Anay + Diya to agree on. Built by Anay's state store, passed to brain.plan(). Positions are grid cells (same grid as scenario.json); times are sim minutes from 6:00 AM. Example moment: T1 broke down at t=141.5, 60% through spraying Block E. Tractors that need routing sit on integer road cells; a tractor mid-cell or in a field is reported by MockGateway at the next road cell it reaches, with available_from_t set to when it gets there. frozen travel entries carry remaining_route. previous_plan is the last applied plan, so the brain can state what moved and from whom. refuel and weather are off until their inputs are agreed (see backend/INTEGRATION_NOTES.md).",
 
   "state_version": 42,
   "map_version": 3,
@@ -12,7 +12,7 @@
     "roads": { "rows": [0, 6, 13], "cols": [0, 5, 10, 15] },
     "blocked_cells": [[7, 6]],
     "depot": { "x": 1, "y": 6 },
-    "entrances": { "A": [[3, 6]], "C": [[15, 4]], "E": [[10, 8]] },
+    "entrances": { "A": [[3, 6]], "C": [[15, 3]], "E": [[10, 8]] },
     "cell_m": 40
   },
 
@@ -103,12 +103,20 @@
   ],
 
   "frozen": [
-    { "tractor": "T3", "job": "J4", "kind": "work", "start_t": 120, "end_t": 160 }
+    { "tractor": "T3", "job": "J4", "kind": "work", "start_t": 141.5, "end_t": 160, "remaining_route": null }
   ],
+
+  "previous_plan": {
+    "version": 6,
+    "entries": [
+      { "tractor": "T1", "job": "J1", "kind": "work", "start_t": 51.5, "end_t": 201.5, "route": [] },
+      { "tractor": "T3", "job": "J4", "kind": "work", "start_t": 120, "end_t": 160, "route": [] }
+    ]
+  },
 
   "constraints": {
     "fuel_reserve_pct": 10,
-    "refuel": true,
+    "refuel": false,
     "weather": false
   }
 }
