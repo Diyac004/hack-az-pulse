@@ -14,9 +14,11 @@ Source-of-truth docs (read the relevant one before coding):
 ## Layout
 
 - `dashboard/`: Vite + vanilla JS + three@0.128.0. `src/data/` (data layer), `src/ui/`, `src/scene/`.
-- `mock-backend/`: simulated backend; wraps the dashboard's in-browser simulation behind the REST/WS contract (`:8000`).
-- `agopenweb-bridge/`: real headless AgOpenWeb containers served through the same contract (`:8040`). Protocol notes in its README.
-- `backend/`: the real FastAPI backend and brain (Anay/Diya); not run by the dashboard yet.
+- Three backends, three roles (keep them separate):
+  - `backend/` (`:8000`): **the scored coordinator demo.** Anay's FastAPI backend + Diya's Python scheduler/validator (`app/brain`), executing on MockGateway (simulated tractors). Models deadlines, fuel, implements, safety, progress-preserving breakdown recovery. Weather, mechanic, Why and cockpit are 501 there.
+  - `mock-backend/` (`:8000`): offline backup. Wraps the dashboard's in-browser simulation behind the REST/WS contract. Not our Python scheduler. Same port as `backend/`, run one at a time.
+  - `agopenweb-bridge/` (`:8040`): real headless AgOpenWeb containers through the same contract. **Bypasses the Python scheduler**; its travel/idle/violation zeros are placeholders, not measured results. Use only for the "real AgOpenWeb tractors" moment. Protocol notes in its README.
+- Wording: the source badge says which backend is **connected**; only a tractor whose card says "AgOpenWeb ... heartbeat" is a **real AgOpenWeb** tractor. Never conflate them.
 - `contract/examples/`: one JSON per REST response and WS message.
 - `textures/`: tractor, house and orchard SVG concepts (`node textures/_build/build.mjs` regenerates). `reference/`: `ui-mock.html`, the visual reference. `tools/fetch-basemap.mjs`: satellite basemap fetch script. `sketch/`: throwaway first sketch.
 
@@ -28,6 +30,12 @@ Source-of-truth docs (read the relevant one before coding):
 node dashboard/src/data/selftest.mjs
 node dashboard/src/data/mockControls.test.mjs
 
+# real backend, scored demo (from repo root; Python 3.11+; .venv/Scripts/python on Windows)
+python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt   # once
+cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000   # starts paused, plan v0; nothing moves until POST /api/run
+PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests/brain -v    # also tests/platform, tests/integration
+# dashboard: ?source=live&api=http://localhost:8000
+
 # simulated backend (cd mock-backend)
 npm install && npm start          # :8000 (PORT=, PACE=, QUIET=1); npm run smoke in a second terminal
 
@@ -38,7 +46,7 @@ npm test                          # decoder tests, no Docker
 MAX_TRACTORS=3 REAL_SLOTS=3 node agopenweb-bridge/server.mjs   # full mode; REAL_SLOTS=1 = hot-seat
 ```
 
-URL params: `?source=mock|live`, `&api=http://localhost:8000` (mock-backend) or `:8040` (bridge), `?pace=` (farm min per real second, default 1.2), `?view=map|3d`, `?debug=perf`.
+URL params: `?source=mock|live`, `&api=http://localhost:8000` (FastAPI backend, or mock-backend instead) or `:8040` (bridge), `?pace=` (farm min per real second, default 1.2), `?view=map|3d`, `?debug=perf`.
 
 **Run node servers by path** (`node agopenweb-bridge/server.mjs`) and **never `pkill` by name** (`pkill -f "node server.mjs"` kills other agents' servers). Other agents edit code concurrently: stay within your assigned files.
 
@@ -54,8 +62,9 @@ Dashboard --REST /api/*, WS /ws--> backend (FastAPI | mock-backend | agopenweb-b
 ```
 
 - The dashboard never talks to AgOpenWeb; only a backend gateway does (`TractorGateway`: `AgOpenWebGateway`, `MockGateway`).
-- **Brain = algorithm, not an LLM**: Fleet planner (greedy, then OR-Tools), Navigation (A*), Safety, Weather, Agronomy, Mechanic, Explain. An LLM may only reword explanations. The dashboard's planner today is the simulated version; `backend/app/brain` connects when the API is up.
+- **Brain = algorithm, not an LLM**: Fleet planner (greedy, then OR-Tools), Navigation (A*), Safety, Weather, Agronomy, Mechanic, Explain. An LLM may only reword explanations. The planner is `backend/app/brain` on the FastAPI backend; `?source=mock` and `mock-backend` use the simulated version.
 - Rolling re-plan on any event: freeze done and in-progress work, re-solve the rest, Safety Agent, apply, log, explain. Baseline is an FCFS dispatcher on the same scenario and events.
+- Deadlines are a modeled hard constraint (validator rule "Deadline missed"). `violations` counts broken constraints in applied/executed plans; the dashboard also shows "Finished late" separately so lateness is never hidden.
 - Hackathon fleet cap: 5 tractors (the scale-to-50 work is cut).
 
 ### Invariants (ARCHITECTURE.md §8)

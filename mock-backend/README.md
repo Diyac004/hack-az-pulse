@@ -1,6 +1,6 @@
 # mock-backend
 
-A simulated backend for the dashboard's **live mode**. Use it until the real FastAPI backend exists. It wraps the in-browser simulation (`dashboard/src/data/mockSource.js`, imported directly, not copied) behind the ARCHITECTURE.md contract: REST in §5 under `/api`, the WebSocket in §6 at `/ws`, and the Operations amendment in §13. Live mode therefore behaves the same as `?source=mock`, but over real HTTP and WS.
+A simulated backend for the dashboard's **live mode**. **This is the offline backup, not the scored coordinator demo.** The scored demo is Anay's FastAPI backend (`backend/`, `cd backend && ../.venv/bin/python -m uvicorn app.main:app --port 8000`; see `backend/README.md`), which runs Diya's Python scheduler. This mock uses the dashboard's simulated planner, so its metrics are simulated. Both listen on `:8000`: run one at a time. It is also separate from `agopenweb-bridge/` (`:8040`). It wraps the in-browser simulation (`dashboard/src/data/mockSource.js`, imported directly, not copied) behind the ARCHITECTURE.md contract: REST in §5 under `/api`, the WebSocket in §6 at `/ws`, and the Operations amendment in §13. Live mode therefore behaves the same as `?source=mock`, but over real HTTP and WS.
 
 ## Run
 

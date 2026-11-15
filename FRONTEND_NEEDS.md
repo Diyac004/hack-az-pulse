@@ -54,7 +54,16 @@ Observed against real AgOpenWeb (commit `19c15c1`). Full detail, command table a
 - **U-turn radius.** Defaults (8 m) fail with "No U-turn fits inside the boundary". We set `config.set uturn.radius:3` and `uturn.distanceFromBoundary:0.5` for a 6 m implement.
 - Coverage: cell `(x,y)`, y grows north, 0.1 m cells, `packed = alpha<<24|R<<16|G<<8|B`, cells re-sent with rising alpha (this answers Anay item 4 above for the AgOpenWeb source).
 
-## How to test against our simulated backend
+## How to run the real backend (scored coordinator demo)
+
+```sh
+python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt   # once, repo root (Windows: .venv/Scripts/python)
+cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:5173/?source=live&api=http://localhost:8000`. It starts paused at plan version 0; `POST /api/run` starts the day. This is Anay's backend with Diya's scheduler; the mock-backend below is the offline backup and the AgOpenWeb bridge (`:8040`) is a separate real-tractor demo that bypasses the scheduler (its travel/idle/violation zeros are placeholders). Deadlines are a modeled constraint (validator rule "Deadline missed"); "connected backend" (badge) and "real AgOpenWeb tractor" (per-tractor chip) are different things.
+
+## How to test against our simulated backend (offline backup)
 
 ```sh
 cd ~/hack-az-pulse/mock-backend && npm install && npm start     # http://localhost:8000

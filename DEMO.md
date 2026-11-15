@@ -4,24 +4,35 @@ Rubric rows: **Constraint** (4), **Completed work** (4), **Efficiency** (4), **A
 
 ## 1. Pre-flight checklist
 
-Pick the data source in this order. Say honestly which one you are on.
+Pick the data source in this order. Say honestly which one you are on. Three backends exist and they are separate: only the first is the scored coordinator demo.
 
-**Primary: real AgOpenWeb bridge, full mode** (one container per tractor, about 120-140 MB RAM and 7-10% of a core each; 3 tractors is about 0.4 GB).
-- [ ] Docker Desktop is running.
-- [ ] First time only, build the image and prove one container works: `cd ~/hack-az-pulse/agopenweb-bridge && npm install && ./run-agopenweb.sh && ./run-agopenweb.sh stop`
-- [ ] Start the bridge (one line, from the repo root, **by path**): `cd ~/hack-az-pulse && MAX_TRACTORS=3 REAL_SLOTS=3 node agopenweb-bridge/server.mjs`
+Two labels are easy to mix up:
+- **Connected backend** = which server the dashboard is talking to. The source badge shows it: **LIVE** (a backend over REST and `/ws`) or **MOCK** (in-browser, no server). It says nothing about whether any tractor is real.
+- **Real AgOpenWeb tractors** = a per-tractor fact. A tractor is real only if its readout card says "AgOpenWeb ws://... · heartbeat" (a container is running for it). "Simulated" means not real. Only the bridge (below) can show real tractors; the FastAPI backend, the mock-backend and `?source=mock` never do.
+
+**Primary: Anay's FastAPI backend (the scored coordinator demo)**: Diya's Python scheduler/validator plans, MockGateway executes on simulated tractors. Deadlines, fuel, implements and safety are checked on every plan; breakdown recovery keeps progress. No Docker.
+- [ ] First time only, from the repo root: `python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt` (Windows: `.venv/Scripts/python`). Python 3.11+.
+- [ ] Start it (fresh each time, it loads the scenario paused at plan version 0): `cd ~/hack-az-pulse/backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000` (Windows: `../.venv/Scripts/python`). Check `http://localhost:8000/docs` opens.
 - [ ] Dashboard **production build** so it never hot-reloads: `cd ~/hack-az-pulse/dashboard && npx vite build && npx vite preview --port 5173` (dev server is for rehearsal only: `npx vite --port 5173`).
-- [ ] Open in a fresh tab: `http://localhost:5173/?source=live&api=http://localhost:8040`. Tap a tractor: the readout card must say "AgOpenWeb ws://... · heartbeat". If it says "Simulated", you are not on real tractors.
-- [ ] Hot-seat fallback if the laptop is struggling: `node agopenweb-bridge/server.mjs` (`REAL_SLOTS=1`); a tractor becomes a real container when you take manual control (0.9-1.6 s).
-- [ ] The bridge plans one job per tractor and has no weather, mechanic or "Why". Use it for the AgOpenWeb moment (section 2, row 0:55), not the full planning story.
+- [ ] Open in a fresh tab: `http://localhost:5173/?source=live&api=http://localhost:8000` (badge **LIVE**). Do not use `?pace=` here: the real backend's clock is driven by `POST /api/clock`, not by the dashboard.
+- [ ] Cold-start flow (tested, see "Cold-start test" below): fresh backend, open the dashboard (paused, no plan yet), **Start run** (the dashboard's call to `POST /api/run`; if your build has no such button, run `curl -s -XPOST localhost:8000/api/run -H 'Content-Type: application/json' -d '{"mode":"ours"}'`) so the plan appears (plan v1), **Pause** then **Play** (time holds while paused), submit jobs, **Break down...**. Nothing moves until the run is started. To rerun the demo, restart the backend or start the run again (`POST /api/run` resets the day).
+- [ ] Not built yet on this backend (501): weather, mechanic booking, "Why", the cockpit endpoints. Skip those rows in section 2 when on it (see "Which rows work where").
 
-**Backup: simulated backend** (full planner, weather, breakdown, mechanic, Why; no real tractors, no cockpit endpoints).
-- [ ] `cd ~/hack-az-pulse/mock-backend && npm install && npm start` (port 8000; `PACE=` sets the pace).
-- [ ] Tab: `http://localhost:5173/?source=live&api=http://localhost:8000&pace=6` (badge **LIVE**). Default pace is 1.2 farm min per real second (10-minute day); `?pace=6` gives about 2 minutes.
+**Backup: mock-backend (offline, simulated)**: the dashboard's in-browser simulation behind REST/WS. Full planner story (weather, breakdown, mechanic, Why) but **not** Diya's Python scheduler, so its numbers are simulated.
+- [ ] `cd ~/hack-az-pulse/mock-backend && npm install && npm start` (port 8000, so stop the FastAPI backend first; `PACE=` sets the pace).
+- [ ] Tab: `http://localhost:5173/?source=live&api=http://localhost:8000&pace=6` (badge **LIVE**, tractors **Simulated**). Default pace is 1.2 farm min per real second (10-minute day); `?pace=6` gives about 2 minutes.
 - [ ] Reload that tab right before you start: `POST /api/run` resets the day, and the clock starts on the first connection.
 
 **Last resort: in-browser mock.**
 - [ ] Tab: `http://localhost:5173/?source=mock` (badge **MOCK**). Nothing is real here. Say so. Optional `?view=map|3d`, `?debug=perf`.
+
+**Real AgOpenWeb tractors (bridge demo, bypasses the Python scheduler; its travel/idle/violation numbers are placeholders, not measured)**. This is a separate beat, not the scored coordinator. The bridge plans one job per tractor with its own simple logic and has no weather, mechanic or "Why". Its scorecard travel, idle and violation zeros are placeholders, not coordinator results: never quote them. One container per tractor, about 120-140 MB RAM and 7-10% of a core each; 3 tractors is about 0.4 GB.
+- [ ] Docker Desktop is running.
+- [ ] First time only, build the image and prove one container works: `cd ~/hack-az-pulse/agopenweb-bridge && npm install && ./run-agopenweb.sh && ./run-agopenweb.sh stop`
+- [ ] Start the bridge (one line, from the repo root, **by path**; port 8040 so it can run beside the FastAPI backend): `cd ~/hack-az-pulse && MAX_TRACTORS=3 REAL_SLOTS=3 node agopenweb-bridge/server.mjs`
+- [ ] Separate tab: `http://localhost:5173/?source=live&api=http://localhost:8040`. Tap a tractor: the readout card must say "AgOpenWeb ws://... · heartbeat". If it says "Simulated", that tractor is not real.
+- [ ] Hot-seat fallback if the laptop is struggling: `node agopenweb-bridge/server.mjs` (`REAL_SLOTS=1`); a tractor becomes a real container when you take manual control (0.9-1.6 s).
+- [ ] Use it only for the AgOpenWeb moment (section 2). Drop it if Docker misbehaves.
 
 **Room**
 - [ ] Fullscreen browser, 1080p or projector, zoom 100%, **Effects: on**. Other apps closed, Do Not Disturb, charger in.
@@ -34,7 +45,7 @@ Pick the data source in this order. Say honestly which one you are on.
 |---|---|---|---|---|
 | 0:00 | Nothing. Dashboard loaded, paused. | Farm in 3D, Dynamic Island, fleet chips, timeline dock with pills colored red/orange/grey by priority. | "Today a farm operator coordinates autonomous tractors by hand. This is a citrus farm in Mesa, Arizona (East Valley): 3 tractors, 8 orchard blocks (the fleet is capped at 5 for this demo)." | Framing |
 | 0:10 | Point at the plan badge and the scorecard. | Plan badge reads "Plan v<N> · Feasible" (N is the current plan version), scorecard "Ours vs first come, first served", violations counter at 0. | "Every job is assigned. Safety checks every plan: constraint violations, zero." | Constraint |
-| 0:20 | **Play** | Tractors drive, pills advance, activity feed ticks. | "Now the day runs." (Only say "real AgOpenWeb" if the card shows the heartbeat line; see 0:55.) | Completed work |
+| 0:20 | **Play** | Tractors drive, pills advance, activity feed ticks. | "Now the day runs." (Never say "real AgOpenWeb tractors" on the FastAPI, mock-backend or mock tab: they are simulated. See the AgOpenWeb moment.) | Completed work |
 | 0:30 | **Break down...** then pick Tractor 1 | Tractor 1 stops, timeline reshuffles, explanation card appears, mechanic sheet pops up. | Read the explanation aloud. "Progress is kept. Nothing lost, nothing duplicated." | Adaptation + Explanations |
 | 0:45 | **Approve and book** in the mechanic sheet | Van drives out. Booking does not return the tractor; its work comes back only after **Mark repaired** on the chip. The Unassigned tray shows only if no compatible working tractor exists (e.g. both sprayers down). | "The operator approves one thing. The AI already re-planned around it." | Tiebreaker |
 | 0:55 | **3D / Map** toggle to **Map** | Overhead aerial; Tractor 1 sits still with its coverage ending mid-block, backup tractor paints on from exactly that point. | "Let's check this is real. The backup picks up from exactly where the broken one stopped." Flip back to 3D. | Adaptation |
@@ -44,13 +55,23 @@ Pick the data source in this order. Say honestly which one you are on.
 | 1:40 | **Skip to sunset** | Fast-forward to **Day complete** keynote scorecard. | "More jobs done, less travel, less idle than first come, first served. Violations: zero." | Completed work + Efficiency + Constraint |
 | 1:55 | Hold on scorecard. | | "The operator didn't coordinate anything. They read a few explanations and approved." | Tiebreaker |
 
+### Which rows work where
+
+- **FastAPI backend (primary):** 0:00 to 0:45 (plan, Play, breakdown with explanation), Skip to sunset scorecard (ours vs first come, first served, both measured by the backend). Weather (wind gust), mechanic booking and **Why** return 501 or are not modeled there: skip 1:10 and 1:30 and the mechanic sheet at 0:45 unless you have confirmed they work; if you need them, switch to the mock-backend and say so.
+- **mock-backend (backup):** every row, all simulated.
+- **Bridge:** only the AgOpenWeb moment.
+
+### Cold-start test (what was checked, 2:00 script on the FastAPI backend)
+
+Fresh backend from a clean checkout of `origin/anay` (new venv, `pip install -r backend/requirements.txt`), driven with curl only: initial state is paused, t=0, plan v0, 12 jobs pending. `POST /api/run {"mode":"ours"}` returns an Operation (202) and the plan appears (plan v1, 23 entries, jobs move to assigned/traveling). `POST /api/clock {"speed":30}` makes time run (t 0.8 to 86 in 3 s). `{"playing":false}` freezes t exactly; `{"playing":true}` resumes. `POST /api/jobs` (mow E, deadline 600) creates J13 and a re-plan (plan v3). `POST /api/events {"type":"breakdown","tractor":"T2"}` re-plans to plan v4, J12 and J13 move to T3 with J13 keeping 41% progress, violations 0. Note the scenario also scripts a T1 breakdown at t=50, so with T1 and T2 both down only T3 keeps working and some jobs end `pending`. Not tested in a browser.
+
 ### The real AgOpenWeb moment (30-40 s, on the bridge tab; drop it if Docker misbehaves)
 
-Run it as its own beat, either right after 0:20 or as the 0:55 step when the bridge is the primary source. The bridge has no breakdown flow, so on it skip the 0:30-0:45 rows and use this instead.
+Run it as its own beat on the **separate bridge tab** (port 8040), after the scored run on the FastAPI backend, not mixed into it. The bridge bypasses our Python scheduler and has no breakdown flow, so do not show its scorecard or quote its travel, idle or violation numbers (placeholders).
 
 | Step | Divi clicks | On screen | SAY |
 |---|---|---|---|
-| 1 | Tap a tractor to open its readout card. | Card shows "AgOpenWeb ws://... · heartbeat" (on the simulated backend it says "Simulated"). | "This is a real AgOpenWeb instance in a container. Our side sends a heartbeat; if we stop, it stops the tractor itself." |
+| 1 | Tap a tractor to open its readout card. | Card shows "AgOpenWeb ws://... · heartbeat" (on any non-bridge backend it says "Simulated"). | "This is a real AgOpenWeb instance in a container. Our side sends a heartbeat; if we stop, it stops the tractor itself." |
 | 2 | Card, **Controls**. In the cockpit, **Take manual control**. | Orange MANUAL badge, hatched lane on the timeline. | "The operator takes over. The AI plans around it." |
 | 3 | **Guidance** tab, **New AB line**, tap A then B on the map. | Preview shows jobs moved and deadlines affected; **Apply**. | "Anything that re-plans shows its impact first." |
 | 4 | Watch the tractor. | Autosteer follows the line (cross-track error stays under 2 cm on straights); coverage paints. | "That path is AgOpenWeb's autosteer, not our animation." |
@@ -83,23 +104,26 @@ Other controls: **3D | Map** toggle, **Wind gust** / **Calm the wind**, Pause/Pl
 | Question | Answer |
 |---|---|
 | Is it really AI? | The brain is an algorithm, not an LLM: Weather, Agronomy, Fleet (optimizer: greedy, OR-Tools later), Navigation (A* on the road grid), Safety and Mechanic agents, plus explanation generation. Plans are checked against hard constraints, so they are safe and repeatable. An LLM is optional and may only reword explanation facts, never choose or change a plan. |
-| Are the tractors real? | On the bridge tab, yes: each is a real headless AgOpenWeb container (AgOpenWeb is the .NET rewrite of AgOpenGPS) doing real autosteer, U-turns and section control in its simulator mode. They are not physical machines. The readout card says "AgOpenWeb ws://... · heartbeat" on real ones and "Simulated" otherwise. On the simulated backend or `?source=mock`, nothing is real: say so. |
+| Are the tractors real? | Not in the main demo: on the FastAPI backend they are simulated (MockGateway). Only on the separate bridge tab are they real headless AgOpenWeb containers (AgOpenWeb is the .NET rewrite of AgOpenGPS) doing real autosteer, U-turns and section control in its simulator mode; not physical machines. The readout card says "AgOpenWeb ws://... · heartbeat" on real ones and "Simulated" otherwise. A LIVE badge only means a backend is connected, not that tractors are real. |
+| Does the AgOpenWeb demo run your scheduler? | No. The bridge bypasses our Python scheduler; its travel, idle and violation numbers are placeholders, not measured results. The scored coordinator numbers come from the FastAPI backend. Wiring AgOpenWeb under the real scheduler is the `AgOpenWebGateway` work, not done. |
 | What does AgOpenWeb do vs your AI? | AgOpenWeb drives: pose, steering along the AB line, U-turns, sections. Our agents decide: who does which job, when, around weather and breakdowns, and why. A deadman heartbeat drops autosteer about 1.6 s after our side goes quiet. |
 | How many tractors? | 5 in this demo (the cap we set for the hackathon). The design scales by running one container per tractor (about 130 MB RAM each), so the limit is compute, not the plan logic. We did not demo 50. |
-| What's the AI? | Algorithmic agents, not an LLM: Fleet planner, Navigation (A*), Safety, Weather, Agronomy, Mechanic, and the Explanations/Why generator. Every plan passes hard-constraint checks. An LLM may only reword explanation text. Honest note: the dashboard's planner today is our simulated version; the real planner (`backend/app/brain`) connects when the API is up. |
+| What's the AI? | Algorithmic agents, not an LLM: Fleet planner, Navigation (A*), Safety, Weather, Agronomy, Mechanic, and the Explanations/Why generator. Every plan passes hard-constraint checks. An LLM may only reword explanation text. On the primary demo the plans come from the real Python planner (`backend/app/brain`) behind the FastAPI backend; on the mock-backend and `?source=mock` the planner is our simulated version. |
 | How is the baseline computed? | First come, first served on the same scenario and the same events, same tractors, logged in `event_log_baseline.jsonl` next to ours. |
 | What happens on breakdown? | Stop immediately, keep finished and partial progress, replan unfinished work, explain, offer a mechanic for approval. Repair return is explicit ("Mark repaired"). |
 | Can the operator override? | Yes: approve or decline, change priority, take manual control in the cockpit (tabs Drive / Guidance / Implement / Vehicle / Fleet / Advanced), hand back to the AI. Re-plans show a preview before Apply. |
+| Do you model missed deadlines? | Yes. A deadline is a hard constraint in the planner: the validator rejects a plan whose job ends after its deadline ("Deadline missed"). The scorecard also shows "Finished late" on its own row so a late finish is never hidden behind "0 violations"; violations count broken constraints in applied or executed plans (deadlines, implements, fuel, safety). |
 | Why does "Feasible" show after sunset? | Plans past 6 PM are valid but overtime. The Plan badge shows Overtime or N late chips and the timeline marks overflow past 6 PM; we are asking for an explicit backend flag (FRONTEND_NEEDS.md). |
-| What if the backend dies? | Dashboard keeps the last state and shows reconnecting; we switch to `?source=mock` (below). |
+| What if the backend dies? | Dashboard keeps the last state and shows reconnecting; we restart the backend or switch to the mock-backend, then `?source=mock` (section 5). |
 
 ## 5. Failure plan
 
 | Symptom | Action |
 |---|---|
-| Bridge or Docker misbehaves | Stop the bridge (Ctrl-C removes its containers), start the mock-backend tab (`:8000`) and tell the story without the AgOpenWeb step. Skip the real moment rather than fumble it. |
-| Backend down or badge not LIVE | Switch to the `?source=mock` tab. Say: "We're running the in-browser simulation; same dashboard, same logic." Don't claim live. |
-| Mock also broken | Play the recorded backup video, narrate over it. |
+| Bridge or Docker misbehaves | Stop the bridge (Ctrl-C removes its containers) and tell the story without the AgOpenWeb step. The scored demo on the FastAPI backend does not depend on it. Skip the real moment rather than fumble it. |
+| FastAPI backend fails to start or crashes | Stop it, start the mock-backend (`:8000`, offline backup) and say it is the simulated backend. If that also fails, `?source=mock`. |
+| Backend down or badge not LIVE | Restart the backend; if it does not come back, switch to the `?source=mock` tab. Say: "We're running the in-browser simulation; same dashboard, same logic." Don't claim live. |
+| In-browser mock also broken | Play the recorded backup video, narrate over it. |
 | WebGL slow, frames dropping | Click **Effects** to turn it off, or use **Map** view (`?view=map`). |
 | Demo state is messy | Reload the tab (live resets the day) and restart the script; skip to section 3's 30-second version if time is short. |
 | Pace wrong | Reload with `?pace=6`. |
