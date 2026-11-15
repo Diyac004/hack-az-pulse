@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvest Fleet AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Harvest Fleet AI</h1><p>drag to orbit · tap a timeline pill to ask why</p></header>
+  <div class="layout">
+    <div>
+      <div id="stage">
+        <div id="island"><span id="idot"></span><span id="itxt">Connecting…</span></div>
+        <div id="srcbadge" class="gl"></div>
+        <div id="chips"></div>
+        <div id="dock" class="gl">
+          <div id="axis"></div>
+          <div id="lanescroll"><div id="lanes"><div id="lanewrap"></div></div></div>
+        </div>
+        <div id="mech" class="sheet gl"></div>
+        <div id="why" class="sheet gl"></div>
+        <div id="addsheet" class="sheet gl"></div>
+        <div id="key" class="gl"></div>
+        <div id="toast"></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="ctl">
+        <button id="bPlay">Pause</button>
+        <div class="popwrap"><button id="bBreak" class="red">Break down…</button><div id="breakpick" class="pop gl"></div></div>
+        <button id="bBlock">Block a road</button>
+        <button id="bHeat">Heat alert</button>
+        <button id="bFast">Skip to sunset</button>
+        <button id="bFx">Effects: on</button>
+        <button id="bAdd" class="blue">Add tractor</button>
+        <button id="bCam">Reset view</button>
+      </div>
+      <div class="card"><p class="lbl">Latest explanation</p><p id="exp"></p></div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><p class="lbl">Ours vs first come, first served</p><span class="ok" id="viol">0 violations</span></div>
+        <div id="score"></div>
+        <p id="basesrc" class="tiny"></p>
+      </div>
+      <div class="card"><p class="lbl" style="margin-bottom:8px">Activity</p><div id="feed"></div></div>
+      <p class="hint">Mechanic listings are sample data. Nothing is booked for real.</p>
+    </div>
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

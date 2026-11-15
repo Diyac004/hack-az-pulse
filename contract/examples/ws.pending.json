@@ -1,0 +1,47 @@
+{
+  "type": "pending",
+  "t": 134.2,
+  "seq": 5812,
+  "data": {
+    "pending": [
+      {
+        "id": "P3",
+        "kind": "approval",
+        "title": "Plan misses a deadline",
+        "text": "This plan finishes Mow F 20 min after its 3 PM deadline. Approve or override?",
+        "plan_version": 8,
+        "tractor": null,
+        "issue": null,
+        "options": []
+      },
+      {
+        "id": "P4",
+        "kind": "mechanic",
+        "title": "Book a mechanic for Tractor 1?",
+        "text": "Tractor 1 is down with a hydraulic leak.",
+        "plan_version": null,
+        "tractor": "T1",
+        "issue": "hydraulic leak",
+        "options": [
+          {
+            "id": "M1",
+            "name": "Example Mobile Diesel",
+            "source": "Google",
+            "distance_mi": 12.4,
+            "rating": 4.8,
+            "reviews": 132,
+            "mobile": true,
+            "ag_equipment": true,
+            "eta_min": 55,
+            "est_cost": 420,
+            "repair_min_estimate": 90,
+            "url": null,
+            "score": 0.91,
+            "recommended": true,
+            "reason": "Only mobile ag specialist arriving within 1 hour"
+          }
+        ]
+      }
+    ]
+  }
+}

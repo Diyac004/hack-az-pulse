@@ -1,0 +1,60 @@
+{
+  "name": "queen_creek_citrus_day1",
+  "grid": {
+    "width": 20,
+    "height": 14
+  },
+  "depot": {
+    "x": 1,
+    "y": 6
+  },
+  "roads": {
+    "rows": [
+      0,
+      6,
+      13
+    ],
+    "cols": [
+      0,
+      5,
+      10,
+      15
+    ]
+  },
+  "blocks": [
+    {
+      "id": "A",
+      "x": 1,
+      "y": 2,
+      "w": 4,
+      "h": 3,
+      "variety": "Navel",
+      "ripeness": 0.4
+    }
+  ],
+  "blocked_cells": [
+    [
+      7,
+      6
+    ]
+  ],
+  "sensitive": [
+    {
+      "block": "E",
+      "what": "canal",
+      "dir_deg": 90
+    }
+  ],
+  "basemap": {
+    "image_url": "/static/naip.png",
+    "west": -111.62,
+    "east": -111.605,
+    "south": 33.2,
+    "north": 33.212
+  },
+  "geo": {
+    "origin_lat": 33.212,
+    "origin_lon": -111.62,
+    "cell_m": 40
+  }
+}

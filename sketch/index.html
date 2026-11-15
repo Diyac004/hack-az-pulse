@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Harvest Fleet AI - sketch</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{height:100vh;background:#0b0f14;color:#e6edf3;font:13px -apple-system,Segoe UI,sans-serif;display:grid;grid-template-rows:44px 1fr 240px;grid-template-columns:1fr 380px;gap:8px;padding:8px;overflow:hidden}
+.glass{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;min-height:0}
+#top{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 12px}
+#top h1{font-size:16px}#clock{font:600 18px ui-monospace,monospace;color:#64d2ff}
+.badge{background:#ff9f0a;color:#000;font-weight:700;border-radius:5px;padding:2px 7px;font-size:11px}
+button{background:rgba(255,255,255,.1);color:#e6edf3;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.2)}
+#mapw{padding:0;position:relative}#map{width:100%;height:100%;display:block}
+#side{grid-row:2/3;grid-column:2;display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0}
+.card{display:flex;align-items:center;gap:8px;padding:6px 8px}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.card .mid{flex:1;min-width:0}.card small{color:#8b98a5;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fuel{width:50px;height:6px;background:#333;border-radius:3px;overflow:hidden}.fuel i{display:block;height:100%;background:#30d158}
+.st{font-size:11px;padding:1px 6px;border-radius:4px;background:#333}
+.st.working{background:#1f6f3a}.st.traveling{background:#1d4f91}.st.broken{background:#b3261e}
+h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8b98a5;margin-bottom:4px}
+#expl{font-size:13px;line-height:1.4}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:right;padding:1px 4px}td:first-child,th:first-child{text-align:left}th{color:#8b98a5;font-weight:500}
+#gantt{width:100%;height:calc(100% - 4px);display:block}
+#right{display:flex;flex-direction:column;gap:6px}
+#btns{display:flex;gap:6px;flex-wrap:wrap}
+#feed{flex:1;overflow:auto;font:11px ui-monospace,monospace;color:#b6c2cf;list-style:none;padding:0}
+#feed li{padding:1px 0;border-bottom:1px solid rgba(255,255,255,.05)}#feed b{color:#64d2ff;font-weight:400}
+</style></head><body>
+<div id="top" class="glass"><h1>Harvest Fleet AI</h1><span id="clock"></span>
+<button id="play">Pause</button><span class="badge">MOCK</span><span style="color:#8b98a5">sketch / throwaway layout</span></div>
+<div id="mapw" class="glass"><canvas id="map"></canvas></div>
+<div id="side">
+ <div id="fleet" style="display:flex;flex-direction:column;gap:6px"></div>
+ <div class="glass"><h3>Latest re-plan explanation</h3><div id="expl"></div></div>
+ <div class="glass"><h3>Scorecard</h3><table id="score"></table></div>
+</div>
+<div class="glass"><canvas id="gantt"></canvas></div>
+<div class="glass" id="right"><div id="btns">
+ <button id="bBreak">Break down T1</button><button id="bBlock">Block route</button><button id="bAdd">Add tractor</button></div>
+ <h3>Activity</h3><ul id="feed"></ul></div>
+<script>
+const $=id=>document.getElementById(id);
+const SPEED=10, DAY=480, PAL=['#0A84FF','#BF5AF2','#FF9F0A','#30D158','#FF375F','#64D2FF','#FFD60A'];
+const PRI=['','#4f6d8f','#d9a21b','#e5484d'];
+const IMPL={spray:'sprayer',mow:'mower',hedge:'hedger',haul_bins:'bin_trailer'};
+// blocks A-D top row, E-H bottom row
+const blocks={};'ABCDEFGH'.split('').forEach((id,i)=>{const c=i%4,r=i>>2;blocks[id]={id,x:25+c*190,y:r?245:30,w:140,h:175,cx:95+c*190,cy:r?332:117}});
+const depot={x:330,y:430,w:100,h:35,cx:380,cy:447};
+const roads=[['R1',0,225,190,225],['R2',190,225,380,225],['R3',380,225,570,225],['R4',570,225,760,225],['R5',380,0,380,225],['R6',380,225,380,430],['R7',190,0,190,420],['R8',570,0,570,420]].map(r=>({id:r[0],x1:r[1],y1:r[2],x2:r[3],y2:r[4],blocked:false}));
+const J=(id,type,block,priority,dur,deadline_t)=>({id,type,block_id:block,implement:IMPL[type],priority,duration_min:dur,deadline_t,progress:0,status:'pending',tractor_id:null,start_t:null,end_t:null,extra:0});
+let jobs=[J('J1','spray','E',3,60,240),J('J2','mow','A',1,45,400),J('J3','hedge','C',2,40,300),J('J4','haul_bins','G',3,35,200),
+ J('J5','spray','B',2,50,330),J('J6','mow','H',1,40,450),J('J7','hedge','F',2,45,380),J('J8','haul_bins','D',3,30,260)];
+const mk=(id,color,impl)=>({id,color,implements:impl,x:depot.cx,y:depot.cy,status:'idle',fuel:1,queue:[],travel:0});
+let tractors=[mk('T1',PAL[0],['sprayer','mower']),mk('T2',PAL[1],['mower','hedger']),mk('T3',PAL[2],['sprayer','bin_trailer'])];
+let t=0,playing=true,feed=[],expl='';
+const fmt=m=>{m=Math.floor(m);let h=6+(m/60|0),mm=m%60,ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+String(mm).padStart(2,'0')+' '+ap};
+const log=s=>{feed.unshift(`<li><b>${fmt(t)}</b> ${s}</li>`);feed=feed.slice(0,40)};
+const jn=j=>({spray:'Spray',mow:'Mow',hedge:'Hedge',haul_bins:'Haul bins'}[j.type])+' '+j.block_id;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const bpt=j=>({x:blocks[j.block_id].cx,y:blocks[j.block_id].cy});
+function est(tr){let time=t,pos={x:tr.x,y:tr.y};for(const id of tr.queue){const j=jobs.find(k=>k.id===id);time+=dist(pos,bpt(j))/SPEED+j.duration_min*(1-j.progress);pos=bpt(j)}return{time,pos}}
+// greedy: each job (priority desc, deadline asc) -> compatible tractor with earliest finish (nearest block / least loaded)
+function replan(list){
+ list=[...list].sort((a,b)=>b.priority-a.priority||a.deadline_t-b.deadline_t);
+ for(const j of list){let best=null,bf=1e9,bx=0;
+  for(const tr of tractors){if(tr.status==='broken'||!tr.implements.includes(j.implement))continue;
+   const e=est(tr),tv=dist(e.pos,bpt(j))/SPEED,f=e.time+tv+j.duration_min*(1-j.progress);if(f<bf){bf=f;best=tr;bx=tv}}
+  if(best){best.queue.push(j.id);j.tractor_id=best.id;j.status='assigned';j.extra=Math.round(bx)}else{j.tractor_id=null;j.status='pending'}}
+}
+function tick(){
+ if(t>=DAY)return;t++;
+ for(const tr of tractors){
+  if(tr.status==='broken')continue;
+  const j=jobs.find(k=>k.id===tr.queue[0]);
+  if(!j){tr.status='idle';continue}
+  const p=bpt(j),d=dist(tr,p);
+  if(d>SPEED){tr.x+=(p.x-tr.x)/d*SPEED;tr.y+=(p.y-tr.y)/d*SPEED;tr.status='traveling';tr.travel++;tr.fuel-=.0015}
+  else{tr.x=p.x;tr.y=p.y;tr.status='working';tr.fuel-=.002;if(j.start_t===null)j.start_t=t;j.status='in_progress';
+   j.progress=Math.min(1,j.progress+1/j.duration_min);
+   if(j.progress>=1){j.status='done';j.end_t=t;tr.queue.shift();log(`${tr.id} finished ${jn(j)}${j.end_t<=j.deadline_t?'':' (late)'}`)}}
+ }
+ render();
+}
+function breakdown(){
+ const tr=tractors[0];if(tr.status==='broken')return;
+ const lost=tr.queue.map(id=>jobs.find(j=>j.id===id));tr.status='broken';tr.queue=[];
+ lost.forEach(j=>{j.status='pending';j.tractor_id=null;j.start_t=j.progress>0?j.start_t:null});
+ replan(lost);
+ if(!lost.length){expl=`T1 broke down at ${fmt(t)}. It had no unfinished jobs, so no re-plan was needed.`}
+ else{const j=lost[0],to=j.tractor_id;
+  expl=to?`T1 broke down at ${fmt(t)}. ${jn(j)} (${Math.round(j.progress*100)}% done) moved to ${to}: closest tractor with a ${j.implement}, +${j.extra} min travel.`
+   :`T1 broke down at ${fmt(t)}. ${jn(j)} has no compatible tractor left; flagged for the operator.`;
+  if(lost.length>1)expl+=` Also re-planned: `+lost.slice(1).map(k=>`${jn(k)} -> ${k.tractor_id||'unassigned'}`).join(', ')+'.'}
+ log(`T1 BROKE DOWN - ${lost.length} job(s) re-planned`);render();
+}
+function block(){
+ const free=roads.filter(r=>!r.blocked);if(!free.length)return;const r=free[Math.random()*free.length|0];r.blocked=true;
+ const hit=tractors.find(x=>x.status==='traveling');
+ expl=`Road segment ${r.id} blocked at ${fmt(t)}. `+(hit?`${hit.id} will detour via the next road, about +4 min (sketch: no real pathfinding).`:`No tractor is currently affected.`);
+ log(`Route ${r.id} blocked`);render();
+}
+function addTractor(){
+ const n=tractors.length+1,tr=mk('T'+n,PAL[(n-1)%PAL.length],['sprayer','mower','hedger','bin_trailer']);tractors.push(tr);
+ const open=jobs.filter(j=>j.status!=='done'&&j.progress===0&&j.start_t===null),from={};
+ open.forEach(j=>from[j.id]=j.tractor_id);tractors.forEach(x=>x.queue=x.queue.filter(id=>!open.some(j=>j.id===id)));replan(open);
+ const took=open.filter(j=>j.tractor_id===tr.id);
+ expl=`${tr.id} joined at the depot at ${fmt(t)}. `+(took.length?`It took ${took.map(j=>`${jn(j)} (from ${from[j.id]||'unassigned'})`).join(', ')} as the earliest finish.`:'No pending job finished earlier on it.');
+ log(`${tr.id} added`);render();
+}
+// ---------- rendering ----------
+const mc=$('map'),mx=mc.getContext('2d'),gc=$('gantt'),gx=gc.getContext('2d');
+function fit(c){const r=c.parentElement.getBoundingClientRect(),d=devicePixelRatio||1;c.width=(r.width-(c===gc?18:0))*d;c.height=(r.height-(c===gc?18:0))*d;c.style.width=c.width/d+'px';c.style.height=c.height/d+'px'}
+function drawMap(){
+ const W=mc.width,H=mc.height,s=Math.min(W/760,H/480);mx.setTransform(s,0,0,s,(W-760*s)/2,(H-480*s)/2);mx.clearRect(-1e3,-1e3,4e3,4e3);
+ mx.lineCap='round';
+ for(const r of roads){mx.strokeStyle=r.blocked?'#e5484d':'#2b333d';mx.lineWidth=14;mx.beginPath();mx.moveTo(r.x1,r.y1);mx.lineTo(r.x2,r.y2);mx.stroke();
+  mx.strokeStyle='rgba(255,255,255,.12)';mx.lineWidth=1;mx.setLineDash([6,6]);mx.stroke();mx.setLineDash([])}
+ mx.font='bold 30px sans-serif';mx.textAlign='center';mx.textBaseline='middle';
+ for(const b of Object.values(blocks)){const js=jobs.filter(j=>j.block_id===b.id&&j.status!=='done');
+  mx.fillStyle=js.length?'rgba(48,160,90,.25)':'rgba(48,160,90,.08)';mx.strokeStyle='rgba(48,209,88,.5)';mx.lineWidth=1.5;
+  mx.beginPath();mx.roundRect(b.x,b.y,b.w,b.h,8);mx.fill();mx.stroke();
+  mx.fillStyle='rgba(255,255,255,.25)';mx.fillText(b.id,b.cx,b.cy-8);
+  mx.font='11px sans-serif';mx.fillStyle='#cdd6df';js.forEach((j,i)=>mx.fillText(`${j.type} p${j.priority} ${Math.round(j.progress*100)}%`,b.cx,b.cy+20+i*13));mx.font='bold 30px sans-serif'}
+ mx.fillStyle='#3a4452';mx.beginPath();mx.roundRect(depot.x,depot.y,depot.w,depot.h,6);mx.fill();
+ mx.font='12px sans-serif';mx.fillStyle='#fff';mx.fillText('DEPOT',depot.cx,depot.cy);
+ tractors.forEach((tr,i)=>{const ox=(i%4-1.5)*6;mx.fillStyle=tr.status==='broken'?'#e5484d':tr.color;mx.strokeStyle='#fff';mx.lineWidth=2;
+  mx.beginPath();mx.arc(tr.x+ox,tr.y,9,0,7);mx.fill();mx.stroke();mx.fillStyle='#000';mx.font='bold 9px sans-serif';mx.fillText(tr.id.slice(1),tr.x+ox,tr.y+.5)});
+}
+function schedule(tr){ // [{job,s,e}]
+ const out=[];let time=t,pos={x:tr.x,y:tr.y};
+ jobs.filter(j=>j.tractor_id===tr.id&&j.status==='done').forEach(j=>out.push({j,s:j.start_t,e:j.end_t}));
+ for(const id of tr.queue){const j=jobs.find(k=>k.id===id),s0=time+dist(pos,bpt(j))/SPEED;
+  const s=j.start_t!==null&&j===jobs.find(k=>k.id===tr.queue[0])?j.start_t:s0;time=s0+j.duration_min*(1-j.progress);pos=bpt(j);out.push({j,s,e:time})}
+ return out}
+function drawGantt(){
+ const d=devicePixelRatio||1,W=gc.width/d,H=gc.height/d;gx.setTransform(d,0,0,d,0,0);gx.clearRect(0,0,W,H);
+ const L=44,T=18,lh=Math.min(44,(H-T)/tractors.length),sx=m=>L+m/DAY*(W-L-6);
+ gx.font='10px sans-serif';gx.textBaseline='middle';gx.textAlign='left';
+ for(let m=0;m<=DAY;m+=60){gx.fillStyle='#8b98a5';gx.fillText(fmt(m).replace(':00',''),sx(m)-10,8);gx.fillStyle='rgba(255,255,255,.08)';gx.fillRect(sx(m),T,1,H-T)}
+ tractors.forEach((tr,i)=>{const y=T+i*lh;gx.fillStyle='rgba(255,255,255,.04)';gx.fillRect(L,y+2,W-L-6,lh-4);
+  gx.fillStyle=tr.status==='broken'?'#e5484d':tr.color;gx.beginPath();gx.arc(14,y+lh/2,5,0,7);gx.fill();gx.fillStyle='#e6edf3';gx.font='11px sans-serif';gx.fillText(tr.id,24,y+lh/2);
+  for(const p of schedule(tr)){const x=sx(p.s),w=Math.max(4,sx(p.e)-x);
+   gx.globalAlpha=p.j.status==='done'?.4:1;gx.fillStyle=PRI[p.j.priority];gx.beginPath();gx.roundRect(x,y+6,w,lh-12,5);gx.fill();
+   if(p.j.progress>0&&p.j.status!=='done'){gx.fillStyle='rgba(0,0,0,.35)';gx.fillRect(x,y+6,w*p.j.progress,lh-12)}
+   gx.strokeStyle=tr.color;gx.lineWidth=1.5;gx.stroke();gx.globalAlpha=1;gx.fillStyle='#fff';gx.font='10px sans-serif';gx.fillText(jn(p.j),x+4,y+lh/2,w-6)}});
+ gx.fillStyle='#ff375f';gx.fillRect(sx(t)-1,T,2,H-T);
+}
+function render(){
+ $('clock').textContent=fmt(t);
+ $('fleet').innerHTML=tractors.map(tr=>{const j=jobs.find(k=>k.id===tr.queue[0]);
+  return `<div class="glass card"><i class="dot" style="background:${tr.status==='broken'?'#e5484d':tr.color}"></i><div class="mid"><b>${tr.id}</b> <span class="st ${tr.status}">${tr.status}</span>
+  <small>${j?jn(j)+' '+Math.round(j.progress*100)+'% ('+j.implement+')':tr.status==='broken'?'out of service':'no job'} · queue ${tr.queue.length}</small></div>
+  <div class="fuel"><i style="width:${Math.max(0,tr.fuel*100)}%"></i></div></div>`}).join('');
+ $('expl').textContent=expl;
+ const done=jobs.filter(j=>j.status==='done'),ont=done.filter(j=>j.end_t<=j.deadline_t).length,tv=tractors.reduce((a,x)=>a+x.travel,0);
+ const f=(n,k)=>Math.floor(n*k);
+ $('score').innerHTML=`<tr><th></th><th>Ours</th><th>Baseline*</th></tr><tr><td>Jobs done</td><td>${done.length}/${jobs.length}</td><td>${f(done.length,.7)}/${jobs.length}</td></tr>
+ <tr><td>On time</td><td>${ont}</td><td>${f(ont,.6)}</td></tr><tr><td>Travel min</td><td>${tv}</td><td>${Math.round(tv*1.35)}</td></tr><tr><td>Violations</td><td>0</td><td>${f(done.length,.3)}</td></tr>
+ <tr><td colspan=3 style="color:#8b98a5;font-size:10px">*mock baseline = naive dispatch</td></tr>`;
+ $('feed').innerHTML=feed.join('');
+ drawMap();drawGantt();
+}
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('bBreak').onclick=breakdown;$('bBlock').onclick=block;$('bAdd').onclick=addTractor;
+addEventListener('resize',()=>{fit(mc);fit(gc);render()});
+replan(jobs);expl='Plan v1: 8 jobs assigned to 3 tractors, highest priority first, each to the compatible tractor that finishes it earliest.';
+log('Plan v1 created: '+jobs.map(j=>j.id+'->'+j.tractor_id).join(' '));
+fit(mc);fit(gc);render();
+setInterval(()=>{if(playing)tick()},100);
+</script></body></html>

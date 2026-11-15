@@ -1,0 +1,9 @@
+{
+  "tractors": 50,
+  "jobs": 200,
+  "assigned": 196,
+  "dropped": 4,
+  "violations": 0,
+  "solve_ms": 3120,
+  "solver": "ortools"
+}

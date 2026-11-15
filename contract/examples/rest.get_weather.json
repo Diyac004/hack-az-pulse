@@ -1,0 +1,39 @@
+{
+  "current": {
+    "wind_mph": 8,
+    "wind_from_deg": 200,
+    "temp_f": 92,
+    "rain_prob": 0
+  },
+  "forecast": [
+    {
+      "t": 0,
+      "wind_mph": 2,
+      "wind_from_deg": 90,
+      "temp_f": 68,
+      "rain_prob": 0
+    }
+  ],
+  "spray_allowed_now": {
+    "A": true,
+    "B": true,
+    "E": false,
+    "H": true
+  },
+  "spray_blocked_reason": {
+    "E": "Wind blowing toward canal (sensitive area)"
+  },
+  "spray_windows": {
+    "E": [
+      [
+        60,
+        240
+      ],
+      [
+        540,
+        720
+      ]
+    ]
+  },
+  "live_conditions": null
+}

@@ -1,0 +1,275 @@
+// Pure derivations from data-layer State. No DOM, no three.js, safe to import in Node.
+import { clock, esc, tractorColor, priColor, PALETTE } from './format.js';
+
+// Fallbacks used ONLY when the scenario lacks a field (logged once by main.js).
+export const FALLBACK = {
+  grid: { width: 20, height: 14 },
+  depot: { x: 1, y: 6 },
+  roads: { rows: [0, 6, 13], cols: [0, 5, 10, 15] },
+  blocks: [
+    { id: 'A', x: 1, y: 2, w: 4, h: 3, ripeness: 0.4 }, { id: 'B', x: 6, y: 2, w: 4, h: 3, ripeness: 0.5 },
+    { id: 'C', x: 11, y: 2, w: 4, h: 3, ripeness: 0.9 }, { id: 'D', x: 16, y: 2, w: 4, h: 3, ripeness: 0.4 },
+    { id: 'E', x: 1, y: 9, w: 4, h: 3, ripeness: 0.3 }, { id: 'F', x: 6, y: 9, w: 4, h: 3, ripeness: 0.5 },
+    { id: 'G', x: 11, y: 9, w: 4, h: 3, ripeness: 0.4 }, { id: 'H', x: 16, y: 9, w: 4, h: 3, ripeness: 0.3 },
+  ],
+};
+
+export function missingScenarioFields(sc) {
+  const out = [];
+  if (!sc) return ['scenario'];
+  if (!sc.grid || !(sc.grid.width > 0) || !(sc.grid.height > 0)) out.push('grid');
+  if (!sc.depot || sc.depot.x == null) out.push('depot');
+  if (!sc.roads || !Array.isArray(sc.roads.rows) || !Array.isArray(sc.roads.cols)) out.push('roads');
+  if (!Array.isArray(sc.blocks) || !sc.blocks.length) out.push('blocks');
+  return out;
+}
+
+/** Normalized grid description from scenario (with fallbacks). */
+export function makeGrid(sc) {
+  sc = sc || {};
+  const g = (sc.grid && sc.grid.width > 0 && sc.grid.height > 0) ? sc.grid : FALLBACK.grid;
+  const w = g.width, h = g.height;
+  const roads = (sc.roads && Array.isArray(sc.roads.rows) && Array.isArray(sc.roads.cols)) ? sc.roads : FALLBACK.roads;
+  const depot = (sc.depot && sc.depot.x != null) ? sc.depot : FALLBACK.depot;
+  const blocks = (Array.isArray(sc.blocks) && sc.blocks.length ? sc.blocks : FALLBACK.blocks).map((b) => ({
+    id: String(b.id), x: +b.x || 0, y: +b.y || 0, w: +b.w || 4, h: +b.h || 3,
+    ripeness: b.ripeness == null ? 0 : +b.ripeness, variety: b.variety || null,
+  }));
+  const rows = roads.rows.slice(), cols = roads.cols.slice();
+  const ox = (w - 1) / 2, oy = (h - 1) / 2;
+  return {
+    w, h, rows, cols, depot, blocks,
+    blockById: Object.fromEntries(blocks.map((b) => [b.id, b])),
+    span: Math.max(w, h),
+    isRoad: (x, y) => cols.includes(x) || rows.includes(y),
+    /** grid (x east, y south) -> world (x, z) */
+    toWorld: (x, y) => ({ x: x - ox, z: y - oy }),
+    blockCenter: (b) => ({ x: b.x + (b.w - 1) / 2, y: b.y + (b.h - 1) / 2 }),
+  };
+}
+
+/** heading_deg (0 = north, clockwise) -> three.js rotation.y for a model whose front faces +z (south). */
+export const headingToRotY = (deg) => Math.PI - ((+deg || 0) * Math.PI) / 180;
+
+export const cellKey = (x, y) => x + ',' + y;
+
+/**
+ * Blocked road cells. Sources (all merged): scenario.blocked_cells, state.blocked_cells if the
+ * data layer keeps a live list, and block_route / unblock_route events in the log (oldest first).
+ */
+export function blockedCells(state) {
+  const set = new Map();
+  const add = (c) => { if (Array.isArray(c) && c.length >= 2) set.set(cellKey(Math.round(c[0]), Math.round(c[1])), [Math.round(c[0]), Math.round(c[1])]); };
+  const del = (c) => { if (Array.isArray(c) && c.length >= 2) set.delete(cellKey(Math.round(c[0]), Math.round(c[1]))); };
+  const sc = state && state.scenario;
+  (sc && Array.isArray(sc.blocked_cells) ? sc.blocked_cells : []).forEach(add);
+  (state && Array.isArray(state.blocked_cells) ? state.blocked_cells : []).forEach(add);
+  const log = state && Array.isArray(state.log) ? state.log : [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (!e || e.kind !== 'event') continue;
+    if (e.type === 'block_route' && Array.isArray(e.cells)) e.cells.forEach(add);
+    if (e.type === 'unblock_route' && Array.isArray(e.cells)) e.cells.forEach(del);
+  }
+  return [...set.values()];
+}
+
+export const jobsById = (state) => Object.fromEntries(((state && state.jobs) || []).map((j) => [j.id, j]));
+
+/** Timeline layout: lanes from fleet order, pills from plan work entries (done jobs keep actual times). */
+export function timelineLayout(state) {
+  const fleet = (state && state.fleet) || [];
+  const jobs = (state && state.jobs) || [];
+  const entries = (state && state.plan && Array.isArray(state.plan.entries)) ? state.plan.entries : [];
+  const lanes = fleet.map((tr, i) => ({ id: tr.id, name: tr.id, color: tractorColor(tr, i), status: tr.status }));
+  const laneIdx = Object.fromEntries(lanes.map((l, i) => [l.id, i]));
+  // Merge work entries per job: first start .. last end (handles split work entries).
+  const work = {};
+  for (const e of entries) {
+    if (!e || e.kind !== 'work' || !e.job) continue;
+    const w = work[e.job];
+    if (!w) work[e.job] = { tractor: e.tractor, start: e.start_t, end: e.end_t };
+    else { w.start = Math.min(w.start, e.start_t); w.end = Math.max(w.end, e.end_t); }
+  }
+  const pills = [], unassigned = [];
+  for (const j of jobs) {
+    if (!j || j.status === 'dropped') continue;
+    let tractor, start, end;
+    if (j.status === 'done') { tractor = j.tractor; start = j.start_t; end = j.end_t; }
+    else if (work[j.id]) { tractor = work[j.id].tractor; start = work[j.id].start; end = work[j.id].end; }
+    else { tractor = j.tractor; start = j.start_t; end = j.end_t; }
+    if (tractor == null || start == null || end == null || laneIdx[tractor] == null) {
+      if (j.status !== 'done') unassigned.push(j);
+      continue;
+    }
+    pills.push({
+      id: j.id, job: j, lane: laneIdx[tractor], tractor, start, end,
+      fill: priColor(j.priority), edge: lanes[laneIdx[tractor]].color,
+      done: j.status === 'done', progress: Math.max(0, Math.min(1, +j.progress || 0)), label: j.label || j.id,
+    });
+  }
+  return { lanes, pills, unassigned };
+}
+
+/** The travel route a tractor is currently on (or about to start), trimmed to what's ahead of its pose. */
+export function activeRoute(state, tr) {
+  if (!tr || !tr.pose || !(tr.status === 'traveling')) return null;
+  const t = state && state.clock ? state.clock.t : 0;
+  const entries = (state && state.plan && Array.isArray(state.plan.entries)) ? state.plan.entries : [];
+  let best = null;
+  for (const e of entries) {
+    if (!e || e.tractor !== tr.id || e.kind !== 'travel' || !Array.isArray(e.route) || e.route.length < 2) continue;
+    if (e.end_t < t - 1) continue;
+    if (!best || e.start_t < best.start_t) best = e;
+  }
+  if (!best) return null;
+  const r = best.route;
+  let ni = 0, nd = Infinity;
+  for (let i = 0; i < r.length; i++) {
+    const d = Math.hypot(r[i][0] - tr.pose.x, r[i][1] - tr.pose.y);
+    if (d < nd) { nd = d; ni = i; }
+  }
+  if (nd > 3) return null; // pose isn't on this route (stale entry)
+  const ahead = r.slice(ni + 1);
+  if (!ahead.length) return null;
+  return [[tr.pose.x, tr.pose.y], ...ahead];
+}
+
+/** Grid Dijkstra (roads cheap) for the client-side mechanic van animation only. */
+export function gridPath(grid, blocked, sx, sy, tx, ty) {
+  const W = grid.w, H = grid.h, clampX = (v) => Math.max(0, Math.min(W - 1, Math.round(v))), clampY = (v) => Math.max(0, Math.min(H - 1, Math.round(v)));
+  sx = clampX(sx); sy = clampY(sy); tx = clampX(tx); ty = clampY(ty);
+  const N = W * H, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), done = new Uint8Array(N), id = (x, y) => y * W + x;
+  const bl = new Set((blocked || []).map((c) => cellKey(c[0], c[1])));
+  dist[id(sx, sy)] = 0;
+  for (let it = 0; it < N; it++) {
+    let u = -1, b = Infinity;
+    for (let i = 0; i < N; i++) if (!done[i] && dist[i] < b) { b = dist[i]; u = i; }
+    if (u < 0) break;
+    done[u] = 1;
+    const ux = u % W, uy = (u / W) | 0;
+    if (ux === tx && uy === ty) break;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = ux + dx, ny = uy + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || bl.has(cellKey(nx, ny))) continue;
+      const v = id(nx, ny), c = grid.isRoad(nx, ny) ? 1 : 3.5;
+      if (dist[u] + c < dist[v]) { dist[v] = dist[u] + c; prev[v] = u; }
+    }
+  }
+  let c = id(tx, ty);
+  if (dist[c] === Infinity) return [[sx, sy], [tx, ty]];
+  const out = [];
+  while (c !== -1) { out.unshift([c % W, (c / W) | 0]); c = prev[c]; }
+  return out.length > 1 ? out : [[sx, sy], [tx, ty]];
+}
+
+/** Point at fraction f (0..1) along a polyline of [x,y]. */
+export function alongPath(path, f) {
+  if (!path || !path.length) return null;
+  if (path.length === 1) return { x: path[0][0], y: path[0][1], hd: null };
+  let L = 0; const seg = [];
+  for (let i = 1; i < path.length; i++) { const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); seg.push(d); L += d; }
+  let target = Math.max(0, Math.min(1, f)) * L;
+  for (let i = 0; i < seg.length; i++) {
+    if (target <= seg[i] || i === seg.length - 1) {
+      const a = path[i], b = path[i + 1], k = seg[i] ? Math.min(1, target / seg[i]) : 1;
+      return { x: a[0] + (b[0] - a[0]) * k, y: a[1] + (b[1] - a[1]) * k, hd: Math.atan2(b[0] - a[0], b[1] - a[1]) };
+    }
+    target -= seg[i];
+  }
+  const z = path[path.length - 1];
+  return { x: z[0], y: z[1], hd: null };
+}
+
+// ---------- text for feed / island ----------
+const tname = (state, id) => {
+  const tr = ((state && state.fleet) || []).find((x) => x.id === id);
+  return tr ? (tr.name || tr.id) : (id || 'A tractor');
+};
+const jlabel = (state, id) => {
+  const j = ((state && state.jobs) || []).find((x) => x.id === id);
+  return j ? (j.label || j.id) : (id || 'a job');
+};
+const B = (s) => '<b style="font-weight:500">' + esc(s) + '</b>';
+
+/** One activity-feed line (HTML) for an event-log entry, or null to skip. */
+export function logLine(e, state) {
+  if (!e || !e.kind) return null;
+  switch (e.kind) {
+    case 'plan': return B('Plan v' + (e.plan_version ?? '?')) + (e.assigned != null ? ': ' + e.assigned + ' jobs assigned' : '') + (e.solver ? ' (' + esc(e.solver) + ')' : '');
+    case 'replan': return B('Replan') + (e.trigger ? ' after ' + esc(String(e.trigger).replace(/_/g, ' ')) : '') + (Array.isArray(e.changes) ? ', ' + e.changes.length + ' job' + (e.changes.length === 1 ? '' : 's') + ' moved' : '') + (e.safety === 'pass' ? '. Safety check passed.' : e.safety ? '. Safety: ' + esc(e.safety) : '');
+    case 'event': {
+      const ty = e.type;
+      if (ty === 'breakdown') return B(tname(state, e.tractor) + ' broke down') + (e.issue ? ' (' + esc(e.issue) + ')' : '');
+      if (ty === 'block_route') return B('Road blocked') + (Array.isArray(e.cells) ? ' at ' + e.cells.length + ' cell' + (e.cells.length === 1 ? '' : 's') : '');
+      if (ty === 'unblock_route') return B('Road reopened');
+      if (ty === 'heat_alert') return B('Heat alert') + (e.temp_f != null ? ': ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : '');
+      if (ty === 'priority_change') return B('Priority changed') + ' on ' + esc(jlabel(state, e.job)) + (e.priority != null ? ' to P' + e.priority : '');
+      if (ty === 'tractor_repaired') return B(tname(state, e.tractor) + ' marked repaired');
+      return B('Event') + ': ' + esc(String(ty || '').replace(/_/g, ' '));
+    }
+    case 'job_started': return B(jlabel(state, e.job)) + ' started by ' + esc(tname(state, e.tractor));
+    case 'job_done': return B(jlabel(state, e.job)) + ' done by ' + esc(tname(state, e.tractor)) + (e.on_time === true ? ', on time' : e.on_time === false ? ', late' : '');
+    case 'job_dropped': return B(jlabel(state, e.job)) + ' dropped';
+    case 'operator_action': return B('Operator') + ' changed ' + esc(e.control || 'a setting') + ' on ' + esc(tname(state, e.tractor));
+    case 'tractor_added': return B(tname(state, e.tractor) + ' added') + (e.host ? ' on ' + esc(e.host) : '');
+    case 'tractor_ready': return B(tname(state, e.tractor) + ' ready');
+    case 'tractor_removed': return B((e.tractor || 'Tractor') + ' removed');
+    case 'mechanic_search': return 'Searching mechanics for ' + esc(tname(state, e.tractor));
+    case 'mechanic_booked': return B('Booked') + ' ' + esc(e.name || e.mechanic_name || e.mechanic || 'a mechanic') + (e.arrival_t != null ? ', arriving ' + clock(e.arrival_t) : '') + (e.estimated_return_t != null ? ', estimated back ' + clock(e.estimated_return_t) : '');
+    case 'tractor_repaired': return B(tname(state, e.tractor) + ' repaired');
+    case 'weather': return B('Weather') + ' update';
+    case 'safety_reject': return B('Safety') + ' rejected a candidate plan' + (e.rule ? ' (' + esc(e.rule) + ')' : '');
+    case 'violation': return '<b style="font-weight:500;color:#FF453A">Violation</b> ' + esc(e.rule || '') + (e.tractor ? ' on ' + esc(e.tractor) : '');
+    case 'agopenweb': return null;
+    default: return B(String(e.kind).replace(/_/g, ' '));
+  }
+}
+
+/** Dynamic Island moment for a log entry: { text, dot, ms } or null. */
+export function islandMoment(e, state) {
+  if (!e || !e.kind) return null;
+  const n = (id) => tname(state, id);
+  if (e.kind === 'event') {
+    if (e.type === 'breakdown') return { text: n(e.tractor) + ' down · Replanning…', dot: '#FF453A', ms: 1800 };
+    if (e.type === 'block_route') return { text: 'Road blocked · rerouting', dot: '#FF9F0A', ms: 2200 };
+    if (e.type === 'heat_alert') return { text: 'Heat alert' + (e.temp_f != null ? ' · ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : ''), dot: '#FF9F0A', ms: 2600 };
+    if (e.type === 'unblock_route') return { text: 'Road reopened', dot: '#30D158', ms: 1800 };
+    return null;
+  }
+  if (e.kind === 'replan') {
+    const k = Array.isArray(e.changes) ? e.changes.length : null;
+    return { text: 'New plan' + (k ? ' · ' + k + ' job' + (k === 1 ? '' : 's') + ' moved' : ' · order updated'), dot: '#30D158', ms: 2200 };
+  }
+  if (e.kind === 'tractor_added') return { text: n(e.tractor) + ' joining the fleet…', dot: '#0A84FF', ms: 2200 };
+  if (e.kind === 'tractor_ready') return { text: n(e.tractor) + ' ready · picking up work', dot: '#30D158', ms: 2200 };
+  if (e.kind === 'tractor_removed') return { text: (e.tractor || 'Tractor') + ' left the fleet', dot: '#8e8e93', ms: 2000 };
+  if (e.kind === 'mechanic_booked') return { text: 'Mechanic booked' + (e.arrival_t != null ? ' · arrives ' + clock(e.arrival_t) : ''), dot: '#0A84FF', ms: 2500 };
+  if (e.kind === 'tractor_repaired') return { text: n(e.tractor) + ' back in service', dot: '#30D158', ms: 2400 };
+  if (e.kind === 'violation') return { text: 'Constraint violation · ' + (e.rule || ''), dot: '#FF453A', ms: 2400 };
+  return null;
+}
+
+/** Plain-language outcome for a terminal Operation. */
+export function opOutcome(op) {
+  if (!op) return null;
+  if (op.status === 'succeeded') return { kind: 'ok', text: op.message || 'Done' };
+  if (op.status === 'superseded') return { kind: 'warn', text: 'Replaced by a newer request' };
+  if (op.status === 'failed') {
+    if (op.solver_status === 'no_feasible_plan') return { kind: 'err', text: 'No safe plan found — previous plan kept' + (op.error && op.error.message ? '. ' + op.error.message : '') };
+    return { kind: 'err', text: (op.error && op.error.message) || op.message || 'Request failed' };
+  }
+  return null;
+}
+export const isTerminal = (op) => !!op && (op.status === 'succeeded' || op.status === 'failed' || op.status === 'superseded');
+
+/** Friendly text for a rejected api call ({code,message,details}). */
+export function errText(err) {
+  if (!err) return 'Something went wrong';
+  if (err.code === 'TIMEOUT') return 'That took too long to compute. Try again in a moment.';
+  return err.message || String(err);
+}
+
+export const SOLVER_LABEL = { feasible: 'Feasible', optimal: 'Optimal', fallback: 'Fallback', no_feasible_plan: 'No feasible plan' };
+
+export { PALETTE };

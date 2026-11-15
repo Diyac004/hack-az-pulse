@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "SAFETY_REJECTED",
+    "message": "Can't pin Mow C to Tractor 1: it has no mower.",
+    "details": {
+      "rule": "implement_match"
+    }
+  }
+}

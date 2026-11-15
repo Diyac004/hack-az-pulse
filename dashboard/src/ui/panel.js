@@ -1,0 +1,93 @@
+// Side panel: typed explanation, ours-vs-baseline scorecard, activity feed.
+import { clock, esc } from '../lib/format.js';
+import { logLine } from '../lib/derive.js';
+
+const n = (v) => (v == null || !isFinite(v) ? null : +v);
+const fmtMin = (v) => (v == null ? '—' : Math.round(v) + ' min');
+const fmtN = (v) => (v == null ? '—' : String(Math.round(v)));
+
+/** Rows shown in scorecard + keynote. Extra §13.4 rows only when non-null on either side. */
+export function scoreRows(metrics) {
+  const o = (metrics && metrics.ours) || {}, b = (metrics && metrics.baseline) || null;
+  const hasBase = !!(metrics && metrics.baseline && metrics.baseline_source);
+  const bv = (k) => (hasBase && b ? n(b[k]) : null);
+  const rows = [
+    { k: 'completed', label: 'Jobs completed', a: n(o.completed), b: bv('completed'), f: fmtN, sub: o.jobs_total != null ? '/' + o.jobs_total : '', better: 'hi' },
+    { k: 'on_time', label: 'On time', a: n(o.on_time), b: bv('on_time'), f: fmtN, better: 'hi' },
+    { k: 'travel_min', label: 'Travel', a: n(o.travel_min), b: bv('travel_min'), f: fmtMin, unit: 'min', better: 'lo' },
+    { k: 'idle_min', label: 'Idle', a: n(o.idle_min), b: bv('idle_min'), f: fmtMin, unit: 'min', better: 'lo' },
+  ];
+  const extra = [
+    ['weighted_on_time', 'Weighted on time', fmtN, 'hi'],
+    ['productive_min', 'Productive', fmtMin, 'hi'],
+    ['original_deadline_on_time', 'On time (original deadlines)', fmtN, 'hi'],
+    ['replan_ms_last', 'Last re-plan', (v) => (v == null ? '—' : Math.round(v) + ' ms'), 'lo'],
+    ['rejected_candidates', 'Rejected candidates', fmtN, null],
+  ];
+  for (const [k, label, f, better] of extra) {
+    const a = n(o[k]), bb = bv(k);
+    if (a == null && bb == null) continue;
+    rows.push({ k, label, a, b: bb, f, better, unit: f === fmtMin ? 'min' : k === 'replan_ms_last' ? 'ms' : '' });
+  }
+  return { rows, hasBase, violations: n(o.violations) || 0 };
+}
+
+export function baselineLabel(metrics) {
+  const src = metrics && metrics.baseline_source;
+  if (!metrics || !metrics.baseline || !src) return 'Baseline not run yet.';
+  if (src === 'live') return 'Baseline: live FCFS run on the same scenario and events.';
+  if (src === 'simulated') return 'Baseline: simulated FCFS (fast Python twin), not a live run.';
+  return 'Baseline: ' + src + '.';
+}
+
+export function createPanel() {
+  const exp = document.getElementById('exp');
+  const score = document.getElementById('score'), viol = document.getElementById('viol'), basesrc = document.getElementById('basesrc');
+  const feed = document.getElementById('feed');
+  let typer = null, lastExp = null, scoreSig = '', feedSig = '';
+
+  return {
+    explain(text, animate = true) {
+      clearInterval(typer);
+      const s = String(text || '');
+      if (!animate) { exp.textContent = s; return; }
+      let i = 0; exp.textContent = '';
+      typer = setInterval(() => { i += 3; exp.textContent = s.slice(0, i); if (i >= s.length) clearInterval(typer); }, 16);
+    },
+    /** Called on snapshot: show newest explanation without typing. */
+    seed(state) {
+      const x = (state.explanations || [])[0];
+      lastExp = x ? x.id : null;
+      this.explain(x ? x.text : 'Waiting for the first plan…', false);
+    },
+    onExplanation(x) {
+      if (!x || x.id === lastExp) return;
+      lastExp = x.id; this.explain(x.text, true);
+    },
+    sync(state) {
+      const m = state.metrics;
+      const sig = JSON.stringify(m || null);
+      if (sig !== scoreSig) {
+        scoreSig = sig;
+        const { rows, hasBase, violations } = scoreRows(m);
+        const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + r.f(r.a) + (r.sub || '') + '</span><span style="color:var(--faint)">' + (hasBase ? r.f(r.b) : '—') + '</span>';
+        score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + rows.map(row).join('');
+        viol.textContent = violations + ' violation' + (violations === 1 ? '' : 's');
+        viol.classList.toggle('bad', violations > 0);
+        basesrc.textContent = baselineLabel(m);
+      }
+      const log = state.log || [];
+      const fs = log.length + ':' + (log[0] ? JSON.stringify(log[0]) : '') + (state.fleet || []).length;
+      if (fs !== feedSig) {
+        feedSig = fs;
+        const lines = [];
+        for (const e of log) {
+          const h = logLine(e, state);
+          if (h) lines.push('<p><span style="color:var(--faint)">' + clock(e.t) + '</span> ' + h + '</p>');
+          if (lines.length >= 8) break;
+        }
+        feed.innerHTML = lines.join('') || '<p style="color:var(--faint)">Nothing yet.</p>';
+      }
+    },
+  };
+}

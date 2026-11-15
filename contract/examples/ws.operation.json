@@ -1,0 +1,23 @@
+{
+  "type": "operation",
+  "t": 134.2,
+  "seq": 31,
+  "data": {
+    "id": "O17",
+    "kind": "replan",
+    "status": "succeeded",
+    "source": "events",
+    "created_t": 120,
+    "updated_t": 120,
+    "message": "Remaining work reassigned; J9 remains pending.",
+    "plan_version": 8,
+    "solver_status": "feasible",
+    "result": {
+      "applied_plan_version": 8,
+      "unassigned_job_ids": [
+        "J9"
+      ]
+    },
+    "error": null
+  }
+}

@@ -1,0 +1,8 @@
+{"t":0,"kind":"plan","plan_version":1,"solver":"ortools","solve_ms":610,"assigned":12}
+{"t":120,"kind":"event","type":"breakdown","tractor":"T1","issue":"hydraulic leak"}
+{"t":120,"kind":"replan","trigger":"breakdown","plan_version":2,"replan_ms":840,"changes":[{"job":"J1","from":"T1","to":"T3","progress_kept":0.6}],"safety":"pass","explanation_id":"X2"}
+{"t":176,"kind":"job_done","job":"J1","tractor":"T3","on_time":true}
+{"t":181,"kind":"operator_action","tractor":"T2","control":"implements","old":["mower"],"new":["mower","sprayer"],"replanned":true}
+{"t":200,"kind":"tractor_added","tractor":"T4","host":"laptop-p2","endpoint":"ws://192.168.1.24:5175/ws"}
+{"t":205,"kind":"agopenweb","tractor":"T3","what":"job_started","detail":{"field":"Block_E","ab":[33.2,-111.61,33.2,-111.605]}}
+{"t":260,"kind":"violation","rule":"fuel_reserve","tractor":"T2","detail":{}}

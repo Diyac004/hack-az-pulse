@@ -1,0 +1,33 @@
+{
+  "tractor": {
+    "id": "T4",
+    "name": "Tractor 4",
+    "color": "#30D158",
+    "implements": [
+      "mower",
+      "hedger"
+    ],
+    "status": "starting",
+    "manual": false,
+    "fuel_pct": 75,
+    "pose": {
+      "x": 3,
+      "y": 6,
+      "lat": 33.2056,
+      "lon": -111.6187,
+      "heading_deg": 0,
+      "speed_mph": 0
+    },
+    "tool": {
+      "lat": 33.2056,
+      "lon": -111.6187,
+      "heading_deg": 0,
+      "width_m": 4.5
+    },
+    "current_job": null,
+    "queue": [],
+    "available_from_t": null,
+    "host": "mock",
+    "agopenweb": null
+  }
+}

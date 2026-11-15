@@ -1,0 +1,17 @@
+{
+  "id": "O17",
+  "kind": "approval",
+  "status": "succeeded",
+  "source": "approve",
+  "created_t": 120,
+  "updated_t": 120,
+  "message": "P3 approved.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": {
+    "pending_id": "P3",
+    "decision": "approve",
+    "applied_plan_version": null
+  },
+  "error": null
+}

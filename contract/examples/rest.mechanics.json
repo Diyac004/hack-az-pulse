@@ -1,0 +1,21 @@
+{
+  "options": [
+    {
+      "id": "M1",
+      "name": "Example Mobile Diesel",
+      "source": "Google",
+      "distance_mi": 12.4,
+      "rating": 4.8,
+      "reviews": 132,
+      "mobile": true,
+      "ag_equipment": true,
+      "eta_min": 55,
+      "est_cost": 420,
+      "repair_min_estimate": 90,
+      "url": null,
+      "score": 0.91,
+      "recommended": true,
+      "reason": "Only mobile ag specialist arriving within 1 hour"
+    }
+  ]
+}

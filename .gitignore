@@ -5,3 +5,5 @@ node_modules/
 .venv/
 __pycache__/
 .DS_Store
+dist/
+.claude/settings.local.json
