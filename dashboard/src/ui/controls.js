@@ -161,10 +161,9 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
         note.setAttribute('aria-label', txt + ': ' + missing.join(', '));
       }
       if (over) pick.classList.remove('on');
-      // Pre-emptive "fleet is full" only for a real compute pool. A backend with no container pool (every host
-      // docker "none", e.g. MockGateway) reports max = current fleet size; the server still answers AT_CAPACITY.
-      const cap = state.capacity, pool = !!(cap && (cap.hosts || []).some((h) => h && h.docker && h.docker !== 'none'));
-      const full = !!(cap && pool && cap.max != null && cap.used >= cap.max);
+      // Pre-emptive "fleet is full" from state.capacity (used >= max), for any backend.
+      const cap = state.capacity;
+      const full = !!(cap && cap.max != null && cap.used >= cap.max);
       bAdd.disabled = full;
       bAdd.title = full ? `Fleet is full: ${cap.used} of ${cap.max} tractors. Remove one to add another.` : 'Add a tractor to the fleet';
       // Add jobs: jobSheet.js owns its disabled state and tooltip; here it is only hidden when unsupported.
