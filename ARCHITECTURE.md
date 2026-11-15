@@ -142,7 +142,8 @@ These exact shapes appear inside REST responses and WebSocket messages.
   "end_t": 205,
   "eta_t": 205,
   "weather_blocked": false,
-  "pinned_to": null
+  "pinned_to": null,
+  "unassigned_reason": null
 }
 ```
 - For done jobs, `start_t` / `end_t` are actual times. For others, planned times.
@@ -162,6 +163,7 @@ These exact shapes appear inside REST responses and WebSocket messages.
   "entries": [ /* PlanEntry */ ],
   "solver": "ortools",
   "solve_ms": 840,
+  "solver_status": "feasible",
   "diff": {
     "moved": [ { "job": "J1", "from": "T1", "to": "T3" } ],
     "retimed": [ { "job": "J5", "old_start_t": 300, "new_start_t": 345 } ],
@@ -267,7 +269,7 @@ These exact shapes appear inside REST responses and WebSocket messages.
 
 ## 5. REST endpoints
 
-Base: `http://<host>:8000/api`. All bodies JSON. All responses JSON.
+Base: `http://<host>:8000/api`. All bodies JSON. All responses JSON except `/log`, which returns JSON Lines text. Mutation responses use Section 13 operation tracking where specified.
 
 ### Errors (every endpoint)
 HTTP 4xx/5xx with:
@@ -531,6 +533,7 @@ class Job(BaseModel):
     eta_t: Optional[float] = None
     weather_blocked: bool = False
     pinned_to: Optional[str] = None
+    unassigned_reason: Optional[str] = None
 
 
 class PlanEntry(BaseModel):
@@ -569,6 +572,7 @@ class Plan(BaseModel):
     entries: list[PlanEntry]
     solver: Literal["ortools", "greedy"]
     solve_ms: int
+    solver_status: Literal["feasible", "optimal", "fallback", "no_feasible_plan"]
     diff: PlanDiff = Field(default_factory=PlanDiff)
 
 
@@ -588,6 +592,11 @@ class RunMetrics(BaseModel):
     travel_min: float
     idle_min: float
     violations: int
+    weighted_on_time: Optional[int] = None
+    productive_min: Optional[float] = None
+    original_deadline_on_time: Optional[int] = None
+    replan_ms_last: Optional[float] = None
+    rejected_candidates: Optional[int] = None
 
 
 class Metrics(BaseModel):
@@ -909,3 +918,176 @@ Replace the `body: dict` parameters with the Pydantic request models once the mo
 6. `/why`, `/weather` + `weather` messages, `/mechanics`, `/approve` + `pending`.
 7. `/tractors/{id}/controls`, `/control`, `/preview`, `/manual`.
 8. `coverage` messages, `/scale-test`, `/log`.
+
+
+## 13. Final brain/frontend contract — authoritative amendment
+
+This section supersedes conflicting response descriptions, examples and skeleton code above. It is a decided implementation contract, not a proposal. Update the frontend mock and backend models together. Existing REST paths, units and the `plan -> explanation -> jobs` broadcast order remain unchanged.
+
+### 13.1 Job and plan additions
+
+Every Job includes `unassigned_reason: string | null`. Use `status: "pending"`, `tractor: null`, `start_t: null`, `end_t: null`, and `eta_t: null` when no assignment exists. Provide a concise reason such as "No operational tractor has a sprayer." Reconsider on future replans. Reserve `dropped` for explicitly cancelled work; never use it for temporary infeasibility.
+
+Every Plan includes `solver_status`:
+
+| Value | Meaning |
+|---|---|
+| `feasible` | Valid heuristic/solver schedule; optimality not established |
+| `optimal` | Solver proved optimality for the configured model/objective |
+| `fallback` | Primary optimization failed/timed out; a validated heuristic plan was applied |
+| `no_feasible_plan` | No applicable valid plan was produced; retain valid previous operations |
+
+Use `feasible` for an ordinary greedy run. Missing feasible assignments may appear in a partial valid plan; `no_feasible_plan` is an operation outcome, never a newly applied `plan` broadcast. On reset, the empty initial Plan has version 0 and status `feasible`. No other empty plan is presumed valid without validation. Both backends and frontend require this field.
+
+### 13.2 Async mutation endpoints
+
+The following existing endpoints ALWAYS return HTTP 202 and the Operation object below; they no longer return the original finished-plan bodies:
+
+- `POST /api/run`
+- `POST /api/jobs`
+- `PATCH /api/jobs/{id}`
+- `POST /api/events`
+- `POST /api/tractors/{id}/manual`
+- `POST /api/mechanics/book`
+- `POST /api/approve`
+
+Keep `/fleet` add/remove responses unchanged: lifecycle changes already arrive through fleet messages. Before fleet changes can execute stale work, pause affected execution and invalidate any older planning snapshot. These changes also use the planner's state-version gate.
+
+`POST /api/tractors/{id}/control` remains synchronous for non-replanning controls, using its existing response. For controls whose schema says `replans: true`, reject with HTTP 409 `CONFLICT` while running; otherwise return HTTP 202 Operation and apply the control and valid plan atomically after success. Divi branches on the HTTP status for this endpoint.
+
+Preview, Why and scale-test endpoints retain their existing shapes and have a bounded computation budget. Preview never applies state. If the two-second service budget cannot be met, return HTTP 503 with error code `TIMEOUT`; do not fabricate counterfactuals or scale results. Add `TIMEOUT` to the error enum. Expensive optional endpoints must not block FastAPI's event loop.
+
+Request bodies are unchanged. Validate syntax, references and basic authorization before accepting; those errors remain ordinary HTTP 4xx responses. Perform expensive feasibility checks in the operation. Return 202 promptly after enqueueing; 202 means accepted, not applied.
+
+### Operation
+
+All keys are present; nullable fields are explicit nulls. IDs are unique strings such as `O17`.
+
+```json
+{
+  "id": "O17",
+  "kind": "replan",
+  "status": "queued",
+  "source": "events",
+  "created_t": 120.0,
+  "updated_t": 120.0,
+  "message": "Breakdown recorded. Replanning unfinished work.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": null,
+  "error": null
+}
+```
+
+- `kind`: `run | replan | repair_booking | approval`.
+- `status`: `queued | running | succeeded | failed | superseded`.
+- `source`: `run | jobs | job_patch | events | manual | control | mechanics_book | approve`.
+- `solver_status`: null or a value from Section 13.1.
+- `error`: null or `{ "code": string, "message": string, "details": object }`, same error structure as REST.
+- `plan_version`: applied plan version when one exists, otherwise null.
+- `result`: null until successful, then one of:
+  - `run/replan`: `{ "applied_plan_version": 8, "unassigned_job_ids": ["J9"] }`.
+  - `repair_booking`: `{ "tractor": "T1", "mechanic": "M1", "arrival_t": 196, "estimated_return_t": 286 }`.
+  - `approval`: `{ "pending_id": "P3", "decision": "approve", "applied_plan_version": null }` (integer if a plan was applied).
+
+Failed operations never broadcast an invalid plan. Use `solver_status: "no_feasible_plan"` and a `SAFETY_REJECTED` error when no validated applicable plan exists. A partial valid plan with unassigned reasons is successful.
+
+Apply breakdown stops immediately upon accepting the event, before LLM/planner work. Keep only unaffected operations that remain safe. A failed recovery plan never resumes a broken tractor. Repair ETA is advisory: booking does not make a tractor schedulable; require explicit return-to-service confirmation through `POST /api/events` with `{ "type": "tractor_repaired", "tractor": "T1" }`.
+
+Plan-producing approvals cannot bypass constraints. The `override` decision rejects the proposal and leaves it unapplied; actual edits use job PATCH and must validate. Deadline edits must retain originals internally and in logs.
+
+### 13.3 WebSocket and reconnection
+
+Add WS message type `operation`; its `data` is the complete Operation, using the existing `t`, `seq`, `data` envelope. Emit on each lifecycle change. Ordinary WS message bodies remain unchanged apart from the new fields documented here.
+
+An operation returning a new plan emits, in order:
+
+1. `operation` running.
+2. `plan` (validated, applied).
+3. `explanation`.
+4. `jobs` (changed jobs).
+5. Other changed state messages, including `pending`, `fleet`, and `metrics` where needed.
+6. `operation` succeeded, referencing the applied plan version.
+
+The immediate breakdown status may be sent before replanning. No plan-producing operation succeeds until authoritative state has been updated. A new run sends a `snapshot` after reset and then its terminal operation update. Do not send unvalidated proposals as `plan`.
+
+Add `operations: Operation[]` to Snapshot: all active operations plus the most recent 20 terminal operations, newest first. Add `GET /api/operations/{id}` returning Operation or HTTP 404. Retain operation records for the current server session; these are in-memory, not durable job-queue guarantees.
+
+Use a monotonically increasing state version internally. A stale proposal cannot apply: recompute against fresh state or mark the old operation `superseded`. Never mark a superseded operation successful. Serialize state commits and give each socket one outgoing queue/writer to preserve seq and message order; do not use concurrent direct socket sends from REST and tick tasks. The skeleton Hub above must be replaced accordingly. Reset supersedes outstanding work; operation IDs remain unique across resets.
+
+GET state / reconnect snapshot must restore applied truth and active operations. Clients must not infer failure merely because their REST connection timed out. Include optional request header `Idempotency-Key` on async mutations; retries with the same key and identical body return the original operation, while reuse for another endpoint/body returns 409 `CONFLICT`. Store keys for the server session, across resets.
+
+### 13.4 Metrics additions
+
+Add these nullable keys to both `RunMetrics` objects; retain existing fields:
+
+```json
+{
+  "weighted_on_time": 18,
+  "productive_min": 420.0,
+  "original_deadline_on_time": 7,
+  "replan_ms_last": 42.0,
+  "rejected_candidates": 12
+}
+```
+
+Use null until measured, never invented zeros. Baseline replan duration is null if not measured. Weighted on-time is the sum of priorities frozen when each job is completed; productive minutes count executed nonduplicated work. Original-deadline on-time uses the deadline at job submission. Rejected candidates are diagnostics, not executed violations. Existing `violations` measures executed/applied invariant failures. Show completion beside efficiency so idle-by-declining-work is not presented as an improvement.
+
+### 13.5 Frontend implementation checklist (Divi)
+
+- Read `unassigned_reason`; display on pending job cards/details; clear it on reassignment.
+- Show `solver_status` in a small plan badge; never label feasible as optimal.
+- Handle 202 on the listed mutations, track Operation.id, and display queued/running without replacing the applied plan with a preview.
+- Use per-operation status; one completion must not clear another active operation's loading indicator.
+- On succeeded, use streamed state or GET `/api/state`; use the operation result for booking/approval confirmation.
+- Show failed errors in plain language; treat superseded as replaced, not successful.
+- Restore operation state on snapshot/reconnect. Use idempotency keys for retries of the same action.
+- Display extra metrics only when non-null; optional expanded scorecard. No agent chat/LLM metrics required.
+- No public `state_version` or work-unit UI is required; backend derives existing progress fields.
+
+### 13.6 Backend implementation checklist (Anay + Diya)
+
+- Add shared Pydantic Operation models and explicit enum/range validation; do not return untyped alternate bodies.
+- Anay owns queueing, authoritative state, API/WS delivery, idempotency, and safe execution.
+- Diya returns proposals, validation, unassigned reasons, solver status and decision facts without mutating world state.
+- Implement with MockGateway first. AgOpenWeb is an interchangeable gateway; do not block the core on multi-host integration.
+- Update OpenAPI, frontend mocks and contract fixtures before switching to live. Example fixtures are in `contract/examples/brain/`; they contain synthetic data, not benchmark claims.
+
+### 13.7 Operation Pydantic models
+
+```python
+class OperationError(BaseModel):
+    code: str
+    message: str
+    details: dict = Field(default_factory=dict)
+
+class PlanOperationResult(BaseModel):
+    applied_plan_version: int
+    unassigned_job_ids: list[str]
+
+class RepairOperationResult(BaseModel):
+    tractor: str
+    mechanic: str
+    arrival_t: float
+    estimated_return_t: float
+
+class ApprovalOperationResult(BaseModel):
+    pending_id: str
+    decision: Literal["approve", "override"]
+    applied_plan_version: Optional[int]
+
+class Operation(BaseModel):
+    id: str
+    kind: Literal["run", "replan", "repair_booking", "approval"]
+    status: Literal["queued", "running", "succeeded", "failed", "superseded"]
+    source: Literal["run", "jobs", "job_patch", "events", "manual", "control", "mechanics_book", "approve"]
+    created_t: float
+    updated_t: float
+    message: str
+    plan_version: Optional[int]
+    solver_status: Optional[Literal["feasible", "optimal", "fallback", "no_feasible_plan"]]
+    result: Optional[Union[PlanOperationResult, RepairOperationResult, ApprovalOperationResult]]
+    error: Optional[OperationError]
+```
+
+Enforce result-kind matching and terminal-state consistency in service validation: succeeded requires the appropriate result and null error; failed requires error and null result; queued/running/superseded have null result. A new Snapshot model must include `operations: list[Operation]`. Optional metrics keys must be serialized even when null.

@@ -129,20 +129,11 @@ Anay runs CPU-heavy search outside the asyncio event loop. Agree cancellation/co
 
 Keep current REST paths, WebSocket envelope, tractor/job presentation, and plan/explanation ordering from ARCHITECTURE.md. Public shape changes must be accepted there first and communicated to Divi.
 
-### Proposed additions requiring coordination
+### Final frontend/API changes
 
-| Change | Backend purpose | Frontend impact |
-|---|---|---|
-| Nullable `Job.unassigned_reason` | Explain infeasibility without losing jobs | Display reason in job details |
-| `Plan.solver_status` | Distinguish feasible/optimal/fallback outcomes | Optional solver status label |
-| Async operation result for slow calls | Meet the two-second REST rule during replans | Handle accepted operation and pending/completed/failed updates |
-| Additional comparison fields | Weighted completion, productive minutes, rejected candidates, replan duration | Optional expanded scorecard |
+ARCHITECTURE.md Section 13 is the final authoritative amendment. Implement its exact Job.unassigned_reason, Plan.solver_status, Operation HTTP 202 responses, operation WebSocket message, Snapshot.operations, operation lookup endpoint and nullable metrics fields. The existing response descriptions are superseded only where Section 13 explicitly says so.
 
-The current contract promises completed plans in some REST responses while also requiring slow work to finish asynchronously. Agree exact HTTP 202 payload, operation ID and update message before implementing that alternative. Do not silently return a different shape.
-
-State versions, work-unit records and route caches can remain backend-internal. Keep numeric `progress` and `remaining_min` unchanged for the frontend. No agent chat, token metrics, or agent activity panel is required.
-
-Current `dropped` terminology must not imply permanent deletion of temporarily infeasible work. Agree whether to expose such jobs as `pending` with reasons; do not introduce enum values without updating the contract.
+Anay owns async operations, request idempotency, serialized state commits and WS delivery. Diya supplies versioned proposals and outcome facts. Divi handles operation lifecycle states and displays pending-job reasons and solver status. Work-unit storage and source state versions stay internal. See `contract/examples/brain/` for synthetic fixtures.
 
 ## 8. Baseline, metrics and verification
 

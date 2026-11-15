@@ -1,0 +1,24 @@
+{
+  "type": "operation",
+  "t": 120.0,
+  "seq": 32,
+  "data": {
+    "id": "O17",
+    "kind": "replan",
+    "status": "failed",
+    "source": "events",
+    "created_t": 120.0,
+    "updated_t": 120.0,
+    "message": "No validated recovery plan could be applied.",
+    "plan_version": null,
+    "solver_status": "no_feasible_plan",
+    "result": null,
+    "error": {
+      "code": "SAFETY_REJECTED",
+      "message": "No validated recovery plan could be applied.",
+      "details": {
+        "rule": "plan_validation"
+      }
+    }
+  }
+}

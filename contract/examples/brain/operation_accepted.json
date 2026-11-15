@@ -1,0 +1,13 @@
+{
+  "id": "O17",
+  "kind": "replan",
+  "status": "queued",
+  "source": "events",
+  "created_t": 120.0,
+  "updated_t": 120.0,
+  "message": "Breakdown recorded. Replanning unfinished work.",
+  "plan_version": null,
+  "solver_status": null,
+  "result": null,
+  "error": null
+}

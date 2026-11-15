@@ -1,0 +1,20 @@
+{
+  "id": "J9",
+  "type": "spray",
+  "label": "Spray E",
+  "implement": "sprayer",
+  "block": "E",
+  "duration_min": 150,
+  "remaining_min": 60,
+  "progress": 0.6,
+  "priority": 3,
+  "deadline_t": 330,
+  "status": "pending",
+  "tractor": null,
+  "start_t": null,
+  "end_t": null,
+  "eta_t": null,
+  "weather_blocked": false,
+  "pinned_to": null,
+  "unassigned_reason": "No operational tractor has a sprayer."
+}

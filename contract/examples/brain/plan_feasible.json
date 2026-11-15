@@ -1,0 +1,13 @@
+{
+  "version": 8,
+  "entries": [],
+  "solver": "greedy",
+  "solve_ms": 42,
+  "solver_status": "feasible",
+  "diff": {
+    "moved": [],
+    "retimed": [],
+    "dropped": [],
+    "added": []
+  }
+}

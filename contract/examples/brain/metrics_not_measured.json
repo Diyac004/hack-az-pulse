@@ -1,0 +1,29 @@
+{
+  "ours": {
+    "jobs_total": 12,
+    "completed": 0,
+    "on_time": 0,
+    "travel_min": 0,
+    "idle_min": 0,
+    "violations": 0,
+    "weighted_on_time": null,
+    "productive_min": null,
+    "original_deadline_on_time": null,
+    "replan_ms_last": null,
+    "rejected_candidates": null
+  },
+  "baseline": {
+    "jobs_total": 12,
+    "completed": 0,
+    "on_time": 0,
+    "travel_min": 0,
+    "idle_min": 0,
+    "violations": 0,
+    "weighted_on_time": null,
+    "productive_min": null,
+    "original_deadline_on_time": null,
+    "replan_ms_last": null,
+    "rejected_candidates": null
+  },
+  "baseline_source": null
+}
