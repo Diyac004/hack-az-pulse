@@ -252,9 +252,15 @@ class BaselineDisplay(ApiCase):
         # an operator action changes the day: the old baseline must not be shown
         self.c.post("/api/events", json={"type": "breakdown", "tractor": "T2"})
         info = self.c.get("/api/baseline").json()
-        if info["status"] == "computing":
-            self.assertIsNone(self.baseline()["baseline"])
-            self.assertIsNone(self.baseline()["baseline_source"])
+        # Race-free: the twin can finish between any two requests (~3 ms), so check one
+        # response at a time. Whenever a baseline is shown, it already includes the
+        # breakdown (once ready for the new action it stays ready); if not, both are null.
+        mt = self.baseline()
+        if mt["baseline"] is None:
+            self.assertIsNone(mt["baseline_source"])
+        else:
+            self.assertEqual(mt["baseline_source"], "simulated")
+            self.assertEqual(self.c.get("/api/baseline").json()["operator_actions_replayed"], 1)
         info = wait_for(lambda: (lambda b: b if b["status"] == "ready" else None)(self.c.get("/api/baseline").json()))
         self.assertEqual(info["operator_actions_replayed"], 1)
 

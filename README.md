@@ -82,7 +82,7 @@ cd ai-supervisor && npm test
 
 </details>
 
-**More:** [DEMO.md](DEMO.md) · `SCENARIOS.md` (on the `scenarios` branch) · [backend/README.md](backend/README.md) · [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)
+**More:** [DEMO.md](DEMO.md) · [SCENARIOS.md](SCENARIOS.md) · [backend/README.md](backend/README.md) · [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)
 
 ## Honesty notes
 
@@ -90,6 +90,28 @@ cd ai-supervisor && npm test
 - The bridge's travel, idle and violation numbers are placeholders. It skips the Python planner.
 - On the planner backend, weather is a placeholder; Weather, Agronomy, Mechanic, "Why?" and the cockpit run in Mock and mock-backend.
 - Known open issues: rows 14 and 15 in [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md).
+
+## Submission
+
+The scored demo uses our own Python MockGateway simulator, the FastAPI backend and the algorithmic planner. AgOpenWeb is a separate optional bridge demonstration and is not credited with the measured coordinator results.
+
+- [Code](https://github.com/Diyac004/hack-az-pulse)
+- [Measured baseline comparison](submission/RESULTS.md)
+- [Exact demo scenario: tractors, fields, jobs and breakdown](submission/demo-run/scenario.json)
+- [Coordinator demo event log](submission/demo-run/event_log_ours.jsonl) and [FCFS baseline event log](submission/demo-run/event_log_baseline.jsonl)
+- [Machine-readable results and evidence hashes](submission/demo-run/results.json)
+- [Two-minute demo script](DEMO.md)
+
+Reproduce the results from the repository root (PowerShell: set `$env:PYTHONPATH="backend"` and use `.venv\Scripts\python`):
+
+```sh
+PYTHONPATH=backend .venv/bin/python backend/scripts/package_submission.py
+PYTHONPATH=backend python -m app.core.runner --mode both
+```
+
+Backend test suites: `PYTHONPATH=backend python -m unittest discover -s backend/tests/{brain,platform,integration} -v` (run each directory), and `node --test ai-supervisor/test/*.test.mjs`.
+
+**Limitations.** This is a heuristic simulation, not a globally optimal scheduler or real-tractor safety controller. Speeds, fuel rates and work durations are illustrative. Healthy driving tractors stay committed to their current destination. Refueling, weather enforcement, implement swaps and some optional supervisor actions are not implemented in the scored path. The comparison is one scenario with identical rules and events; no improvement on every scenario is claimed.
 
 ## Acknowledgements
 
