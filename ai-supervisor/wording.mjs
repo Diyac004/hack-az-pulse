@@ -14,7 +14,8 @@ export const WORDING_SCHEMA = {
 const SYSTEM = [
   'You reword explanations of a farm tractor fleet plan for the operator, in plain English.',
   'You get the explanation the planner wrote (template) and its structured facts. Rewrite the template so it is easier to read.',
-  'Rules: at most 3 sentences. Keep every number, time, percentage, job name, tractor name and block exactly as written (same digits, same format, e.g. "10:40 AM", "60%", "Tractor 3", "Haul bins C").',
+  'Write short, plain sentences for a farm operator. Each sentence at most 22 words. Lead with the outcome (e.g. "Tractor 3 takes over Spray E."). No hedging, no marketing words. At most 3 sentences, and not longer than the original.',
+  'Rules: Keep every number, time, percentage, job name, tractor name and block exactly as written (same digits, same format, e.g. "10:40 AM", "60%", "Tractor 3", "Haul bins C").',
   'Do not add any fact, number, name, cause, promise or advice that is not in the template. Do not drop a fact. Do not change what is claimed (late stays late, missed stays missed, a safety check stays as stated).',
   'No markdown, no lists, no quotes around the answer. Answer with JSON {"text": "..."} only.',
 ].join(' ');
@@ -52,6 +53,8 @@ export function factTokens(text, names = []) {
   return { ids: ids.sort(), times: times.sort(), nums: nums.sort() };
 }
 
+const sentenceList = (t) => (String(t).trim().match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) || []).filter((x) => x.trim());
+const wordCount = (t) => (String(t).trim().match(/\S+/g) || []).length;
 const sentences = (t) => (String(t).trim().match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) || []).filter((x) => x.trim()).length;
 const missing = (need, have) => { const left = [...have]; const out = []; for (const x of need) { const i = left.indexOf(x); if (i < 0) out.push(x); else left.splice(i, 1); } return out; };
 
@@ -68,9 +71,11 @@ export function validateWording(original, rewrite, { names = [] } = {}) {
   if (r.length > Math.max(160, Math.round(o.length * 1.25))) return { ok: false, reason: 'longer than the original' };
   const a = factTokens(o, names), b = factTokens(r, names);
   for (const k of ['ids', 'times', 'nums']) {
-    const lost = missing(a[k], b[k]);
+    // names are compared as sets (a name may be repeated); numbers and times stay strict
+    const A = k === 'ids' ? [...new Set(a[k])] : a[k], B = k === 'ids' ? [...new Set(b[k])] : b[k];
+    const lost = missing(A, B);
     if (lost.length) return { ok: false, reason: `changed or dropped ${k === 'ids' ? 'name' : k === 'times' ? 'time' : 'number'}: ${lost.slice(0, 3).join(', ')}` };
-    const added = missing(b[k], a[k]);
+    const added = missing(B, A);
     if (added.length) return { ok: false, reason: `added ${k === 'ids' ? 'name' : k === 'times' ? 'time' : 'number'}: ${added.slice(0, 3).join(', ')}` };
   }
   for (const [name, re] of CLAIMS) {
@@ -78,6 +83,10 @@ export function validateWording(original, rewrite, { names = [] } = {}) {
     if (had && !has) return { ok: false, reason: `dropped claim "${name}"` };
     if (!had && has) return { ok: false, reason: `added claim "${name}"` };
   }
+  // concision (checked last so fact problems are reported first)
+  if (sentenceList(r).some((x) => wordCount(x) > 26)) return { ok: false, reason: 'a sentence is longer than 26 words' };
+  if (r.length > Math.round(o.length * 1.1)) return { ok: false, reason: 'longer than the original' };
+  if (wordCount(r) > wordCount(o) + 5) return { ok: false, reason: 'wordier than the original' };
   return { ok: true, text: r };
 }
 

@@ -95,3 +95,44 @@ test('unwrap: a JSON answer nested in text (agy) is unwrapped once', () => {
   assert.deepEqual(unwrap({ text: 'Plan ready.' }), { text: 'Plan ready.' });
   assert.deepEqual(unwrap({ text: '{not json}' }), { text: '{not json}' });
 });
+
+test('rejects a run-on sentence over 26 words', () => {
+  const o = 'Tractor 3 takes over Spray E. All deadlines are still met.';
+  const r = 'Tractor 3 takes over Spray E because the other tractor is not available right now and this is the best way to keep everything on track today. All deadlines are still met.';
+  assert.equal(validateWording(o, r, { names: ['Tractor 3', 'Spray E'] }).ok, false);
+  const long = 'Tractor 3 takes over Spray E and then keeps going with the rest of the work for the whole morning while the crew finishes up the other blocks around the farm nearby. All deadlines are still met.';
+  assert.match(validateWording(o, long, { names: ['Tractor 3', 'Spray E'] }).reason, /26 words|longer|wordier/);
+});
+
+test('rejects a rewrite wordier than the original (length x1.1, words +5)', () => {
+  const o = 'Tractor 3 takes over Spray E. All deadlines are still met.'; // 11 words
+  const r = 'Tractor 3 takes over Spray E, and all deadlines are still met for the day.'; // 14 words
+  assert.match(validateWording(o, r, { names: ['Tractor 3', 'Spray E'] }).reason, /longer than the original/);
+  const r2 = 'Tractor 3 takes over Spray E. All deadlines are met.'; // shorter ok
+  assert.equal(validateWording(o, r2, { names: ['Tractor 3', 'Spray E'] }).ok, true);
+});
+
+test('rejects +5 words even within 1.1x length, accepts a concise rewrite', () => {
+  const o = 'Tractor 1 broke down 60% of the way through spraying Block E. Tractor 3 has the only other sprayer and 81% fuel, so it finishes the remaining 40% right after its current job. All deadlines are still met.';
+  const ok = 'Tractor 1 broke down 60% into spraying Block E. Tractor 3 has 81% fuel and the only other sprayer, so it finishes the remaining 40% next. All deadlines are still met.';
+  assert.equal(validateWording(o, ok, { names: NAMES }).ok, true);
+});
+
+test('prompt asks for short sentences led by the outcome', () => {
+  const p = wordingPrompt({ id: 'X1', text: ORIG, facts: {} });
+  assert.match(p.system, /at most 22 words/);
+  assert.match(p.system, /Lead with the outcome/);
+  assert.match(p.system, /not longer than the original/);
+});
+
+test('a repeated name is fine (names compared as sets), a new or dropped name is not', () => {
+  const o = 'Tractor 1 broke down 60% of the way through Spray E. Tractor 3 has 81% fuel, so it finishes the remaining 40% at 10:40 AM. All deadlines are still met.';
+  const rep = 'Tractor 3 finishes the remaining 40% of Spray E at 10:40 AM. Tractor 1 broke down at 60%, and Tractor 3 has 81% fuel. All deadlines are still met.';
+  assert.equal(validateWording(o, rep, { names: NAMES }).ok, true);
+  assert.match(validateWording(o, rep.replace('Tractor 1 broke', 'Tractor 2 broke'), { names: NAMES }).reason, /name/);
+  assert.match(validateWording(o, rep.replace('Tractor 1 broke down at 60%, and ', ''), { names: NAMES }).reason, /dropped|name|60/);
+});
+test('repeating a number is still rejected', () => {
+  const o = 'Tractor 3 has 81% fuel. All deadlines are still met.';
+  assert.match(validateWording(o, 'Tractor 3 has 81% fuel, 81% in total. All deadlines are still met.', { names: NAMES }).reason, /number/);
+});
