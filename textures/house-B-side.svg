@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-312 -546 648 570" width="648" height="570" role="img">
+<title>B. Autonomous fleet hub, side view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-288,0 348.1,0" fill="#000" opacity=".2" filter="url(#soft)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="pad"><polygon points="-288,0 312,0 312,-8 -288,-8" fill="#D6D2C9" stroke="#D6D2C9"/></g>
+<g data-part="mast"><polygon points="-120,-272 -104,-272 -104,-488 -120,-488" fill="#636366" stroke="#636366"/></g>
+<g data-part="mastTop"><polygon points="-93,-490 -100.2,-490 -100.2,-510 -93,-510" fill="#989899" stroke="#989899"/><polygon points="-100.2,-490 -112,-490 -112,-510 -100.2,-510" fill="#C4C4C6" stroke="#C4C4C6"/><polygon points="-112,-490 -123.8,-490 -123.8,-510 -112,-510" fill="#F5F5F7" stroke="#F5F5F7"/><polygon points="-123.8,-490 -131,-490 -131,-510 -123.8,-510" fill="#F5F5F7" stroke="#F5F5F7"/></g>
+<g data-part="mastLamp"><polygon points="-105.8,-510 -112,-510 -112,-522 -105.8,-522" fill="#CC7F08" stroke="#CC7F08"/><polygon points="-112,-510 -118.2,-510 -118.2,-522 -112,-522" fill="#FF9F0A" stroke="#FF9F0A"/></g>
+<g data-part="control"><polygon points="-200,-8 168,-8 168,-248 -200,-248" fill="#ECEAE5" stroke="#ECEAE5"/><polygon points="-163.2,-123.2 131.2,-123.2 131.2,-214.4 -163.2,-214.4" fill="#33444F" stroke="none"/><polygon points="-127.9,-135.2 -92.5,-135.2 -33.7,-202.4 -69,-202.4" fill="#fff" stroke="none" opacity="0.2"/></g>
+<g data-part="controlRoof"><polygon points="-212,-248 180,-248 180,-272 -212,-272" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="cable"><polygon points="-209.3,-118 -212.9,-118 -206.7,-122 -203.1,-122" fill="#4E4E50" stroke="#4E4E50"/><polygon points="-153.3,-10 -209.3,-118 -203.1,-122 -147.1,-14" fill="#161618" stroke="#161618"/><polygon points="-212.9,-118 -209.3,-118 -153.3,-10 -156.9,-10" fill="#161618" stroke="#161618"/></g>
+<g data-part="charger"><polygon points="-248,-8 -208,-8 -208,-176 -248,-176" fill="#E5E5EA" stroke="#E5E5EA"/></g>
+<g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="canopy"><polygon points="-280,-328 272,-328 272,-352 -280,-352" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="cable"><polygon points="-209.3,-118 -212.9,-118 -206.7,-122 -203.1,-122" fill="#4E4E50" stroke="#4E4E50"/><polygon points="-153.3,-10 -209.3,-118 -203.1,-122 -147.1,-14" fill="#161618" stroke="#161618"/><polygon points="-212.9,-118 -209.3,-118 -153.3,-10 -156.9,-10" fill="#161618" stroke="#161618"/></g>
+<g data-part="charger"><polygon points="-248,-8 -208,-8 -208,-176 -248,-176" fill="#E5E5EA" stroke="#E5E5EA"/></g>
+<g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
+<g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g></g>
+</svg>

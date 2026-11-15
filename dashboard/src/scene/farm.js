@@ -1,6 +1,20 @@
 // Island diorama built from scenario: ground, roads, block patches, instanced trees + fruit, depot shed.
 import * as THREE from 'three';
+import { BufferGeometryUtils } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { lm } from './world.js';
+
+// One footprint per block, in grid cells: cells b.x..b.x+w-1 -> world edges toWorld(b.x-0.5) .. toWorld(b.x+w-0.5).
+// Soil bed, grass, trees and the label all derive from it (blockCenter + b.w/b.h), never from the road layout.
+// Blocks sit flush between column roads (road half-width 0.4 -> 0.1 of gap), so every layer stays inside +0.08.
+// The soil bed is a flat FRAME around the grass (no overlap), both at the old patch height (0.02 over the
+// island), so nothing new stacks coplanar and no other ground layer gets buried.
+const BED_PAD = 0.08, GROUND_Y = 0.02, GRASS_INSET = 0.1;
+function frameGeo(cx, cz, ow, oh, iw, ih) { // rectangle ring in the XZ plane, facing up
+  const sh = new THREE.Shape(); sh.moveTo(-ow / 2, -oh / 2); sh.lineTo(ow / 2, -oh / 2); sh.lineTo(ow / 2, oh / 2); sh.lineTo(-ow / 2, oh / 2); sh.closePath();
+  const hole = new THREE.Path(); hole.moveTo(-iw / 2, -ih / 2); hole.lineTo(-iw / 2, ih / 2); hole.lineTo(iw / 2, ih / 2); hole.lineTo(iw / 2, -ih / 2); hole.closePath();
+  sh.holes.push(hole);
+  return new THREE.ShapeGeometry(sh).rotateX(-Math.PI / 2).translate(cx, GROUND_Y, cz);
+}
 
 function rng(seed) { // mulberry32, deterministic trees
   let a = seed >>> 0;
@@ -31,14 +45,23 @@ export function createFarm(world) {
     g.rows.forEach((y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(g.w, 0.8), rdm); m.rotation.x = -Math.PI / 2; m.position.set(0, 0.01, W(0, y).z); m.receiveShadow = true; group.add(m); });
     g.cols.forEach((x) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.8, g.h), rdm); m.rotation.x = -Math.PI / 2; m.position.set(W(x, 0).x, 0.012, 0); m.receiveShadow = true; group.add(m); });
 
-    const cells = [];
+    const cells = [], beds = [];
     g.blocks.forEach((b) => {
       const c = g.blockCenter(b), cw = W(c.x, c.y);
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w + 0.4, b.h + 0.4), new THREE.MeshLambertMaterial({ color: '#86A257', emissive: '#000000' }));
-      m.rotation.x = -Math.PI / 2; m.position.set(cw.x, 0.02, cw.z); m.receiveShadow = true; group.add(m); patches[b.id] = m;
+      // tilled soil rim = the block's imprint, framing the grass on the same footprint
+      beds.push(frameGeo(cw.x, cw.z, b.w + BED_PAD * 2, b.h + BED_PAD * 2, b.w - GRASS_INSET * 2, b.h - GRASS_INSET * 2));
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w - GRASS_INSET * 2, b.h - GRASS_INSET * 2), new THREE.MeshLambertMaterial({ color: '#86A257', emissive: '#000000' }));
+      m.rotation.x = -Math.PI / 2; m.position.set(cw.x, GROUND_Y, cw.z); m.receiveShadow = true; group.add(m); patches[b.id] = m;
       ripe[b.id] = b.ripeness;
       for (let i = 0; i < b.w; i++) for (let j = 0; j < b.h; j++) cells.push([b, b.x + i, b.y + j]);
     });
+    if (beds.length) {
+      // all beds: one draw
+      const bm = lm('#9C7A52');
+      const bed = new THREE.Mesh(BufferGeometryUtils.mergeBufferGeometries(beds), bm);
+      beds.forEach((x) => x.dispose());
+      bed.receiveShadow = true; bed.name = 'soilBeds'; group.add(bed);
+    }
 
     const rnd = rng(1337 + g.w * 31 + g.h);
     const fruitPer = (b) => (b.ripeness >= 0.6 ? Math.min(4, Math.round((b.ripeness - 0.45) * 8)) : 0);

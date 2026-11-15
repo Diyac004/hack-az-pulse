@@ -1,0 +1,116 @@
+{
+  "stats": {
+    "current": {
+      "meshes": 7,
+      "tris": 244,
+      "decals": 0,
+      "decalTris": 0,
+      "rimTris": 0,
+      "total": 244,
+      "lod": 148,
+      "tractorH": 453.6
+    },
+    "A": {
+      "meshes": 31,
+      "tris": 580,
+      "decals": 23,
+      "decalTris": 46,
+      "rimTris": 180,
+      "total": 806,
+      "lod": 508,
+      "tractorH": 468.9
+    },
+    "B": {
+      "meshes": 29,
+      "tris": 644,
+      "decals": 15,
+      "decalTris": 30,
+      "rimTris": 180,
+      "total": 854,
+      "lod": 596,
+      "tractorH": 385
+    },
+    "C": {
+      "meshes": 24,
+      "tris": 496,
+      "decals": 9,
+      "decalTris": 18,
+      "rimTris": 180,
+      "total": 694,
+      "lod": 472,
+      "tractorH": 462.3
+    }
+  },
+  "isoFrame": [
+    -327.9,
+    -405.1,
+    655.8,
+    579.7
+  ],
+  "pal": {
+    "A": {
+      "w": 3968,
+      "h": 1297.2
+    },
+    "B": {
+      "w": 3968,
+      "h": 1052.8
+    },
+    "C": {
+      "w": 3889.5,
+      "h": 1191.4
+    }
+  },
+  "houses": {
+    "current": {
+      "title": "Current depot shed",
+      "meshes": 2,
+      "tris": 24,
+      "decals": 0,
+      "decalTris": 0,
+      "total": 24,
+      "w": 1.6,
+      "d": 1.1,
+      "h": 1.3
+    },
+    "A": {
+      "title": "A. Modern machine shed",
+      "meshes": 9,
+      "tris": 116,
+      "decals": 47,
+      "decalTris": 94,
+      "total": 210,
+      "w": 2.9,
+      "d": 1.5,
+      "h": 1.1
+    },
+    "B": {
+      "title": "B. Autonomous fleet hub",
+      "meshes": 17,
+      "tris": 236,
+      "decals": 24,
+      "decalTris": 48,
+      "total": 284,
+      "w": 3.2,
+      "d": 1.5,
+      "h": 1.3
+    },
+    "C": {
+      "title": "C. Container yard",
+      "meshes": 13,
+      "tris": 188,
+      "decals": 41,
+      "decalTris": 106,
+      "total": 294,
+      "w": 2.9,
+      "d": 1.4,
+      "h": 0.9
+    }
+  },
+  "houseSceneFrame": [
+    -657.3,
+    -721.9,
+    1533.9,
+    1102
+  ]
+}

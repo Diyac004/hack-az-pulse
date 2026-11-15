@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-312 -546 648 570" width="648" height="570" role="img">
+<title>A. Modern machine shed, side view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<g id="ground"><polygon points="-280,0 320.9,0" fill="#000" opacity=".2" filter="url(#soft)"/></g>
+<g id="tractor" stroke-width=".8" stroke-linejoin="round">
+<g data-part="pad"><polygon points="-280,0 312,0 312,-8 -280,-8" fill="#D6D2C9" stroke="#D6D2C9"/></g>
+<g data-part="officeRoof"><polygon points="-176,-232 188,-232 188,-256 -176,-256" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="office"><polygon points="-160,-8 168,-8 168,-232 -160,-232" fill="#D9D6CF" stroke="#D9D6CF"/></g>
+<g data-part="shed"><polygon points="-240,-8 220,-8 220,-300 -240,-300" fill="#ECEAE5" stroke="#ECEAE5"/><polygon points="-171,-154 151,-154 151,-189 -171,-189" fill="#33444F" stroke="none"/></g>
+<g data-part="gable"><polygon points="-240,-300 220,-300 -10,-408 -10,-408" fill="#ECEAE5" stroke="#ECEAE5"/></g>
+<g data-part="roof"><polygon points="-10,-408 256,-288 256,-300 -10,-420" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="roof"><polygon points="-10,-408 -276,-288 -276,-300 -10,-420" fill="#4A4D52" stroke="#4A4D52"/></g>
+<g data-part="fascia"><polygon class="b1" points="220,-280 232,-280 232,-300 220,-300" fill="#0A84FF" stroke="#0A84FF"/></g>
+<g data-part="downpipe"><polygon points="234.2,-4 228,-4 228,-284 234.2,-284" fill="#4F4F52" stroke="#4F4F52"/><polygon points="228,-4 221.8,-4 221.8,-284 228,-284" fill="#636366" stroke="#636366"/></g></g>
+</svg>
