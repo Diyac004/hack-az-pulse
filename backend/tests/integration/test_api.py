@@ -144,6 +144,62 @@ class Rest(ApiCase):
         self.assertEqual(len(self.c.get("/api/fleet").json()), 3)
 
 
+class PlanDiffAndRejection(ApiCase):
+    def test_full_diff_reaches_rest_and_websocket(self):
+        with self.c.websocket_connect("/ws") as ws:
+            ws.receive_json()
+            run = self.c.post("/api/run", json={"mode": "ours"}).json()["id"]
+            first = None
+            while first is None:
+                msg = ws.receive_json()
+                if msg["type"] == "plan":
+                    first = msg["data"]
+            self.finished(run)
+            self.c.post("/api/clock", json={"playing": False})
+            rest = self.c.get("/api/state").json()["plan"]
+            self.assertEqual(first["diff"], rest["diff"])
+            self.assertEqual(set(rest["diff"]), {"moved", "retimed", "dropped", "added"})
+            self.assertEqual(len(rest["diff"]["added"]), 12)
+            self.assertEqual((rest["solver"], rest["solver_status"]), ("greedy", "feasible"))
+
+            self.c.post("/api/clock", json={"playing": True, "speed": 60})
+            wait_for(lambda: self.c.get("/api/state").json()["clock"]["t"] > 20)
+            self.c.post("/api/clock", json={"playing": False})
+            op_id = self.c.post("/api/events", json={"type": "breakdown", "tractor": "T1"}).json()["id"]
+            op = self.finished(op_id)
+            ws_plan = None
+            while True:
+                msg = ws.receive_json()
+                if msg["type"] == "plan":
+                    ws_plan = msg["data"]
+                if msg["type"] == "operation" and msg["data"]["id"] == op_id and msg["data"]["status"] == "succeeded":
+                    break
+            rest = self.c.get("/api/state").json()["plan"]
+            self.assertEqual(ws_plan, rest)
+            self.assertIn("J1", [mv["job"] for mv in rest["diff"]["moved"]])
+            self.assertTrue(rest["diff"]["retimed"])
+            self.assertEqual(op["solver_status"], rest["solver_status"])
+            self.assertEqual(op["plan_version"], rest["version"])
+
+    def test_unmeetable_constraint_fails_the_operation_explicitly(self):
+        self.start_run(speed=10)
+        wait_for(lambda: self.c.get("/api/state").json()["clock"]["t"] > 4)
+        self.c.post("/api/clock", json={"playing": False})
+        state = self.c.get("/api/state").json()
+        t2 = next(t for t in state["fleet"] if t["id"] == "T2")
+        self.assertEqual((t2["status"], t2["current_job"]), ("traveling", "J6"))
+        trip = [e for e in state["plan"]["entries"] if e["tractor"] == "T2" and e["kind"] == "travel"]
+        self.assertTrue(trip)
+        version = state["plan"]["version"]
+        r = self.c.patch("/api/jobs/J6", json={"deadline_t": 30})          # can't finish before 51
+        self.assertEqual(r.status_code, 202)
+        op = self.finished(r.json()["id"])
+        self.assertEqual((op["status"], op["solver_status"], op["error"]["code"]),
+                         ("failed", "no_feasible_plan", "SAFETY_REJECTED"))
+        self.assertIsNone(op["result"])
+        self.assertEqual(self.c.get("/api/state").json()["plan"]["version"], version)
+
+
 class WebSocket(ApiCase):
     def receive_until(self, ws, pred, limit=400):
         seen = []

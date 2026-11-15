@@ -4,7 +4,7 @@ import unittest
 
 from app.brain import BrainSnapshot, explain, plan as brain_plan
 from app.brain.contracts import PlanningResult, ValidationResult, Violation
-from app.core.planner import merge_triggers, replan_sync
+from app.core.planner import merge_triggers, replan_sync, run_planner
 from app.core.runner import load_scenario, run_day
 from app.core.state import World
 from app import models as m
@@ -58,6 +58,8 @@ class Execution(unittest.TestCase):
         strip = lambda log: [{k: v for k, v in e.items() if k not in {"replan_ms", "solve_ms"}} for e in log]
         a, b = run_day(copy.deepcopy(SCENARIO)), run_day(copy.deepcopy(SCENARIO))
         self.assertEqual(strip(a.log), strip(b.log))
+        plans = [e for e in a.log if e["kind"] in {"plan", "replan"}]
+        self.assertTrue(plans and all(e["search_complete"] for e in plans))   # no load-dependent cut-offs
 
 
 class BreakdownRecovery(unittest.TestCase):
@@ -146,7 +148,7 @@ class AdapterGates(unittest.TestCase):
     def test_stale_result_is_refused(self):
         w = started()
         snap = w.to_brain_snapshot({"type": "check"})
-        result = brain_plan(snap, policy=w.policy)
+        result = run_planner(snap, w.policy)
         w.step(1.0)                                      # world moved on
         version = w.plan.version
         self.assertEqual(w.apply_result(result, {"type": "check"}, explain)["reason"], "stale")
@@ -154,7 +156,7 @@ class AdapterGates(unittest.TestCase):
 
     def test_invalid_result_is_refused_and_logged(self):
         w = started()
-        result = brain_plan(w.to_brain_snapshot({"type": "check"}), policy=w.policy)
+        result = run_planner(w.to_brain_snapshot({"type": "check"}), w.policy)
         bad = result.model_copy(update={"validation": ValidationResult(
             passed=False, violations=[Violation(rule="fuel_reserve", detail="test")])})
         version = w.plan.version
@@ -168,7 +170,7 @@ class AdapterGates(unittest.TestCase):
         from app.gateway.base import GatewayError
         w = started()
         advance(w, 5)
-        result = brain_plan(w.to_brain_snapshot({"type": "check"}), policy=w.policy)
+        result = run_planner(w.to_brain_snapshot({"type": "check"}), w.policy)
         poses = {t: w.gateway.pose(t) for t in w.tractors}
         real_check = w.gateway.check
 

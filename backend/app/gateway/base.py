@@ -106,6 +106,16 @@ class Idle:
 
 
 @dataclass(frozen=True)
+class Idled:
+    """Exact interval in this tick when an operational tractor was neither
+    driving nor working (no orders, or waiting for an order's start time)."""
+    tractor: str
+    t: float
+    start: float
+    end: float
+
+
+@dataclass(frozen=True)
 class Halted:
     """Could not continue (e.g. road ahead blocked). Orders cleared."""
     tractor: str
@@ -121,7 +131,7 @@ class Stopped:
     t: float
 
 
-Report = Union[Moved, ReachedCell, Arrived, Worked, WorkDone, Idle, Halted, Stopped]
+Report = Union[Moved, ReachedCell, Arrived, Worked, WorkDone, Idle, Idled, Halted, Stopped]
 
 
 @dataclass(frozen=True)
@@ -149,6 +159,7 @@ class TractorGateway(Protocol):
     def stop(self, tractor_id: str) -> None: ...
     def resume(self, tractor_id: str) -> None: ...
     def advance(self, dt_min: float) -> list[Report]: ...
+    def preview(self, dt_min: float) -> list[Report]: ...   # dry-run advance
     def pose(self, tractor_id: str) -> Pose: ...
     def remaining_route(self, tractor_id: str) -> tuple[Cell, ...]: ...
     def tractor_ids(self) -> list[str]: ...

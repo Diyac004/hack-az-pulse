@@ -19,10 +19,10 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from app import models as m
-from app.brain import explain, plan as brain_plan
+from app.brain import explain
 
 from .operations import Operations
-from .planner import MAX_ATTEMPTS, merge_triggers
+from .planner import MAX_ATTEMPTS, merge_triggers, run_planner
 from .runner import load_scenario
 from .state import World, WorldError
 from app.ws.hub import Hub
@@ -118,7 +118,7 @@ class Engine:
         for _ in range(MAX_ATTEMPTS):
             epoch, world = self.epoch, self.world
             snap = world.to_brain_snapshot(trigger)
-            result = await asyncio.to_thread(brain_plan, snap, world.policy)
+            result = await asyncio.to_thread(run_planner, snap, world.policy)
             if epoch != self.epoch:
                 return                          # reset happened; already superseded
             outcome = world.apply_result(result, trigger, explain)
@@ -129,7 +129,7 @@ class Engine:
                     on_success()
                 self.flush()                    # plan, explanation, jobs, fleet, metrics (in order)
                 self._op(op_id, status="succeeded", plan_version=outcome["plan_version"],
-                         solver_status="feasible", message="New plan applied.",
+                         solver_status=outcome["solver_status"], message="New plan applied.",
                          result=m.PlanOperationResult(applied_plan_version=outcome["plan_version"],
                                                       unassigned_job_ids=outcome["unassigned"]))
             else:
@@ -200,7 +200,7 @@ class Engine:
             if now - last_clock >= CLOCK_EVERY_S:
                 self.hub.broadcast("clock", w.t, w.clock_view())
                 last_clock = now
-            if now - last_metrics >= METRICS_EVERY_S:
+            if now - last_metrics >= METRICS_EVERY_S and not self.busy:   # 13.3: nothing between running and plan
                 self.hub.broadcast("metrics", w.t, w.metrics_view())
                 last_metrics = now
 

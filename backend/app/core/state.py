@@ -26,7 +26,7 @@ from typing import Any
 
 from app.brain.contracts import FarmMap
 from app.gateway.base import (
-    Arrived, GatewayError, Halted, Idle, Moved, Stopped, TractorSpec, Travel, WorkDone,
+    Arrived, GatewayError, Halted, Idle, Idled, Moved, Stopped, TractorSpec, Travel, WorkDone,
     Worked, orders_from_plan,
 )
 from app.gateway.mock import MockGateway
@@ -152,6 +152,7 @@ class World:
         self.events = sorted(scenario.get("events", []), key=lambda e: e["t"])
         self._dirty_jobs: set[str] = set()       # status/assignment changes: sent at once
         self._progress_jobs: set[str] = set()    # progress only: sent by emit_progress (~1 Hz)
+        self._zero_cut_at: float | None = None
         self.other_runs: dict[str, m.RunMetrics] = {}     # last finished run per mode, set by the engine
 
         self.gateway = MockGateway(self.farm(), t0=0.0)
@@ -404,14 +405,23 @@ class World:
         return self.events[0]["t"] if self.events else None
 
     def step(self, dt: float) -> list[dict]:
-        """Advance sim time by up to dt. Stops early at a scheduled event or the
-        end of the day. Returns re-plan triggers for the caller to run."""
+        """Advance sim time by up to dt. Stops early, at the exact time, at a
+        scheduled event, the end of the day, or the moment a tractor needs a
+        re-plan (idle with work waiting, or a blocked road). So results don't
+        depend on the tick size. Returns re-plan triggers for the caller."""
         if self.ended or dt <= 0:
             return []
         target = min(self.t + dt, self.day_minutes)
         nxt = self.next_event_t()
         if nxt is not None and nxt <= target:
             target = max(nxt, self.t)
+        decision = self._next_decision_t(target - self.t)
+        if decision is not None and decision <= self.t + EPS:
+            if self._zero_cut_at == self.t:      # already handled this instant: don't spin
+                decision = None
+            self._zero_cut_at = self.t
+        if decision is not None:
+            target = decision
         triggers = self._apply_reports(self.gateway.advance(target - self.t), target - self.t)
         self.t = target
         self.bump()
@@ -443,9 +453,38 @@ class World:
             return None
         return {"type": kind, **{k: v for k, v in ev.items() if k not in {"t", "type"}}, "scheduled": True}
 
+    def _wants_work(self, tr: TractorRec) -> bool:
+        """Operational, and a compatible job is waiting for an owner."""
+        return self._operational(tr) and any(
+            j.status in {"pending", "paused"} and j.implement in tr.implements
+            and (not j.pinned_to or j.pinned_to == tr.id) for j in self.jobs.values())
+
+    def _next_decision_t(self, dt: float) -> float | None:
+        """Earliest time within dt at which a tractor will need a re-plan."""
+        for r in self.gateway.preview(dt):
+            tr = self.tractors.get(r.tractor)
+            if tr is None:
+                continue
+            if isinstance(r, Halted) or (isinstance(r, Idle) and self._wants_work(tr)):
+                return r.t
+        return None
+
+    def _idle_minutes(self, tr: TractorRec, a: float, b: float, unfinished0: set[str],
+                      done_at: dict[str, float]) -> float:
+        """Part of [a, b] during which a compatible job was still unfinished.
+        A job finished inside this step stops counting at its exact finish time."""
+        ends = [done_at.get(j, math.inf) for j in unfinished0
+                if self.jobs[j].implement in tr.implements
+                and (not self.jobs[j].pinned_to or self.jobs[j].pinned_to == tr.id)]
+        if not ends:
+            return 0.0
+        return max(0.0, min(b, max(ends)) - a)
+
     def _apply_reports(self, reports, dt: float) -> list[dict]:
         triggers = []
-        busy: dict[str, float] = {}
+        unfinished0 = {j.id for j in self.jobs.values() if j.status not in {"done", "dropped"}}
+        done_at: dict[str, float] = {}
+        idled = []
         # Moved/Worked are per-tick totals stamped at the tick's end, while events
         # carry their exact time: apply the minutes first, then the events.
         reports = sorted(reports, key=lambda r: 0 if isinstance(r, (Moved, Worked)) else 1)
@@ -456,7 +495,8 @@ class World:
             if isinstance(r, Moved):
                 tr.fuel -= r.minutes * tr.burn_travel
                 self.counters.travel_min += r.minutes
-                busy[tr.id] = busy.get(tr.id, 0) + r.minutes
+            elif isinstance(r, Idled):
+                idled.append((tr, r.start, r.end))
             elif isinstance(r, Worked):
                 job = self.jobs.get(r.job)
                 if job is None:
@@ -473,12 +513,12 @@ class World:
                 done = r.minutes - overflow
                 tr.fuel -= done * tr.burn_work
                 self.counters.productive_min += done
-                busy[tr.id] = busy.get(tr.id, 0) + r.minutes
                 self._progress_jobs.add(job.id)          # throttled: see emit_progress()
             elif isinstance(r, WorkDone):
                 job = self.jobs.get(r.job)
                 if job and job.status != "done" and job.remaining <= EPS:
                     job.status, job.done_t, job.end_t, job.done_priority = "done", r.t, r.t, job.priority
+                    done_at[job.id] = r.t
                     on_time = r.t <= job.deadline_t + EPS
                     self.write_log("job_done", at=r.t, job=job.id, tractor=tr.id, on_time=on_time)
                     self._dirty_jobs.add(job.id)
@@ -488,16 +528,15 @@ class World:
                 self._release_work(tr.id, "road blocked")
                 triggers.append({"type": "halted", "tractor": tr.id, "reason": r.reason})
             elif isinstance(r, Idle):
-                if self._operational(tr) and any(j.status in {"pending", "paused"} and j.implement in tr.implements
-                                                 for j in self.jobs.values()):
+                if self._wants_work(tr):
                     triggers.append({"type": "tractor_idle", "tractor": tr.id})
             elif isinstance(r, (Arrived, Stopped)):
                 pass
+        for tr, a, b in idled:                      # Idled is only reported for operational tractors
+            self.counters.idle_min += self._idle_minutes(tr, a, b, unfinished0, done_at)
         for tr in self.tractors.values():
             if tr.status != "broken":
                 tr.status = self._public_status(tr.id)
-            if self._operational(tr) and self._unfinished_compatible(tr):
-                self.counters.idle_min += max(0.0, dt - busy.get(tr.id, 0.0))
             if self._operational(tr) and tr.fuel < self.scenario["constraints"]["fuel_reserve_pct"] - EPS and not tr.reserve_warned:
                 tr.reserve_warned = True
                 self._violation("fuel_reserve", tr.id, None, f"Fuel at {tr.fuel:.1f}%")
@@ -538,8 +577,22 @@ class World:
 
     # ================================================================ brain adapter: snapshot
 
+    def _committed_trips(self) -> dict[str, tuple[tuple, str, float]]:
+        """Tractors currently driving to a job: {id: (remaining route, job, arrival time)}.
+        The route starts at the tractor's anchor (next whole cell)."""
+        trips = {}
+        for tid, tr in self.tractors.items():
+            if tr.status == "broken":
+                continue
+            p = self.gateway.pose(tid)
+            route = self.gateway.remaining_route(tid)
+            if route and p.job in self.jobs:                 # what it is doing, not a status label
+                trips[tid] = (route, p.job, p.anchor_t + (len(route) - 1) / tr.speed)
+        return trips
+
     def to_brain_snapshot(self, trigger: dict) -> dict:
         tractors, frozen = [], []
+        trips = self._committed_trips()
         for tr in self.tractors.values():
             p = self.gateway.pose(tr.id)
             x, y = p.cell
@@ -551,13 +604,15 @@ class World:
                 status = "working"
                 frozen.append({"tractor": tr.id, "job": job.id, "kind": "work", "start_t": self.t,
                                "end_t": self.t + job.remaining, "remaining_route": None})
-            elif tr.status != "broken" and p.status == "traveling" and route and p.job in self.jobs:
-                # Driving to its next field: snapshot it at the entrance, work frozen from arrival.
-                job = self.jobs[p.job]
-                arrive = p.anchor_t + (len(route) - 1) / tr.speed
-                travel_left = arrive - self.t
-                x, y = route[-1]
-                fuel -= travel_left * tr.burn_travel
+            elif tr.id in trips:
+                # Committed trip: Brain v1 can't plan ongoing travel, so it sees the
+                # tractor at the destination entrance with the job frozen from the
+                # exact arrival time and the rest of the drive's fuel already spent.
+                # (Planner input only: public positions stay the real ones.)
+                trip_route, job_id, arrive = trips[tr.id]
+                job = self.jobs[job_id]
+                x, y = trip_route[-1]
+                fuel -= (arrive - self.t) * tr.burn_travel
                 status = "traveling"
                 frozen.append({"tractor": tr.id, "job": job.id, "kind": "work", "start_t": arrive,
                                "end_t": arrive + job.remaining, "remaining_route": None})
@@ -610,41 +665,65 @@ class World:
         """
         if result.source_state_version != self.state_version:
             return {"applied": False, "reason": "stale"}
-        if not result.validation.passed or result.status != "feasible":
-            self.write_log("safety_reject", trigger=trigger.get("type"), status=result.status,
-                           violations=[v.model_dump() for v in result.validation.violations])
-            return {"applied": False, "reason": "rejected",
-                    "violations": [v.model_dump() for v in result.validation.violations]}
 
+        def reject(status: str, violations: list[dict]) -> dict:
+            self.write_log("safety_reject", trigger=trigger.get("type"), status=status, violations=violations)
+            return {"applied": False, "reason": "rejected", "violations": violations}
+
+        if not result.validation.passed or result.status != "feasible":
+            return reject(result.status, [v.model_dump() for v in result.validation.violations])
+
+        # The brain's entries, plus the committed rest of any trip in progress
+        # (the brain froze that tractor's job from its arrival; the public
+        # timeline still shows the drive). Execution orders are built from these
+        # same entries, so what is displayed is what runs.
         entries = [e.model_dump() for e in result.plan.entries]
-        # Build every order list first: any gateway refusal aborts before changes.
+        for tid, (route, job, arrive) in self._committed_trips().items():
+            frozen = [e for e in entries if e["tractor"] == tid and e["kind"] == "work" and e["job"] == job]
+            if not frozen or abs(frozen[0]["start_t"] - arrive) > EPS:
+                return reject("invalid_result", [{"rule": "committed_trip", "detail":
+                              f"{tid} is driving to {job} (arrives at {arrive:.2f}); the plan must keep that work from its arrival"}])
+            if any(e["tractor"] == tid and e["start_t"] < arrive - EPS for e in entries):
+                return reject("invalid_result", [{"rule": "committed_trip", "detail":
+                              f"{tid} has plan entries before it arrives at {arrive:.2f}"}])
+            entries.append({"tractor": tid, "job": job, "kind": "travel", "start_t": self.t,
+                            "end_t": arrive, "route": [list(c) for c in route]})
+        entries.sort(key=lambda e: (e["start_t"], e["tractor"], e["kind"]))
+
+        # Public Plan, built (and enum-checked) before anything changes.
+        diff = result.plan.diff or {}
+        kept = {mv["job"]: mv.get("progress_kept") for mv in result.facts.get("moved", [])}
+        try:
+            if result.plan.solver_status == "no_feasible_plan":
+                raise ValueError("no_feasible_plan is an operation outcome, never an applied plan (13.1)")
+            new_plan = m.Plan(
+                version=self.plan.version + 1, entries=entries, solver=result.plan.solver,
+                solve_ms=int(round(result.plan.solve_ms)), solver_status=result.plan.solver_status,
+                diff=m.PlanDiff(moved=[m.MovedJob(**{"progress_kept": kept.get(mv.get("job")), **mv})
+                                       for mv in diff.get("moved", [])],
+                                retimed=diff.get("retimed", []), dropped=diff.get("dropped", []),
+                                added=diff.get("added", [])))
+        except (ValueError, TypeError) as e:      # pydantic ValidationError is a ValueError
+            return reject("invalid_result", [{"rule": "public_contract", "detail": str(e).splitlines()[0]}])
+
+        # Every tractor's orders, checked before any are given (all or nothing).
         orders = {}
         for tid, tr in self.tractors.items():
             if tr.status == "broken":
                 continue
-            mine = orders_from_plan(entries, tid)
-            route = self.gateway.remaining_route(tid)
-            p = self.gateway.pose(tid)
-            if p.status == "traveling" and route and p.job in self.jobs:
-                mine = [Travel(route, p.job, None)] + mine          # keep driving to the frozen job
-            elif route:
-                continue                                             # finishing a cell: leave it be
-            orders[tid] = mine
+            if self.gateway.remaining_route(tid) and self.gateway.pose(tid).job is None:
+                continue                                    # finishing a cell with no job: leave it be
+            orders[tid] = orders_from_plan(entries, tid)
         try:
-            for tid, o in orders.items():                            # all or nothing
+            for tid, o in orders.items():
                 self.gateway.check(tid, o)
         except GatewayError as e:
-            self.write_log("safety_reject", trigger=trigger.get("type"), status="gateway_refused",
-                           violations=[{"rule": "gateway", "detail": str(e)}])
-            return {"applied": False, "reason": "rejected",
-                    "violations": [{"rule": "gateway", "detail": str(e)}]}
+            return reject("gateway_refused", [{"rule": "gateway", "detail": str(e)}])
         for tid, o in orders.items():
             self.gateway.assign(tid, o)
 
         old_owner = {j.id: j.tractor for j in self.jobs.values()}
-        self.plan = m.Plan(version=self.plan.version + 1, entries=entries, solver="greedy",
-                           solve_ms=int(round(result.solve_ms)), solver_status="feasible",
-                           diff=m.PlanDiff(moved=[m.MovedJob(**mv) for mv in result.plan.diff.get("moved", [])]))
+        self.plan = new_plan
         work = {e["job"]: e for e in entries if e["kind"] == "work"}
         unassigned = {u.job: u for u in result.unassigned}
         for j in self.jobs.values():
@@ -677,17 +756,19 @@ class World:
         self.emit("plan", m.dump(self.plan))
         self.emit("explanation", m.dump(expl))
         self._emit_dirty_jobs()
+        search_complete = not result.facts.get("search_budget_exhausted", False)
         if trigger.get("type") == "run":
-            self.write_log("plan", plan_version=self.plan.version, solver="greedy",
-                           solve_ms=self.plan.solve_ms, assigned=len(work))
+            self.write_log("plan", plan_version=self.plan.version, solver=self.plan.solver,
+                           solve_ms=self.plan.solve_ms, assigned=len(work), search_complete=search_complete)
         else:
             self.write_log("replan", trigger=trigger.get("type"), plan_version=self.plan.version,
                            replan_ms=round(result.solve_ms, 3), changes=result.facts.get("moved", []),
-                           safety="pass", explanation_id=expl.id)
+                           safety="pass", explanation_id=expl.id, search_complete=search_complete)
         if any(old_owner.get(j.id) != j.tractor for j in self.jobs.values()):
             self.emit("fleet", {"tractors": self.fleet_view()})
         self.emit("metrics", self.metrics_view())
-        return {"applied": True, "plan_version": self.plan.version, "unassigned": sorted(unassigned)}
+        return {"applied": True, "plan_version": self.plan.version, "unassigned": sorted(unassigned),
+                "solver_status": self.plan.solver_status}
 
     @staticmethod
     def _reason_text(u) -> str:

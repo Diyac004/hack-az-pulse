@@ -11,6 +11,15 @@ from app.brain import explain, plan as brain_plan
 from .state import World
 
 MAX_ATTEMPTS = 3
+# The brain's improvement search stops when it converges (~0.4 s on the demo
+# scenario) or when this wall-clock budget runs out. A budget that can run out
+# makes results depend on machine load, so give it room to converge; every
+# replan log line records whether the search completed.
+PLAN_BUDGET_MS = 10_000
+
+
+def run_planner(snapshot: dict, policy: str):
+    return brain_plan(snapshot, policy=policy, budget_ms=PLAN_BUDGET_MS)
 
 
 def replan_sync(world: World, trigger: dict) -> dict:
@@ -21,7 +30,7 @@ def replan_sync(world: World, trigger: dict) -> dict:
     """
     for _ in range(MAX_ATTEMPTS):
         snapshot = world.to_brain_snapshot(trigger)
-        result = brain_plan(snapshot, policy=world.policy)
+        result = run_planner(snapshot, world.policy)
         outcome = world.apply_result(result, trigger, explain)
         if outcome.get("reason") != "stale":
             return outcome

@@ -14,13 +14,14 @@ Rules (from backend/INTEGRATION_NOTES.md):
 from __future__ import annotations
 
 from collections import deque
+import copy
 from dataclasses import dataclass, field
 import math
 
 from app.brain.contracts import FarmMap
 
 from .base import (
-    Arrived, Cell, GatewayError, Halted, Idle, Moved, Order, Pose, ReachedCell,
+    Arrived, Cell, GatewayError, Halted, Idle, Idled, Moved, Order, Pose, ReachedCell,
     Report, Stopped, TractorSpec, Travel, Work, WorkDone, Worked,
 )
 
@@ -117,8 +118,19 @@ class MockGateway:
         tr.orders = deque(orders)
         tr.current = None
         tr.work_left = 0.0
-        tr.reported_idle = False
+        # An already-idle tractor given nothing new stays "reported", so it
+        # doesn't trigger another re-plan for the same idle spell.
+        tr.reported_idle = tr.reported_idle and not orders and not tr.path
         tr.status = "traveling" if tr.path else "idle"
+        first = tr.orders[0] if tr.orders else None
+        if tr.mid_cell and isinstance(first, Travel) and (first.not_before_t is None or first.not_before_t <= self.t + EPS):
+            # Mid-cell: the new route continues from the cell being entered, so it
+            # is this tractor's current trip right away (job and route visible now).
+            tr.current = tr.orders.popleft()
+            tr.path.extend(tr.current.route[1:])
+        # Start the first order now (zero-length step), so pose() and
+        # remaining_route() reflect it immediately. Its reports go out next advance().
+        self._pending.extend(self._advance_one(tr, self.t, self.t))
 
     def check(self, tractor_id: str, orders: list[Order]) -> None:
         """Dry run of assign(): raises GatewayError if it would be refused, changes nothing."""
@@ -192,13 +204,32 @@ class MockGateway:
         reports.sort(key=lambda r: r.t)   # stable: same-time reports keep order
         return reports
 
+    def preview(self, dt_min: float) -> list[Report]:
+        """Dry run of advance(dt_min): the reports it would produce, changing nothing.
+        The world uses it to stop a step exactly when a tractor needs a decision."""
+        end = self.t + dt_min
+        out: list[Report] = []
+        for tr in self._tractors.values():
+            out.extend(self._advance_one(copy.deepcopy(tr), self.t, end))
+        return sorted(out, key=lambda r: r.t)
+
     def _advance_one(self, tr: _Tractor, start: float, end: float) -> list[Report]:
+        """Instant actions (finishing an order, a blocked road ahead, picking up the
+        next order) also run in a zero-length step; time-consuming ones need time."""
         out: list[Report] = []
         now = start
         moved_cells = moved_min = 0.0
         worked: dict[str, float] = {}
+        idle: list[list[float]] = []
 
-        while end - now > EPS and tr.status != "broken":
+        def idle_until(t_end: float) -> None:
+            if t_end - now > EPS:
+                if idle and abs(idle[-1][1] - now) <= EPS:
+                    idle[-1][1] = t_end
+                else:
+                    idle.append([now, t_end])
+
+        while tr.status != "broken":
             # 1. driving: always finish the path before anything else
             if tr.path:
                 nxt = tr.path[0]
@@ -207,8 +238,11 @@ class MockGateway:
                     tr.path.clear(); tr.frac = 0.0
                     tr.orders.clear(); tr.current = None
                     tr.status = "idle"; tr.reported_idle = True
+                    idle_until(end)
                     break
                 tr.status = "traveling"
+                if end - now <= EPS:
+                    break
                 tr.heading = _heading(tr.cell, nxt)
                 step = min(end - now, (1.0 - tr.frac) / tr.speed)
                 tr.frac += step * tr.speed
@@ -231,6 +265,7 @@ class MockGateway:
                     if not tr.reported_idle:
                         out.append(Idle(tr.id, now, tr.cell))
                         tr.reported_idle = True
+                    idle_until(end)
                     break
                 tr.current = tr.orders.popleft()
                 tr.reported_idle = False
@@ -241,6 +276,9 @@ class MockGateway:
             nb = tr.current.not_before_t
             if nb is not None and nb - now > EPS:
                 tr.status = "waiting"
+                if end - now <= EPS:
+                    break
+                idle_until(min(end, nb))
                 now = min(end, nb)
                 continue
 
@@ -253,20 +291,24 @@ class MockGateway:
                 continue
 
             tr.status = "working"                    # Work
-            step = min(end - now, tr.work_left)
-            tr.work_left -= step
-            now += step
-            if step > 0:
-                worked[tr.current.job] = worked.get(tr.current.job, 0.0) + step
             if tr.work_left <= EPS:
                 out.append(WorkDone(tr.id, now, tr.current.job))
                 tr.current = None
+                continue
+            if end - now <= EPS:
+                break
+            step = min(end - now, tr.work_left)
+            tr.work_left -= step
+            now += step
+            worked[tr.current.job] = worked.get(tr.current.job, 0.0) + step
 
         if moved_cells > EPS:
             p = self._xy(tr)
             out.append(Moved(tr.id, end, p[0], p[1], tr.heading, moved_cells, moved_min))
         for job, minutes in worked.items():
             out.append(Worked(tr.id, end, job, minutes))
+        for a, b in idle:
+            out.append(Idled(tr.id, b, a, b))
         return out
 
     # ------------------------------------------------------------ internals
