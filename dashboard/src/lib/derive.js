@@ -221,6 +221,7 @@ export function logLine(e, state) {
       if (ty === 'heat_alert') return B('Heat alert') + (e.temp_f != null ? ': ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : '');
       if (ty === 'priority_change') return B('Priority changed') + ' on ' + esc(jlabel(state, e.job)) + (e.priority != null ? ' to ' + priorityWord(e.priority).toLowerCase() : '');
       if (ty === 'tractor_repaired') return B(tname(state, e.tractor) + ' marked repaired');
+      if (ty === 'jobs_submitted' && Array.isArray(e.jobs)) return B(e.jobs.length === 1 ? 'New job' : plural(e.jobs.length, 'new job')) + ': ' + esc(listText(e.jobs.map((id) => jlabel(state, id))));
       if (ty === 'weather_change') return B('Wind ' + (e.wind_mph ?? '?') + ' mph') + (e.wind_from_deg != null ? ' from the ' + compassName(e.wind_from_deg) : '') + (e.wind_mph > 10 ? ', above the spray limit' : '');
       return B('Event') + ': ' + esc(String(ty || '').replace(/_/g, ' '));
     }

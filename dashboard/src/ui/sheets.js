@@ -6,7 +6,7 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
   // caps(): data/capabilities.js. A feature the connected backend lacks is never offered (no error round trip).
   const has = (k) => caps()[k] !== false;
   const whyEl = document.getElementById('why'), mechEl = document.getElementById('mech'), addEl = document.getElementById('addsheet');
-  const all = [whyEl, mechEl, addEl];
+  const all = [whyEl, mechEl, addEl, document.getElementById('jobsheet')].filter(Boolean); // #jobsheet: ui/jobSheet.js
   // Hiding the mechanic sheet for any reason counts as "shown" for that pending item: it never re-pops by itself
   // (the chip's "Book mechanic" reopens it on purpose).
   const closeAll = (except) => {

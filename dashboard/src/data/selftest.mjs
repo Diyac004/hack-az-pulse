@@ -142,7 +142,7 @@ ok(Object.keys(index).sort().join(',') === 'api,capabilities,sourceInfo,start,st
 ok(index.capabilities.get().why === true && index.capabilities.get().events.heat_alert === true, 'mock source: every capability on');
 ok(index.sourceInfo.kind === 'mock' && index.sourceInfo.api === null, 'no location => mock');
 ok(typeof index.store.get === 'function' && typeof index.store.subscribe === 'function', 'store.get/subscribe');
-for (const k of ['run', 'setClock', 'postEvent', 'patchJob', 'addTractor', 'removeTractor', 'why', 'mechanics', 'bookMechanic', 'approve', 'scaleTest', 'getLog', 'getOperation', 'getControls', 'control', 'preview', 'manual']) ok(typeof index.api[k] === 'function', 'api.' + k);
+for (const k of ['run', 'setClock', 'postEvent', 'patchJob', 'submitJobs', 'addTractor', 'removeTractor', 'why', 'mechanics', 'bookMechanic', 'approve', 'scaleTest', 'getLog', 'getOperation', 'getControls', 'control', 'preview', 'manual']) ok(typeof index.api[k] === 'function', 'api.' + k);
 
 // ===================================================================
 section('scenario run with events');
@@ -304,6 +304,62 @@ ok(A.msgs[snapIdx].data.plan.version === 0 && A.msgs[snapIdx].data.plan.solver_s
 ok(A.store.get().clock.t < 2 && A.store.get().jobs.every((j) => j.progress === 0), 'store reset by snapshot');
 A.progress.clear();
 A.tick(5);
+
+// ===================================================================
+section('submitJobs: POST /jobs validation, 202 Operation, §13.3 order (instance J2)');
+{
+  const J = harness();
+  J.until(() => J.w().t >= 30);
+  const n0 = J.store.get().jobs.length;
+  const JOB = { type: 'mow', implement: 'mower', block: 'G', duration_min: 60, priority: 2, deadline_t: 480 };
+  // validation: whole list rejected, every row's problems listed with Pydantic-style loc
+  const bad = await J.api.submitJobs([JOB, { ...JOB, type: 'spray', block: 'Z', duration_min: 0, priority: 5, deadline_t: -10 }]).then(() => null, (e) => e);
+  ok(bad && bad.code === 'INVALID_INPUT' && Array.isArray(bad.details.errors), 'bad row -> INVALID_INPUT with details.errors');
+  const locs = (bad?.details.errors || []).map((e) => e.loc.join('.'));
+  for (const f of ['implement', 'block', 'duration_min', 'priority', 'deadline_t']) ok(locs.includes('body.jobs.1.' + f), `error loc body.jobs.1.${f} (${locs})`);
+  ok(!locs.some((l) => l.startsWith('body.jobs.0')), 'valid row 0 has no errors');
+  shapeOk({ error: bad }, 'rest.error', 'submitJobs error body');
+  ok((await J.api.submitJobs([]).then(() => null, (e) => e))?.code === 'INVALID_INPUT', 'empty list -> INVALID_INPUT');
+  ok((await J.api.submitJobs([{ ...JOB, id: 'J1' }]).then(() => null, (e) => e))?.code === 'CONFLICT', 'existing id -> CONFLICT');
+  ok((await J.api.submitJobs([{ ...JOB, id: 'J50' }, { ...JOB, id: 'J50' }]).then(() => null, (e) => e))?.code === 'INVALID_INPUT', 'duplicate id in one request -> INVALID_INPUT');
+  ok(J.store.get().jobs.length === n0, 'rejected submissions add nothing');
+  // accepted: jobs appear at once (pending), op queued -> running -> plan -> explanation -> jobs -> succeeded
+  const op = await J.api.submitJobs([JOB, { type: 'haul_bins', implement: 'bin_trailer', block: 'A', duration_min: 45, priority: 3, deadline_t: 400 }], { idempotencyKey: 'jobs-k' });
+  opOk(op, 'submitJobs 202');
+  shapeOk(op, 'rest.post_jobs', 'submitJobs 202 vs example');
+  ok(op.status === 'queued' && op.kind === 'replan' && op.source === 'jobs', 'submitJobs -> queued replan op, source jobs');
+  const ids = J.store.get().jobs.slice(n0).map((j) => j.id);
+  ok(ids.join(',') === `J${n0 + 1},J${n0 + 2}` && J.store.get().jobs.slice(n0).every((j) => j.status === 'pending' && j.label), `new jobs added pending with labels: ${ids}`);
+  ok(J.store.get().jobs.find((j) => j.id === ids[1]).label === 'Haul bins A', 'label from type + block');
+  const again = await J.api.submitJobs([JOB, { type: 'haul_bins', implement: 'bin_trailer', block: 'A', duration_min: 45, priority: 3, deadline_t: 400 }], { idempotencyKey: 'jobs-k' });
+  ok(again.id === op.id && J.store.get().jobs.length === n0 + 2, 'same key + body replays the op, adds nothing');
+  J.jobIds = null; J.tick();
+  const life = opMsgs(J.msgs, op.id);
+  const end = life.at(-1).data;
+  ok(life.map((m) => m.data.status).join('>') === 'queued>running>succeeded', 'op lifecycle queued>running>succeeded');
+  const from = idxOf(J.msgs, life[1]), to = idxOf(J.msgs, life[2]);
+  const between = J.msgs.slice(from + 1, to).map((m) => m.type);
+  ok(between.indexOf('plan') >= 0 && between.indexOf('plan') < between.indexOf('explanation') && between.indexOf('explanation') < between.indexOf('jobs'), `§13.3 order running>plan>explanation>jobs>succeeded (${between})`);
+  opOk(end, 'submitJobs succeeded op');
+  ok(end.result.applied_plan_version === J.store.get().plan.version && J.store.get().plan.diff.added.join(',') === ids.join(','), 'plan.diff.added = new ids');
+  ok(!J.store.get().plan.diff.moved.some((m) => ids.includes(m.job)), 'new jobs are not reported as moved');
+  const ex = J.store.get().explanations[0];
+  ok(ex.trigger === 'jobs_submitted' && /2 new jobs added \(Mow G and Haul bins A\)/.test(ex.text), 'jobs_submitted explanation: ' + ex.text);
+  console.log('    jobs:', ex.text);
+  ok(J.store.get().jobs.slice(n0).every((j) => j.tractor || j.unassigned_reason), 'new jobs planned or have an unassigned reason');
+  ok(J.store.get().log.some((l) => l.kind === 'event' && l.type === 'jobs_submitted'), 'log event jobs_submitted');
+  // error mapping back onto rows: Pydantic loc (FastAPI 400) and Anay's row-less World errors (matched by message)
+  const JI = await import('./jobInput.js');
+  const rows2 = [JOB, { ...JOB, block: 'Q' }];
+  const pyd = JI.mapJobErrors({ code: 'INVALID_INPUT', message: 'Invalid request: jobs.1.duration_min Input should be greater than 0', details: { errors: [{ loc: ['body', 'jobs', 1, 'duration_min'], msg: 'Input should be greater than 0' }, { loc: ['body', 'jobs'], msg: 'List should have at least 1 item' }] } }, rows2);
+  ok(pyd.rows.get(1)?.duration_min === 'Duration: input should be greater than 0.' && pyd.general.length === 1, 'pydantic loc -> row 1 duration_min + general');
+  const world = JI.mapJobErrors({ code: 'INVALID_INPUT', message: 'There is no block Q on this farm.', details: {} }, rows2);
+  ok(world.rows.get(1)?.block && !world.rows.has(0) && !world.general.length, 'Anay "no block Q" -> row 1 block');
+  const impl = JI.mapJobErrors({ message: 'A mow job needs a mower, not a sprayer.', details: {} }, [JOB, { ...JOB, implement: 'sprayer' }]);
+  ok(impl.rows.get(1)?.implement && !impl.rows.has(0), 'Anay implement mismatch -> that row');
+  ok(JI.mapJobErrors({ message: 'Something else', details: {} }, rows2).general[0] === 'Something else', 'unknown error -> general');
+  ok(JI.parseJobsJson('{"jobs": [1]}').jobs.length === 1 && JI.parseJobsJson('[]').jobs && /line 2/.test(JI.parseJobsJson('{\n  nope}').error), 'parseJobsJson: object, list, error with line');
+}
 
 // ===================================================================
 section('message stream checks (instance A)');
@@ -524,6 +580,7 @@ section('index.js live adapter mapping');
     ['setClock', [{ playing: false }], 'POST', '/api/clock', { playing: false }, false],
     ['postEvent', [{ type: 'heat_alert' }], 'POST', '/api/events', { type: 'heat_alert' }, true],
     ['patchJob', ['J1', { priority: 3 }], 'PATCH', '/api/jobs/J1', { priority: 3 }, true],
+    ['submitJobs', [[{ type: 'mow', implement: 'mower', block: 'G', duration_min: 60, priority: 2, deadline_t: 480 }]], 'POST', '/api/jobs', { jobs: [{ type: 'mow', implement: 'mower', block: 'G', duration_min: 60, priority: 2, deadline_t: 480 }] }, true],
     ['addTractor', [{ implements: ['mower'] }], 'POST', '/api/fleet', { implements: ['mower'] }, false],
     ['removeTractor', ['T4'], 'DELETE', '/api/fleet/T4', undefined, false],
     ['why', ['J1'], 'GET', '/api/why/J1', undefined, false],

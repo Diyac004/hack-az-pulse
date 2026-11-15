@@ -18,6 +18,7 @@ import { createChips } from './ui/chips.js';
 import { createSheets } from './ui/sheets.js';
 import { createKeynote } from './ui/keynote.js';
 import { createControls } from './ui/controls.js';
+import { createJobSheet } from './ui/jobSheet.js';
 import { createLiveFeed } from './scene/livefeed.js';
 import { createViewToggle } from './ui/viewToggle.js';
 import { createWeather } from './ui/weather.js';
@@ -69,6 +70,7 @@ dock = createDock({ onPill: (id) => sheets.openWhy(id), onLane: openControls });
 // chip click: fly to the tractor and open its readout card
 const chips = createChips({ api, ops, onRepair: markRepaired, onControls: openControls, onFocus: (id) => { const p = tractors.worldPos(id); if (p) world.focus(p, 2400); live.select(id); } });
 const controls = createControls({ store, api, ops, toast, world, sheets, caps: capabilities.get });
+const jobSheet = createJobSheet({ store, api, ops, toast, sheets, caps: capabilities.get });
 cockpit = createControlPanel({
   stage, store, api, ops, toast, mapPick,
   onOpen: (id) => { sheets.close(); stage.classList.add('cp-open'); const p = tractors.worldPos(id); if (p) world.focus(p, 2400); },
@@ -271,6 +273,7 @@ function syncUI(state, now) {
   chips.sync(state);
   panel.sync(state);
   controls.sync(state);
+  jobSheet.sync(state);
   cockpit.sync(state);
   labels.sync(state, L.unassigned.map((j) => j.id));
   vans.sync(state);

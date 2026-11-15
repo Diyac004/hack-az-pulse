@@ -43,6 +43,13 @@
 // 12. Ops execute on the next sim tick (100 ms real), so the 202 body is the
 //     `queued` Operation and WS order is queued -> running -> plan ->
 //     explanation -> jobs -> pending/fleet/metrics -> succeeded.
+// 13. POST /jobs (submitJobs): validated with data/jobInput.js (same rules as
+//     Anay's backend, plus deadline_t >= 0); the whole list is rejected on any
+//     error with details.errors[].loc = ["body","jobs",i,field] (Pydantic
+//     shape). Like Anay's backend, accepted jobs are added at once (pending,
+//     `jobs` message), then the replan op runs: Explanation.trigger and log
+//     event type "jobs_submitted"; plan.diff.added lists the new ids. Rejected
+//     after the workday ends (CONFLICT), like events.
 // ---------------------------------------------------------------------------
 
 export const DAY_MIN = 720;
@@ -53,6 +60,7 @@ export const FARM_MIN_PER_REAL_S = 1.2;
 /** Valid pace override (farm min per real second) or null. */
 export const parsePace = (v) => { const n = Number(v); return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n > 0 && n <= 120 ? n : null; };
 import { clockText, plural, verb, listText, durText, priorityWord } from './text.js';
+import { validateJobInputs, jobInputError, IMPLEMENT_FOR, jobLabel } from './jobInput.js';
 import { createControlHost, stepManual, stepGuided, implWidthM, leadText as controlLeadText } from './mockControls.js';
 const GW = 20, GH = 14;
 const RX = [0, 5, 10, 15], RY = [0, 6, 13];
@@ -665,6 +673,7 @@ export function createMockSource(opts = {}) {
     for (const j of w.jobs) {
       if (!unfinished(j)) continue;
       const b = before.get(j.id);
+      if (ctx.added && ctx.added.includes(j.id)) continue; // new jobs are diff.added, not moved
       if (j.tractor && b?.tractor !== j.tractor) moved.push({ job: j.id, from: b?.tractor ?? null, to: j.tractor, progress_kept: r2(j.progress) });
       else if (j.tractor && b?.start != null && j.start_t != null && Math.abs(j.start_t - b.start) >= 5) retimed.push({ job: j.id, old_start_t: r1(b.start), new_start_t: r1(j.start_t) });
     }
@@ -862,6 +871,14 @@ export function createMockSource(opts = {}) {
           changesText(facts, back.map((m) => m.job)) + lateText(late);
       }
       case 'weather_change': return weatherText(ctx, facts, late);
+      case 'jobs_submitted': {
+        const added = (ctx.added || []).map(jobById).filter(Boolean);
+        const on = added.filter((j) => j.tractor), off = added.filter((j) => !j.tractor);
+        let s = `${plural(added.length, 'new job')} added (${listText(added.map((j) => j.label))}).`;
+        for (const j of on) s += ` ${j.label} goes to ${nameOf(j.tractor)}, starting at ${fmtClock(j.start_t)}${j.end_t != null && j.end_t > j.deadline_t + 1e-9 ? '' : ', before its ' + fmtClock(j.deadline_t) + ' deadline'}.`;
+        if (off.length) s += ` ${listText(off.map((j) => j.label))} ${verb(off.length, 'waits', 'wait')}: ${off[0].unassigned_reason}`;
+        return s + changesText(facts, added.map((j) => j.id)) + lateText(late);
+      }
       case 'operator_action': {
         if (ctx.manual !== undefined) {
           const tn = nameOf(ctx.tractor), back = mv.filter((m) => m.from === ctx.tractor), to = mv.filter((m) => m.to === ctx.tractor);
@@ -1292,6 +1309,28 @@ export function createMockSource(opts = {}) {
       const clean = pick(patch);
       return enqueue('replan', 'job_patch', `${j.label} edit received. Replanning unfinished work.`, () => applyJobPatch(j, clean, {}),
         { key: o.idempotencyKey, sig: sigOf('job_patch:' + id, clean), job: j.id, supersede: (m) => m.job === j.id });
+    },
+    /** POST /jobs {jobs: JobInput[]} -> 202 Operation (source "jobs"). The whole list is rejected on any error. */
+    async submitJobs(jobs, o = {}) {
+      const meta = { key: o.idempotencyKey, sig: sigOf('jobs', { jobs }) };
+      const again = replay(meta); if (again) return again;
+      const errs = validateJobInputs(jobs, { blocks: BLOCKS.map((b) => b.id), existingIds: w.jobs.map((j) => j.id) });
+      if (errs.length) throw jobInputError(errs);
+      if (w.ended || w.t >= DAY_MIN) throw apiError('CONFLICT', `The workday ended at ${fmtClock(DAY_MIN)}. New jobs can't be planned today.`, { day_end_t: DAY_MIN });
+      const ids = [];
+      for (const ji of jobs) {
+        let id = ji.id;
+        if (!id) { let n = w.jobs.length + 1; while (jobById('J' + n)) n++; id = 'J' + n; }
+        w.jobs.push(makeJob(id, jobLabel(ji.type, ji.block), ji.block, IMPLEMENT_FOR[ji.type], ji.duration_min, ji.priority, ji.deadline_t));
+        ids.push(id);
+      }
+      addLog({ kind: 'event', type: 'jobs_submitted', jobs: ids });
+      flushJobs({ force: true });
+      return enqueue('replan', 'jobs', `${plural(ids.length, 'job')} submitted (${ids.join(', ')}). Replanning unfinished work.`, () => {
+        const r = replan('jobs_submitted', { added: ids, event: { type: 'jobs_submitted', jobs: ids } });
+        afterReplan();
+        return planResult(r, `${plural(ids.length, 'new job')} planned (${ids.join(', ')}); plan v${r.version} applied.`);
+      }, meta);
     },
     async addTractor(entry = {}) {
       const impls = entry.implements;

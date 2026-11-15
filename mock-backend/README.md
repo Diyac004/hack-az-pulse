@@ -29,8 +29,9 @@ You can run it repeatedly, because it resets the day first with `POST /api/run`.
 ## Behaviour
 
 - There is one shared simulation. Each WS client first gets a `snapshot` with seq 1, then every envelope the simulation emits, stamped with that connection's own `seq`. `{"type":"ping"}` gets the reply `{"type":"pong"}`, which has no seq.
-- `run`, `events`, `PATCH jobs/{id}`, `mechanics/book` and `approve` return **202 + Operation**. They honour the `Idempotency-Key` header: the same key with the same body returns the same operation, and the same key with a different body returns 409 `CONFLICT`. `POST /fleet` returns 202 `{tractor}` with status `starting`.
+- `run`, `events`, `POST jobs`, `PATCH jobs/{id}`, `mechanics/book` and `approve` return **202 + Operation**. They honour the `Idempotency-Key` header: the same key with the same body returns the same operation, and the same key with a different body returns 409 `CONFLICT`. `POST /fleet` returns 202 `{tractor}` with status `starting`.
 - Errors use the body `{"error":{"code","message","details"}}`. HTTP statuses by code: `INVALID_INPUT` 400, `NOT_FOUND` 404, `CONFLICT`/`AT_CAPACITY`/`NEEDS_MANUAL` 409, `SAFETY_REJECTED`/`WEATHER_BLOCKED` 422, `TIMEOUT`/`GATEWAY_UNAVAILABLE` 503, `INTERNAL` 500. Malformed JSON returns 400, an unknown route 404, and a wrong method 405.
+- `POST /api/jobs` takes `{"jobs": [JobInput]}` and checks the same rules as the real backend (`dashboard/src/data/jobInput.js`). On any error the whole list is rejected: 400 `INVALID_INPUT` (or 409 `CONFLICT` for an existing id) with `details.errors[].loc = ["body","jobs",i,field]`. Accepted jobs appear at once as `pending`, then the replan operation plans them.
 - `GET /api/log` returns `text/plain` JSON Lines.
 - `GET /openapi.json` returns a static route list. FastAPI would generate the real document.
 - CORS allows `*` for GET/POST/PATCH/DELETE/OPTIONS with the headers `Content-Type` and `Idempotency-Key`.
@@ -38,4 +39,4 @@ You can run it repeatedly, because it resets the day first with `POST /api/run`.
 ## Not supported (501 `NOT_IMPLEMENTED`)
 
 The browser mock has no implementation for these:
-`POST /api/jobs`, `GET /api/tractors/{id}/controls`, `POST /api/tractors/{id}/control`, `POST /api/tractors/{id}/preview`, `POST /api/tractors/{id}/manual`.
+`GET /api/tractors/{id}/controls`, `POST /api/tractors/{id}/control`, `POST /api/tractors/{id}/preview`, `POST /api/tractors/{id}/manual`.
