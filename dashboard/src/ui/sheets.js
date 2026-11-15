@@ -203,7 +203,9 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
         if (!res) return; // error already toasted verbatim
         addEl.classList.remove('on');
         const t = res.tractor;
-        toast((t ? (t.name || t.id) : entry.name) + ' starting at the depot…');
+        // MockGateway (§14) answers with an already-idle tractor; only a real `starting` tractor is "starting".
+        const nm = t ? (t.name || t.id) : entry.name;
+        toast(t && t.status && t.status !== 'starting' ? nm + ' joined the fleet at the depot' : nm + ' starting at the depot…');
       });
     }
   });

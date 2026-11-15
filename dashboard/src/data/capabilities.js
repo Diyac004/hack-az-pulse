@@ -2,7 +2,7 @@
 // backend does not support instead of letting the operator discover them through errors.
 //
 // How it decides, in order (no state-changing request is ever sent):
-//   1. GET /api/capabilities, if the backend serves it: a partial Capabilities object, merged over the defaults.
+//   1. GET /api/capabilities, if the backend serves it: used as is (merged over the backend's defaults), no probes.
 //   2. Which backend this is: GET /openapi.json -> `paths` (FastAPI platform backend) or `routes` (our Node
 //      mock-backend); else GET /api/bridge -> AgOpenWeb bridge; else unknown (everything on).
 //   3. A small per-backend profile for features that can only be exercised with POST (weather events, approvals,
@@ -63,6 +63,15 @@ const notImplemented = (e) => !!e && (e.status === 501 || !!(e.details && e.deta
  * @returns {Promise<typeof ALL_ON>} never rejects; on any doubt a feature stays on.
  */
 export async function detectCapabilities({ root, request, fetchJson, state }) {
+  // 0. An explicit GET /api/capabilities (FastAPI since 20d266e, ARCHITECTURE.md §14) is the source of truth:
+  //    no inference, no probes. Keys it leaves out keep their per-backend profile default.
+  try {
+    const doc = await request('GET', '/capabilities');
+    if (doc && typeof doc === 'object' && !Array.isArray(doc) && (doc.events || typeof doc.backend === 'string')) {
+      const b = typeof doc.backend === 'string' && PROFILES[doc.backend] ? doc.backend : 'unknown';
+      return mergeCaps(mergeCaps(ALL_ON, { ...PROFILES[b], backend: b }), doc);
+    }
+  } catch { /* not served: infer below */ }
   const getJson = fetchJson || (async (url) => { const r = await fetch(url, { headers: { Accept: 'application/json' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
   let backend = 'unknown';
   try {

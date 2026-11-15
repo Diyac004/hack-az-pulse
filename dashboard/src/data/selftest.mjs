@@ -729,6 +729,19 @@ section('rejected job edit keeps old values + plain-words message (Anay 7df3d39:
   globalThis.fetch = realFetch;
 }
 
+section('capabilities: explicit GET /api/capabilities (20d266e, §14) wins, no probes');
+{
+  const { detectCapabilities } = await import('./capabilities.js');
+  const DOC = { backend: 'fastapi', events: { breakdown: true, block_route: true, unblock_route: true, tractor_repaired: true, priority_change: true, heat_alert: false, weather_change: false, ripening_change: false }, why: false, controls: false, mechanics: false, approve: false, scaleTest: false, submitJobs: true, patchJob: true, weatherEnforced: false, metricsMeasured: true };
+  const seen = [];
+  const caps = await detectCapabilities({ root: 'http://x', request: async (m, p) => { seen.push(p); if (p === '/capabilities') return DOC; throw { status: 501 }; }, fetchJson: async () => { seen.push('openapi'); return { paths: {} }; }, state: { jobs: [{ id: 'J1' }], fleet: [{ id: 'T1' }] } });
+  ok(seen.length === 1 && seen[0] === '/capabilities', 'only /capabilities requested: ' + seen.join(','));
+  ok(caps.backend === 'fastapi' && caps.why === false && caps.controls === false && caps.mechanics === false && caps.approve === false && caps.scaleTest === false && caps.submitJobs && caps.patchJob && caps.weatherEnforced === false && caps.metricsMeasured === true, 'doc flags taken exactly');
+  ok(caps.events.breakdown && caps.events.priority_change && caps.events.heat_alert === false && caps.events.weather_change === false && caps.events.ripening_change === false, 'doc events taken exactly');
+  const inferred = await detectCapabilities({ root: 'http://x', request: async (m, p) => { if (p === '/capabilities') throw { status: 404, code: 'NOT_FOUND' }; throw { status: 501, details: { not_implemented: true } }; }, fetchJson: async () => ({ paths: {} }), state: { jobs: [{ id: 'J1' }], fleet: [{ id: 'T1' }] } });
+  ok(inferred.backend === 'fastapi' && inferred.why === false && inferred.controls === false && inferred.events.heat_alert === false, 'no doc => probing fallback still works');
+}
+
 section('baseline hold: transient null keeps last values (Anay 7df3d39 twin recompute)');
 {
   const P = await import('../ui/panel.js');
