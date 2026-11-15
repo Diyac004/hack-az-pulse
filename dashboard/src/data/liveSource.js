@@ -15,12 +15,16 @@ export function newIdempotencyKey() {
 }
 
 /**
- * @param {{api: string, onMessage: (env: object) => void, onStatus?: (connected: boolean) => void}} opts
+ * @param {{api: string, onMessage: (env: object) => void, onStatus?: (connected: boolean) => void,
+ *          onLink?: (link: {url: string, connected: boolean, everConnected: boolean, failures: number}) => void}} opts
+ *   onLink reports connection detail so the UI can tell "never reached the backend" (bad api= URL, backend
+ *   not started) from "lost it, reconnecting". failures = consecutive failed/closed attempts.
  */
-export function createLiveSource({ api, onMessage, onStatus }) {
+export function createLiveSource({ api, onMessage, onStatus, onLink }) {
   const root = String(api || 'http://localhost:8000').replace(/\/+$/, '');
   const wsUrl = root.replace(/^http/, 'ws') + '/ws';
   const status = (v) => { try { onStatus && onStatus(v); } catch (e) { console.error('[live] onStatus error', e); } };
+  const link = (v) => { try { onLink && onLink(v); } catch (e) { console.error('[live] onLink error', e); } };
   const emit = (env) => { try { onMessage(env); } catch (e) { console.error('[live] onMessage error', e); } };
 
   let ws = null;
@@ -30,12 +34,16 @@ export function createLiveSource({ api, onMessage, onStatus }) {
   let pingTimer = null;
   let retryTimer = null;
   let lastSeq = 0;
+  let everConnected = false;
+  let failures = 0;
+  const report = () => link({ url: wsUrl, connected, everConnected, failures });
   let firstSnapshot = null; // {resolve, reject} until the first snapshot arrives
 
   function setConnected(v) {
     if (connected === v) return;
     connected = v;
     status(v);
+    report();
   }
 
   function clearTimers() {
@@ -56,6 +64,7 @@ export function createLiveSource({ api, onMessage, onStatus }) {
     let sock;
     try { sock = new globalThis.WebSocket(wsUrl); } catch (e) {
       console.warn('[live] WebSocket construct failed', e);
+      failures++; report();
       scheduleReconnect();
       return;
     }
@@ -63,6 +72,7 @@ export function createLiveSource({ api, onMessage, onStatus }) {
     sock.onopen = () => {
       if (ws !== sock) return;
       attempt = 0;
+      everConnected = true; failures = 0;
       setConnected(true);
       if (pingTimer) clearInterval(pingTimer);
       pingTimer = setInterval(() => {
@@ -89,7 +99,9 @@ export function createLiveSource({ api, onMessage, onStatus }) {
       if (ws !== sock) return;
       ws = null;
       if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+      failures++;
       setConnected(false);
+      report(); // setConnected only reports on change; failures moved
       scheduleReconnect();
     };
   }
@@ -108,7 +120,9 @@ export function createLiveSource({ api, onMessage, onStatus }) {
 
   /**
    * One REST call to `${api}/api${path}`. Resolves the parsed body for 2xx (incl. 202 Operation);
-   * rejects with {code, message, details, status}.
+   * rejects with {code, message, details, status}. Client-side failures use status 0 and code
+   * CLIENT_TIMEOUT (our own abort; the server may still have acted) or NETWORK (no response at all).
+   * A server-side 503 keeps the server's own code (e.g. TIMEOUT = compute budget exceeded).
    */
   async function request(method, path, body, { idempotencyKey, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     const url = `${root}/api${path}`;
@@ -129,7 +143,7 @@ export function createLiveSource({ api, onMessage, onStatus }) {
       res = await fetch(url, init);
       raw = await res.text(); // body read stays under the same timeout
     } catch (e) {
-      if (timedOut) throw { code: 'TIMEOUT', message: `Request timed out after ${timeoutMs} ms`, details: { method: init.method, path }, status: 0 };
+      if (timedOut) throw { code: 'CLIENT_TIMEOUT', message: `No reply from the backend after ${Math.round(timeoutMs / 1000)} s`, details: { method: init.method, path }, status: 0 };
       throw { code: 'NETWORK', message: (e && e.message) || 'Network error', details: { method: init.method, path }, status: 0 };
     } finally {
       clearTimeout(timer);
@@ -167,5 +181,5 @@ export function createLiveSource({ api, onMessage, onStatus }) {
     if (firstSnapshot) { const f = firstSnapshot; firstSnapshot = null; f.reject({ code: 'NETWORK', message: 'source closed', details: {}, status: 0 }); }
   }
 
-  return { start, resync, request, close };
+  return { start, resync, request, close, get connected() { return connected; } };
 }

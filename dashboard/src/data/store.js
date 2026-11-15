@@ -28,6 +28,7 @@ export function emptyState(source = 'mock') {
     capacity: null,
     log: [],
     operations: [],
+    link: null, // live only: {url, connected, everConnected, failures} from liveSource
   };
 }
 
@@ -62,7 +63,18 @@ function applyBlockedFromLog(scenario, entry) {
   return { ...scenario, blocked_cells: [...cur.values()] };
 }
 
-function fromSnapshot(prev, data, seq) {
+// A resync snapshot (GET /api/state after a seq gap, same connection) can be older than operation
+// messages that arrived while it was in flight; never move a known op back from terminal to active.
+function mergeResyncOps(prevOps, snapOps) {
+  const prevById = new Map(prevOps.map((o) => [o.id, o]));
+  const merged = snapOps.map((o) => { const p = prevById.get(o.id); return p && TERMINAL.has(p.status) && !TERMINAL.has(o.status) ? p : o; });
+  const ids = new Set(merged.map((o) => o.id));
+  return [...merged, ...prevOps.filter((o) => !ids.has(o.id) && TERMINAL.has(o.status))];
+}
+
+/** Full reset from a Snapshot: every slice (incl. operations) is replaced, nothing from the previous run survives.
+ *  `resync` (same connection, GET /api/state) only protects operations from going backwards. */
+function fromSnapshot(prev, data, seq, resync = false) {
   return {
     ...prev,
     seq,
@@ -77,7 +89,7 @@ function fromSnapshot(prev, data, seq) {
     pending: data.pending ?? [],
     capacity: data.capacity ?? null,
     log: (data.log_tail ?? []).slice(0, LOG_CAP),
-    operations: normalizeOperations(data.operations ?? []),
+    operations: normalizeOperations(resync ? mergeResyncOps(prev.operations, data.operations ?? []) : (data.operations ?? [])),
   };
 }
 
@@ -90,7 +102,7 @@ function dedupeById(list) {
 export function reduce(s, msg) {
   const d = msg.data;
   switch (msg.type) {
-    case 'snapshot': return fromSnapshot(s, d, msg.seq);
+    case 'snapshot': return fromSnapshot(s, d, msg.seq, !!msg.resync);
     case 'poses': {
       const byId = new Map((d.tractors || []).map((p) => [p.id, p]));
       return { ...s, fleet: s.fleet.map((tr) => (byId.has(tr.id) ? { ...tr, ...byId.get(tr.id) } : tr)) };
@@ -145,7 +157,7 @@ export function createStore(opts = {}) {
     /** Replace state from GET /api/state (Snapshot body) without touching seq. */
     applySnapshotData(data) {
       const seq = state.seq;
-      state = fromSnapshot(state, data, seq);
+      state = fromSnapshot(state, data, seq, true);
       notify({ type: 'snapshot', t: data?.clock?.t ?? 0, seq, data });
     },
     setConnected(connected) {
@@ -153,6 +165,11 @@ export function createStore(opts = {}) {
       state = { ...state, connected };
       // Local change, not a server message: synthetic envelope so subscribers can always read msg.type.
       notify({ type: 'connection', t: state.clock?.t ?? 0, seq: state.seq, data: { connected } });
+    },
+    /** Live connection detail (not a server message); notifies like setConnected. */
+    setLink(link) {
+      state = { ...state, link };
+      notify({ type: 'connection', t: state.clock?.t ?? 0, seq: state.seq, data: { connected: state.connected, link } });
     },
     setResync(fn) { resyncFn = fn; },
   };

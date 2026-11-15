@@ -10,10 +10,12 @@ export function createIsland() {
     /** Queue a big moment; consecutive moments each get a beat. */
     moment(m) { if (!m) return; if (m.sticky) { sticky = true; queue.length = 0; show(m); return; } if (m.urgent || m.dot === '#FF453A') { queue.length = 0; show(m); return; } queue.push(m); if (queue.length > 4) queue.shift(); },
     reset() { sticky = false; queue.length = 0; until = 0; },
-    tick(state, now) {
+    /** note: live-link problem text (e.g. "Can't reach localhost:8000 · retrying"); replaces the idle line. */
+    tick(state, now, note) {
       if (sticky) return;
       if (now < until) return;
       if (queue.length) { show(queue.shift()); return; }
+      if (note) { itxt.textContent = note; idot.style.background = '#FF453A'; island.classList.remove('big'); return; }
       const fleet = (state && state.fleet) || [];
       const w = fleet.filter((x) => isBusy(x.status)).length;
       const t = state && state.clock ? state.clock.t : null;
@@ -29,8 +31,8 @@ export function createToast() {
   let timer = null;
   return (text, kind) => {
     el.textContent = text;
-    el.className = 'on' + (kind === 'err' ? ' err' : '');
+    el.className = 'on' + (kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '');
     clearTimeout(timer);
-    timer = setTimeout(() => { el.className = ''; }, kind === 'err' ? 5200 : 3200);
+    timer = setTimeout(() => { el.className = ''; }, kind === 'err' || kind === 'warn' ? 5200 : 3200);
   };
 }

@@ -47,7 +47,11 @@
 
 export const DAY_MIN = 720;
 export const TICK_MS = 100;
-export const FARM_MIN_PER_REAL_S = 9.6;
+// Real-time pace at speed 1, in farm minutes per real second. 1.2 => the 720-min day takes 10 real minutes
+// (PROJECT.md Change 3: live demo day 10-12 min). Override per source with createMockSource({ pace }).
+export const FARM_MIN_PER_REAL_S = 1.2;
+/** Valid pace override (farm min per real second) or null. */
+export const parsePace = (v) => { const n = Number(v); return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n > 0 && n <= 120 ? n : null; };
 const GW = 20, GH = 14;
 const RX = [0, 5, 10, 15], RY = [0, 6, 13];
 const DEPOT = { x: 1, y: 6 };
@@ -305,10 +309,13 @@ function jobOut(j) {
 /**
  * @param {{realtime?: boolean, autoRepair?: boolean}} [opts]
  *   realtime: drive tick() from setInterval(100 ms) after connect (default true).
+ *   pace: farm minutes per real second at speed 1 (default FARM_MIN_PER_REAL_S = 1.2, a 10-minute day).
+ *         The clock speed multiplier (setClock speed) multiplies it. Each tick advances pace*speed*0.1 farm min.
  */
 export function createMockSource(opts = {}) {
   const realtime = opts.realtime !== false;
   const autoRepair = !!opts.autoRepair;
+  const pace = parsePace(opts.pace) ?? FARM_MIN_PER_REAL_S;
   let w; // world
   let seq = 0, handler = null, timer = null, tickN = 0, realMs = 0;
   let onConnected = null;
@@ -611,11 +618,18 @@ export function createMockSource(opts = {}) {
 
   // ---------------- operations (§13)
   function setOp(op, patch) { Object.assign(op, patch, { updated_t: r2(w.t) }); emit('operation', op); }
+  /** §13.3 idempotency: same key + same endpoint/body -> the ORIGINAL operation (current status), regardless of
+   *  what state has changed since; same key + different endpoint/body -> CONFLICT. Null when the key is new.
+   *  Mutations call this BEFORE validating state, so a retry after success never turns into a 4xx. */
+  function replay(meta) {
+    if (!meta || !meta.key) return null;
+    const prev = idem.get(meta.key);
+    if (!prev) return null;
+    if (prev.sig === meta.sig) return clone(prev.op);
+    throw apiError('CONFLICT', 'This idempotency key was already used for a different request.', { idempotency_key: meta.key });
+  }
   function enqueue(kind, source, message, exec, meta = {}) {
-    if (meta.key) {
-      const prev = idem.get(meta.key);
-      if (prev) { if (prev.sig === meta.sig) return clone(prev.op); throw apiError('CONFLICT', 'This idempotency key was already used for a different request.', { idempotency_key: meta.key }); }
-    }
+    const again = replay(meta); if (again) return again;
     if (meta.supersede) {
       for (let i = queue.length - 1; i >= 0; i--) if (meta.supersede(queue[i].meta)) { setOp(queue[i].op, { status: 'superseded', message: 'Replaced by a newer request.' }); queue.splice(i, 1); }
     }
@@ -721,7 +735,7 @@ export function createMockSource(opts = {}) {
       }
     }
     if (w.playing && !w.ended) {
-      let dt = (FARM_MIN_PER_REAL_S * w.speed * TICK_MS) / 1000;
+      let dt = (pace * w.speed * TICK_MS) / 1000;
       while (dt > 1e-9 && w.t < DAY_MIN) { const s = Math.min(1, dt); stepSim(s); dt -= s; }
     }
     for (const tr of w.tractors) {
@@ -808,7 +822,7 @@ export function createMockSource(opts = {}) {
     async postEvent(body, o = {}) {
       if (!body || typeof body.type !== 'string') throw apiError('INVALID_INPUT', 'Event needs a type.', { field: 'type' });
       const meta = { key: o.idempotencyKey, sig: sigOf('events', body) };
-      if (meta.key && idem.has(meta.key)) return enqueue('replan', 'events', '', null, meta);
+      const again = replay(meta); if (again) return again;
       const ev = body;
       switch (ev.type) {
         case 'breakdown': {
@@ -904,8 +918,10 @@ export function createMockSource(opts = {}) {
       }
     },
     async patchJob(id, patch, o = {}) {
+      const pick = (src) => { const c = {}; ['priority', 'deadline_t', 'pinned_to'].forEach((k) => { if (src && src[k] !== undefined) c[k] = src[k]; }); return c; };
+      const again = replay({ key: o.idempotencyKey, sig: sigOf('job_patch:' + id, pick(patch)) }); if (again) return again;
       const j = validateJobPatch(id, patch);
-      const clean = {}; ['priority', 'deadline_t', 'pinned_to'].forEach((k) => { if (patch[k] !== undefined) clean[k] = patch[k]; });
+      const clean = pick(patch);
       return enqueue('replan', 'job_patch', `${j.label} edit received. Replanning unfinished work.`, () => applyJobPatch(j, clean, {}),
         { key: o.idempotencyKey, sig: sigOf('job_patch:' + id, clean), job: j.id, supersede: (m) => m.job === j.id });
     },
@@ -959,6 +975,8 @@ export function createMockSource(opts = {}) {
       return { options: clone(MECHANICS) };
     },
     async bookMechanic(tractorId, mechanicId, o = {}) {
+      const meta = { key: o.idempotencyKey, sig: sigOf('book', { tractorId, mechanicId }) };
+      const again = replay(meta); if (again) return again;
       const tr = trById(tractorId);
       if (!tr) throw apiError('NOT_FOUND', `Tractor ${tractorId} does not exist.`, { tractor: tractorId });
       const mech = MECHANICS.find((m) => m.id === mechanicId);
@@ -968,9 +986,11 @@ export function createMockSource(opts = {}) {
         if (!['broken', 'awaiting_mechanic'].includes(tr.status)) throw apiError('CONFLICT', `${tr.name} no longer needs a mechanic.`, { status: tr.status });
         const result = doBooking(tr, mech);
         return { result, message: `${mech.name} booked for ${tr.name}, arriving ${fmtClock(result.arrival_t)}.` };
-      }, { key: o.idempotencyKey, sig: sigOf('book', { tractorId, mechanicId }) });
+      }, meta);
     },
     async approve(id, decision, o = {}) {
+      const meta = { key: o.idempotencyKey, sig: sigOf('approve', { id, decision }) };
+      const again = replay(meta); if (again) return again;
       const p = w.pending.find((x) => x.id === id);
       if (!p) throw apiError('NOT_FOUND', `Nothing pending with id ${id}.`, { id });
       if (!['approve', 'override'].includes(decision)) throw apiError('INVALID_INPUT', 'Decision must be approve or override.', { field: 'decision' });
@@ -984,7 +1004,7 @@ export function createMockSource(opts = {}) {
         if (w.pending.includes(p)) { w.pending = w.pending.filter((x) => x !== p); emitPending(); }
         addLog({ kind: 'operator_action', pending: id, decision, tractor: p.tractor ?? null });
         return { result: { pending_id: id, decision, applied_plan_version: null }, message: message || (decision === 'approve' ? `${id} approved.` : `${id} overridden; proposal not applied.`) };
-      }, { key: o.idempotencyKey, sig: sigOf('approve', { id, decision }) });
+      }, meta);
     },
     async scaleTest(body = {}) {
       const nt = body.tractors ?? 5, nj = body.jobs ?? 20;

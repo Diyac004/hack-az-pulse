@@ -7,7 +7,12 @@ export function createKeynote() {
   el.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) el.classList.remove('on'); });
   return {
     hide() { el.classList.remove('on'); },
-    show(state) {
+    /** bounds: {top, bottom} px inside #stage that the card must stay within (below island/chips, above dock). */
+    show(state, bounds) {
+      if (bounds) {
+        el.style.top = bounds.top + 'px';
+        el.style.maxHeight = Math.max(160, bounds.bottom - bounds.top) + 'px';
+      }
       const D = (state.clock && state.clock.day_minutes) || 720;
       const { rows, hasBase, violations } = scoreRows(state.metrics);
       const stat = (r) => '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-top:0.5px solid rgba(0,0,0,.08)"><span style="font-size:13px;color:#6e6e73;text-align:left">' + esc(r.label) + '</span><span><b class="roll" data-v="' + (r.a ?? 0) + '" style="font-size:24px;font-weight:600;color:#1E7A3C">' + (r.a == null ? '—' : '0') + '</b><span style="font-size:12px;color:#6e6e73"> ' + (r.unit || '') + (hasBase && r.b != null ? ' vs ' + Math.round(r.b) : '') + '</span></span></div>';

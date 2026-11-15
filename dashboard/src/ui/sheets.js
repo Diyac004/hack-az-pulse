@@ -6,6 +6,13 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
   const whyEl = document.getElementById('why'), mechEl = document.getElementById('mech'), addEl = document.getElementById('addsheet');
   const all = [whyEl, mechEl, addEl];
   const closeAll = (except) => all.forEach((e) => { if (e !== except) e.classList.remove('on'); });
+  // A focused control inside a sheet that slides off-stage makes Chrome scroll #stage (overflow:hidden) to keep it
+  // visible. Blur it the moment its sheet closes, wherever the close came from.
+  const mo = new MutationObserver((recs) => recs.forEach((r) => {
+    const el = r.target, a = document.activeElement;
+    if (!el.classList.contains('on') && a && el.contains(a)) a.blur();
+  }));
+  all.forEach((el) => mo.observe(el, { attributes: true, attributeFilter: ['class'] }));
   const st = () => store.get() || {};
   const trName = (id) => { const t = (st().fleet || []).find((x) => x.id === id); return t ? (t.name || t.id) : (id || '—'); };
   const trIdx = (id) => (st().fleet || []).findIndex((x) => x.id === id);
@@ -191,6 +198,10 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
     openWhy,
     openAdd() { closeAll(addEl); whyJob = null; renderAdd(); addEl.classList.add('on'); },
     reset() { dismissed.clear(); closeAll(null); whyJob = null; mechPending = null; },
+    /** Close whatever sheet is open (keeps "Not now" dismissals). */
+    close() { closeAll(null); whyJob = null; mechPending = null; },
+    /** The open sheet element, or null. */
+    openEl() { return all.find((e) => e.classList.contains('on')) || null; },
     sync(state, allowPending = true) {
       if (whyJob && whyEl.classList.contains('on')) {
         const j = (state.jobs || []).find((x) => x.id === whyJob);

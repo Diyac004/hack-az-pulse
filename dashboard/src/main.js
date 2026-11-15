@@ -51,12 +51,41 @@ const controls = createControls({ store, api, ops, toast, world, sheets });
 
 // ---------- source badge ----------
 const badge = document.getElementById('srcbadge');
+const apiHost = (() => { try { return new URL(sourceInfo.api).host; } catch { return sourceInfo.api || ''; } })();
+/** Live link problem worth saying out loud, or null: bad api= URL, or the backend was never reached. */
+function linkProblem(state) {
+  if (sourceInfo.kind !== 'live') return null;
+  if (sourceInfo.error) return { badge: 'bad api URL', note: 'Live mode: bad api= URL', title: sourceInfo.error };
+  const l = state && state.link;
+  if (l && !l.connected && !l.everConnected && l.failures > 0) return { badge: 'no backend', note: "Can't reach " + apiHost + ' · retrying', title: "Can't reach " + sourceInfo.api + ' (WebSocket ' + l.url + '). Retrying with backoff.' };
+  return null;
+}
+let badgeKey = '';
 function renderBadge(state) {
   const kind = (sourceInfo && sourceInfo.kind) || 'mock';
-  const down = state && state.connected === false;
-  badge.className = 'gl ' + (down ? 'down' : kind);
-  badge.innerHTML = '<i></i>' + (kind === 'live' ? 'LIVE' : 'MOCK') + (down ? ' · reconnecting' : '');
-  badge.title = kind === 'live' ? 'Live backend' + (sourceInfo.api ? ' · ' + sourceInfo.api : '') : 'In-browser mock data source (?source=live to switch)';
+  const prob = linkProblem(state);
+  const connected = !!(state && state.connected);
+  const ever = !!(state && state.link && state.link.everConnected);
+  // live: LIVE (green) | LIVE · connecting (grey) | LIVE · reconnecting (red) | LIVE · no backend / bad api URL (red)
+  const suffix = prob ? ' · ' + prob.badge : connected ? '' : kind === 'live' ? (ever ? ' · reconnecting' : ' · connecting') : state && state.connected === false && state.clock ? ' · reconnecting' : '';
+  const cls = 'gl ' + (prob || (!connected && (kind !== 'live' || ever) && suffix) ? 'down' : connected ? kind : 'wait');
+  const title = prob ? prob.title : kind === 'live' ? 'Live backend' + (sourceInfo.api ? ' · ' + sourceInfo.api : '') : 'In-browser mock data source (?source=live to switch)';
+  const key = cls + '|' + suffix + '|' + title;
+  if (key === badgeKey) return;
+  badgeKey = key;
+  badge.className = cls;
+  badge.innerHTML = '<i></i>' + (kind === 'live' ? 'LIVE' : 'MOCK') + suffix;
+  badge.title = title;
+}
+let probToasted = false;
+function noteProblem(state) {
+  const prob = linkProblem(state);
+  if (!prob || probToasted || sourceInfo.error) return prob;
+  if (state.link && state.link.failures >= 2) {
+    probToasted = true;
+    toast("Can't reach the backend at " + sourceInfo.api + '. Start it with: cd mock-backend && npm start. Retrying…', 'err');
+  }
+  return prob;
 }
 
 // ---------- per-run moment state ----------
@@ -87,14 +116,19 @@ function ensureScenario(state) {
   return true;
 }
 
-function fullReset(state) {
-  ensureScenario(state);
+/** Rebuild the scene from a snapshot. newRun=false (live reconnect / seq-gap resync of the SAME day) keeps the
+ *  operator's UI context: open sheets, "Not now" dismissals, the keynote and moments already played. Scene
+ *  objects are always cleared and re-synced, so nothing is duplicated. */
+function fullReset(state, newRun = true) {
+  const rebuilt = ensureScenario(state);
   fx.clear(); tractors.clear(); barriers.clear(); vans.clear(); labels.clear();
-  sheets.reset(); keynote.hide(); island.reset();
+  if (newRun || rebuilt) {
+    sheets.reset(); keynote.hide(); island.reset();
+    seenMoments = new Set(); keynoteShown = false;
+  }
   heat = new Set(); farm.setHeat([]);
-  seenMoments = new Set();
   prevStatus = new Map((state.fleet || []).map((t) => [t.id, t.status]));
-  keynoteShown = false; holdPendingUntil = 0;
+  holdPendingUntil = 0;
   farmT = state.clock ? state.clock.t : 0;
   tractors.sync(state, true);
   barriers.sync(blockedCells(state), true);
@@ -118,9 +152,13 @@ function breakdownMoment(tr) {
 
 function onMessage(state, msg) {
   if (!msg) { dirty = true; return; }
+  const prevT = farmT;
   if (typeof msg.t === 'number' && isFinite(msg.t)) farmT = msg.t;
   const type = msg.type;
-  if (type === 'snapshot') { fullReset(state); return; }
+  if (type === 'connection') { dirty = true; return; }
+  // A snapshot whose clock went backwards is a new day (POST /run, or a restarted backend); same/later t is a
+  // reconnect or resync of the day already on screen.
+  if (type === 'snapshot') { fullReset(state, !state.clock || state.clock.t + 0.5 < prevT || prevT === 0); return; }
   if (type === 'poses' || type === 'fleet') {
     tractors.sync(state, false);
     for (const tr of state.fleet || []) {
@@ -156,10 +194,34 @@ function onMessage(state, msg) {
   dirty = true;
 }
 
+// ---------- stage layout (sheets/toast/keynote avoid the dock and chips) ----------
+const dockEl = document.getElementById('dock'), chipsEl = document.getElementById('chips'), islandEl = document.getElementById('island');
+let layoutKey = '';
+function stageBounds() {
+  const r = stage.getBoundingClientRect();
+  const chipsB = Math.max(islandEl.getBoundingClientRect().bottom, chipsEl.children.length ? chipsEl.getBoundingClientRect().bottom : 0) - r.top + 8;
+  const dockT = dockEl.getBoundingClientRect().top - r.top - 36; // room for the tray / plan badge above the dock
+  return { top: Math.round(chipsB), bottom: Math.round(dockT), dockh: Math.round(r.bottom - dockEl.getBoundingClientRect().top - 10) };
+}
+function syncLayout() {
+  const b = stageBounds();
+  const open = sheets.openEl();
+  const toastB = open ? Math.round(stage.getBoundingClientRect().bottom - open.getBoundingClientRect().top + 8) : b.dockh + 44;
+  const key = b.top + '|' + b.dockh + '|' + toastB;
+  if (key === layoutKey) return;
+  layoutKey = key;
+  stage.style.setProperty('--dockh', b.dockh + 'px');
+  stage.style.setProperty('--chipsb', b.top + 'px');
+  stage.style.setProperty('--toastb', toastB + 'px');
+}
+// #stage is overflow:hidden but still scrollable by focus()/scrollIntoView; it must never move.
+stage.addEventListener('scroll', () => { if (stage.scrollTop || stage.scrollLeft) { stage.scrollTop = 0; stage.scrollLeft = 0; } });
+
 // ---------- throttled DOM sync ----------
 let lastSync = 0;
 function syncUI(state, now) {
   renderBadge(state);
+  noteProblem(state);
   const L = dock.sync(state);
   dock.badge(state, ops.active(state));
   chips.sync(state);
@@ -167,15 +229,19 @@ function syncUI(state, now) {
   controls.sync(state);
   labels.sync(state, L.unassigned.map((j) => j.id));
   vans.sync(state);
-  sheets.sync(state, now > holdPendingUntil);
+  sheets.sync(state, now > holdPendingUntil && !keynoteOpen());
+  syncLayout();
   const c = state.clock;
   if (c && !keynoteShown && (c.ended || (c.day_minutes && c.t >= c.day_minutes))) {
     keynoteShown = true;
-    keynote.show(state); world.overview(4000);
+    sheets.close(); syncLayout();
+    keynote.show(state, stageBounds()); world.overview(4000);
     const done = (state.jobs || []).filter((j) => j.status === 'done').length;
     island.moment({ text: 'Day complete · ' + done + ' job' + (done === 1 ? '' : 's') + ' done', dot: '#30D158', sticky: true });
   }
 }
+
+function keynoteOpen() { const k = document.getElementById('key'); return !!(k && k.classList.contains('on')); }
 
 // ---------- render loop ----------
 let last = performance.now();
@@ -191,18 +257,18 @@ function loop(now) {
   vans.tick(Object.assign({}, state, { clock: Object.assign({}, state.clock || {}, { t: farmT }) }), now);
   fx.tick(now, dt);
   if (now - lastSync > 200 || (dirty && now - lastSync > 100)) { lastSync = now; dirty = false; syncUI(state, now); }
-  island.tick(state, now);
+  island.tick(state, now, (linkProblem(state) || {}).note);
   world.render(now);
 }
 
 // ---------- boot ----------
-renderBadge({ connected: true });
+renderBadge(store.get());
 store.subscribe(onMessage);
 requestAnimationFrame(loop);
 Promise.resolve()
   .then(() => start())
   .then(() => { const s = store.get(); if (s) fullReset(s); })
-  .catch((err) => { console.error(err); toast('Could not load data: ' + ((err && err.message) || err), 'err'); });
+  .catch((err) => { console.warn('[dashboard] start failed:', (err && (err.code ? err.code + ' ' : '') + err.message) || err); toast('Could not load data: ' + ((err && err.message) || err), 'err'); });
 
 // Debug handle for the console (read-only use).
 window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout };

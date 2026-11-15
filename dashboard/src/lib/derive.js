@@ -261,13 +261,20 @@ export function opOutcome(op) {
   }
   return null;
 }
+/** Toast kind for a rejected api call: outcome-unknown is a warning, not a failure. */
+export const errKind = (err) => (err && err.code === 'UNCONFIRMED' ? 'warn' : 'err');
 export const isTerminal = (op) => !!op && (op.status === 'succeeded' || op.status === 'failed' || op.status === 'superseded');
 
-/** Friendly text for a rejected api call ({code,message,details}). */
+/** Friendly text for a rejected api call ({code,message,details}). Client codes (status 0): NETWORK, CLIENT_TIMEOUT, UNCONFIRMED. */
 export function errText(err) {
   if (!err) return 'Something went wrong';
-  if (err.code === 'TIMEOUT') return 'That took too long to compute. Try again in a moment.';
-  return err.message || String(err);
+  switch (err.code) {
+    case 'TIMEOUT': return 'That took too long to compute. Try again in a moment.'; // server 503: compute budget
+    case 'CLIENT_TIMEOUT': return 'The backend did not answer in time. Check the connection and try again.';
+    case 'NETWORK': return "Can't reach the backend. Check that it is running; the dashboard reconnects on its own.";
+    case 'UNCONFIRMED': return 'No confirmation from the backend yet. It may still apply; watch the plan.';
+    default: return err.message || String(err);
+  }
 }
 
 export const SOLVER_LABEL = { feasible: 'Feasible', optimal: 'Optimal', fallback: 'Fallback', no_feasible_plan: 'No feasible plan' };

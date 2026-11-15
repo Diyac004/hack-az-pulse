@@ -51,7 +51,7 @@ const LOG_KINDS = new Set(['plan', 'event', 'replan', 'job_started', 'job_done',
 
 // ---------------- harness
 function harness(opts) {
-  const src = createMockSource({ realtime: false, ...opts });
+  const src = createMockSource({ realtime: false, pace: 9.6, ...opts }); // fast headless pace (8x the 10-min demo day)
   const store = createStore({ source: 'mock' });
   const msgs = [];
   let gaps = 0;
@@ -345,9 +345,72 @@ section('LiveSource adapter (index.js live path) with stub fetch/WebSocket');
   ok(op.id === 'O17' && calls.at(-1).init.headers['Idempotency-Key'] === k, 'Idempotency-Key header sent; 202 Operation body returned');
   const err = await live.request('PATCH', '/jobs/J1', { priority: 3 }).then(() => null, (e) => e);
   ok(err?.code === 'CONFLICT' && err.message === 'Busy' && err.status === 409, 'error body unwrapped to {code,message,details,status}');
+  const realFetch2 = globalThis.fetch;
+  globalThis.fetch = (url, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+  const to = await live.request('GET', '/why/J1', undefined, { timeoutMs: 20 }).then(() => null, (e) => e);
+  ok(to?.code === 'CLIENT_TIMEOUT' && to.status === 0, 'client-side abort => CLIENT_TIMEOUT status 0 (not server TIMEOUT)');
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { code: 'TIMEOUT', message: 'budget', details: {} } }), { status: 503 });
+  const st503 = await live.request('GET', '/why/J1').then(() => null, (e) => e);
+  ok(st503?.code === 'TIMEOUT' && st503.status === 503, 'server 503 TIMEOUT kept as TIMEOUT');
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  const net = await live.request('GET', '/state').then(() => null, (e) => e);
+  ok(net?.code === 'NETWORK' && net.status === 0, 'no response => NETWORK');
+  globalThis.fetch = realFetch2;
   sockets[0].close(); ok(!store.get().connected, 'disconnected on close');
   live.close();
   globalThis.fetch = realFetch; globalThis.WebSocket = realWS;
+}
+
+section('idempotency replay after state changed (book + approve, §13.3)');
+{
+  const C = harness();
+  C.until(() => C.store.get().fleet.find((t) => t.id === 'T2')?.status === 'working', 4000);
+  await C.api.postEvent({ type: 'breakdown', tractor: 'T2', issue: 'flat tyre' });
+  C.tick();
+  const b1 = await C.api.bookMechanic('T2', 'M2', { idempotencyKey: 'book-k' });
+  C.tick();
+  ok(C.store.get().fleet.find((t) => t.id === 'T2').status === 'repair_scheduled', 'T2 booked (state changed)');
+  const b2 = await C.api.bookMechanic('T2', 'M2', { idempotencyKey: 'book-k' }).then((x) => x, (e) => e);
+  ok(b2 && b2.id === b1.id && b2.status === 'succeeded' && b2.result && b2.result.mechanic === 'M2', `book replay after state change returns ORIGINAL op (got ${JSON.stringify(b2).slice(0, 120)})`);
+  const b3 = await C.api.bookMechanic('T2', 'M1', { idempotencyKey: 'book-k' }).then(() => null, (e) => e);
+  ok(b3?.code === 'CONFLICT', 'book: same key + different body => CONFLICT');
+  const b4 = await C.api.approve('P99', 'approve', { idempotencyKey: 'book-k' }).then(() => null, (e) => e);
+  ok(b4?.code === 'CONFLICT', 'same key on another endpoint => CONFLICT (checked before NOT_FOUND)');
+  const b5 = await C.api.bookMechanic('T2', 'M2').then(() => null, (e) => e);
+  ok(b5?.code === 'CONFLICT', 'fresh key on a no-longer-broken tractor still validates state => CONFLICT');
+
+  C.until(() => C.store.get().fleet.find((t) => t.id === 'T3')?.status === 'working', 4000);
+  await C.api.postEvent({ type: 'breakdown', tractor: 'T3', issue: 'hydraulic leak' });
+  C.tick();
+  const pend = C.store.get().pending.find((p) => p.tractor === 'T3');
+  ok(!!pend, 'T3 mechanic pending');
+  const a1 = await C.api.approve(pend.id, 'override', { idempotencyKey: 'ap-k' });
+  C.tick();
+  ok(!C.store.get().pending.some((p) => p.id === pend.id), 'pending resolved (state changed)');
+  const a2 = await C.api.approve(pend.id, 'override', { idempotencyKey: 'ap-k' }).then((x) => x, (e) => e);
+  ok(a2 && a2.id === a1.id && a2.status === 'succeeded' && a2.result?.pending_id === pend.id, `approve replay after resolve returns ORIGINAL op (got ${JSON.stringify(a2).slice(0, 120)})`);
+  const a3 = await C.api.approve(pend.id, 'approve', { idempotencyKey: 'ap-k' }).then(() => null, (e) => e);
+  ok(a3?.code === 'CONFLICT', 'approve: same key + different decision => CONFLICT');
+  const a4 = await C.api.approve(pend.id, 'override').then(() => null, (e) => e);
+  ok(a4?.code === 'NOT_FOUND', 'fresh key on resolved pending => NOT_FOUND');
+  const opsBefore = C.src.debug.snapshot().operations.length;
+  await C.api.bookMechanic('T2', 'M2', { idempotencyKey: 'book-k' });
+  ok(C.src.debug.snapshot().operations.length === opsBefore, 'replay creates no new operation');
+}
+
+section('store: reconnect vs resync snapshot');
+{
+  const st = createStore({ source: 'live' });
+  const snap = A.src.debug.snapshot();
+  const op = (id, status) => ({ id, kind: 'replan', status, source: 'events', created_t: 1, updated_t: 1, message: '', plan_version: null, solver_status: null, result: null, error: null });
+  st.apply({ type: 'snapshot', t: 0, seq: 1, data: { ...snap, operations: [op('O50', 'running'), op('O49', 'succeeded')] } });
+  st.apply({ type: 'operation', t: 1, seq: 2, data: op('O50', 'failed') });
+  st.applySnapshotData({ ...snap, operations: [op('O50', 'running')] });
+  ok(st.get().operations.find((o) => o.id === 'O50').status === 'failed', 'resync snapshot never moves an op back from terminal to running');
+  st.apply({ type: 'snapshot', t: 0, seq: 1, data: { ...snap, operations: [op('O2', 'running')] } });
+  ok(st.get().operations.map((o) => o.id).join() === 'O2' && st.get().seq === 1, 'reconnect snapshot fully replaces operations (server restart)');
+  st.setLink({ url: 'ws://x/ws', connected: false, everConnected: false, failures: 2 });
+  ok(st.get().link.failures === 2, 'setLink stores link detail');
 }
 
 section('index.js live adapter mapping');
@@ -379,6 +442,29 @@ section('index.js live adapter mapping');
     await L.api[name](...args);
     const c = calls[0];
     ok(c && c.url === 'http://host:8000' + path && c.init.method === method && JSON.stringify(c.init.body ? JSON.parse(c.init.body) : undefined) === JSON.stringify(body) && !!c.init.headers['Idempotency-Key'] === idem, `live api.${name} -> ${method} ${path}${idem ? ' +Idempotency-Key' : ''}`);
+  }
+  // lost reply on an async mutation: re-sent with the SAME key, resolves to the op instead of failing
+  {
+    const keys = []; let n = 0;
+    globalThis.fetch = async (url, init) => {
+      keys.push(init.headers['Idempotency-Key']);
+      if (n++ === 0) throw new TypeError('Failed to fetch'); // socket "up" is irrelevant here: first try NETWORK while offline fails fast
+      return new Response(JSON.stringify(EX['rest.post_events']), { status: 202 });
+    };
+    const fast = await L.api.postEvent({ type: 'heat_alert' }).then(() => null, (e) => e);
+    ok(fast?.code === 'NETWORK', 'NETWORK on first try while offline fails fast (nothing reached the server)');
+    // CLIENT_TIMEOUT path: first call hangs past the abort, retry answers
+    keys.length = 0; n = 0;
+    globalThis.fetch = (url, init) => {
+      keys.push(init.headers['Idempotency-Key']);
+      if (n++ === 0) return new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted'))));
+      return Promise.resolve(new Response(JSON.stringify(EX['rest.post_events']), { status: 202 }));
+    };
+    const realST = globalThis.setTimeout;
+    globalThis.setTimeout = (fn, ms, ...a) => realST(fn, Math.min(ms, 5), ...a); // squash the 10 s abort + backoff
+    const op = await L.api.postEvent({ type: 'heat_alert' }, { idempotencyKey: 'retry-k' }).then((x) => x, (e) => e);
+    globalThis.setTimeout = realST;
+    ok(op?.id === EX['rest.post_events'].id && keys.length === 2 && keys.every((k) => k === 'retry-k'), `CLIENT_TIMEOUT on mutation re-sent with same key, resolves to the op (${JSON.stringify(keys)})`);
   }
   delete globalThis.location; globalThis.fetch = realFetch; globalThis.WebSocket = realWS;
 }
