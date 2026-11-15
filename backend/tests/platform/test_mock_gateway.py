@@ -110,7 +110,7 @@ class Movement(unittest.TestCase):
         rest = self.gw.remaining_route('T3')
         self.assertEqual(rest[0], self.gw.pose('T3').anchor)
         self.assertEqual(rest[-1], (10, 8))
-        self.assertEqual(len(rest), 7)             # (15,5) .. (10,8)
+        self.assertEqual(len(rest), 9)             # (15,5) (15,6) (14,6) .. (10,6) (10,7) (10,8)
         run(self.gw, 181)
         self.assertEqual(self.gw.remaining_route('T3'), ())
 
