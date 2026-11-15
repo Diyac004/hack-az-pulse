@@ -1,6 +1,6 @@
 # agopenweb-bridge
 
-Real **AgOpenWeb** tractors (the .NET rewrite of AgOpenGPS, `github.com/AgOpenGPS-Official/AgOpenWeb`), running headless in Docker and served to our dashboard through the same REST and WS contract as `ARCHITECTURE.md`. The folder also works as a **test harness and protocol reference** for the real gateway (Anay). It is not a competing backend: it has no planner, weather model, mechanic flow or baseline.
+Real **AgOpenWeb** tractors (the .NET rewrite of AgOpenGPS, `github.com/AgOpenGPS-Official/AgOpenWeb`), running headless in Docker and served to our dashboard through the same REST and WS contract as `ARCHITECTURE.md`. The folder also works as a **test harness and protocol reference** for the real gateway (Anay). It is not a competing backend: it **bypasses our Python scheduler** (`backend/app/brain`) and has no planner, weather model, mechanic flow or baseline. Its scorecard travel, idle and violation zeros are placeholders, not measured coordinator results. The scored coordinator demo is Anay's FastAPI backend (`backend/`, `:8000`); keep it separate from this bridge (`:8040`). In the UI, the badge says which backend is connected; only a tractor with `agopenweb` non-null (card: "AgOpenWeb connected · heartbeat") is a real AgOpenWeb tractor.
 
 Verified against AgOpenWeb commit `19c15c1` (2026-11-15), `.NET SDK 10.0.404`, Docker Desktop 28.5 on an Apple-silicon Mac (arm64).
 

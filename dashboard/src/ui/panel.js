@@ -17,7 +17,7 @@ export function scoreRows(metrics) {
   const rows = [
     { k: 'completed', label: 'Jobs completed', a: n(o.completed), b: bv('completed'), f: fmtN, sub: o.jobs_total != null ? '/' + o.jobs_total : '', better: 'hi' },
     { k: 'on_time', label: 'On time', a: n(o.on_time), b: bv('on_time'), f: fmtN, better: 'hi' },
-    // lateness is not a constraint violation, so it gets its own row (otherwise "0 violations" reads as "all fine")
+    // deadlines are a modeled constraint; a late finish also gets its own row so "0 violations" never hides it
     { k: 'late', label: 'Finished late', a: lateOf(o), b: hasBase && b ? lateOf(b) : null, f: fmtN, better: 'lo' },
     { k: 'travel_min', label: 'Travel', a: n(o.travel_min), b: bv('travel_min'), f: fmtMin, unit: 'min', better: 'lo' },
     { k: 'idle_min', label: 'Idle', a: n(o.idle_min), b: bv('idle_min'), f: fmtMin, unit: 'min', better: 'lo' },
@@ -82,7 +82,7 @@ export function createPanel() {
         score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + main.map(row).join('') +
           (det.length ? '<button class="dtl" data-det>' + (showDetails ? 'Hide details' : 'Details') + '</button>' + (showDetails ? det.map(row).join('') : '') : '');
         viol.textContent = plural(violations, 'violation');
-        viol.title = 'Broken constraints (safety, implements, fuel). Late jobs are counted separately.';
+        viol.title = 'Broken constraints in applied plans (deadlines, implements, fuel, safety). Jobs that finished late are also shown on their own row.';
         viol.classList.toggle('bad', violations > 0);
         basesrc.textContent = baselineLabel(m);
       }
