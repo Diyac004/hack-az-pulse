@@ -28,3 +28,39 @@ PYTHONPATH=backend python -m unittest discover -s backend/tests/brain -v
 ```
 
 Requires Python 3.11+ and Pydantic v2. Next: independent plan validator, scheduling, and breakdown recovery. The original uploaded draft examples remain unchanged to avoid passing hand-edited illustrative results off as computed plans.
+
+## Implemented brain milestone (current diya/brain branch)
+
+Pure API is now available:
+
+```python
+from app.brain import BrainSnapshot, plan, validate, explain
+result = plan(BrainSnapshot.model_validate(snapshot_dict))
+# Only apply if result.validation.passed and source_state_version is still current.
+# Assign public plan.version in the platform, not in the brain.
+text = explain(result)
+```
+
+Implemented: previous-plan/remaining-route parsing, multi-order greedy insertion, independent plan replay validation, preserved ongoing work, remainder reassignment, explicit unassigned reasons, factual explanations, and FCFS dispatch policy (`plan(snapshot, policy="fcfs")`). Caller must still persist actual progress and supply each new snapshot; this is not a running simulation.
+
+Run the single-snapshot demonstration from repository root:
+
+```bash
+pip install -r backend/requirements-brain.txt
+PYTHONPATH=backend python -m app.brain contract/examples/brain_snapshot.json
+PYTHONPATH=backend python -m unittest discover -s backend/tests/brain -v
+```
+
+The public proposal matches ARCHITECTURE.md Plan after the platform adds version. Internal PlanningResult validation status must be honored before exposing or executing entries. No changes to Divi's existing contract are introduced.
+
+Limitations for Anay:
+
+- Enabled refueling/weather and frozen travel return explicit unsupported outcomes in v1. Keep disabled until integrated.
+- Future-position snapshots without explicit frozen work are rejected for that assignment, not silently accepted. Actual field connectors and ongoing travel are next integration work.
+- Planning search is budgeted between candidate evaluations, not forcibly terminated mid-validation; run it outside the event loop.
+- Idle-time tie-breaker currently uses planned waiting as a proxy. Exact simulated idle metrics and full-run FCFS comparison still require the world service. No performance superiority is claimed.
+- Completed work is preserved through remaining-duration accounting. Execution must retain the same work-unit records; the planner does not update them.
+- Greedy insertion rebuilds downstream queues and validates them. Moves/swaps, OR-Tools, counterfactual Why, and complete retiming diffs remain future work.
+- The explanation diff currently reports changed ownership and new assignments; delta travel/idle claims are omitted until both plans are measured.
+
+Tests cover recovery, unchanged inputs, compatibility, fuel, deadline infeasibility, duplicate work, route validity, frozen-work preservation, unsupported options, deterministic plan entries and public Plan serialization. They do not establish real-world vehicle safety or end-to-end gateway correctness.
