@@ -50,7 +50,45 @@ def _score(s,p):
     return (-sum(jobs[e.job].priority for e in work),-len(work),round(travel,9),round(wait,9))
 
 
-def plan(snapshot: BrainSnapshot | dict, policy='multi', budget_ms=1000) -> PlanningResult:
+def _improve(s, queues, current, router, deadline):
+    """Bounded first-improvement relocation/swap search. Never moves frozen work."""
+    attempts = accepted = 0
+    while perf_counter() < deadline:
+        changed = False
+        locations = [(tid, i, jid) for tid in sorted(queues) for i, jid in enumerate(queues[tid])]
+        # Relocate queued work, including within its current tractor queue.
+        def edits():
+            for source, index, _ in locations:
+                for target in sorted(queues):
+                    for at in range(len(queues[target]) + 1):
+                        yield ('move', source, index, target, at)
+            for n, (source, index, _) in enumerate(locations):
+                for target, at, _ in locations[n + 1:]:
+                    yield ('swap', source, index, target, at)
+        for kind, source, index, target, at in edits():
+            if perf_counter() >= deadline:
+                return queues, current, attempts, accepted
+            q = {tid: list(jobs) for tid, jobs in queues.items()}
+            if kind == 'move':
+                job = q[source].pop(index)
+                q[target].insert(at, job)
+            else:
+                q[source][index], q[target][at] = q[target][at], q[source][index]
+            if q == queues:
+                continue
+            attempts += 1
+            candidate = _build(s, q, router)
+            if candidate is not None and validate(s, candidate).passed and _score(s, candidate) < _score(s, current):
+                queues, current = q, candidate
+                accepted += 1
+                changed = True
+                break
+        if not changed:
+            break
+    return queues, current, attempts, accepted
+
+
+def plan(snapshot: BrainSnapshot | dict, policy='multi', budget_ms=1000, improve=True) -> PlanningResult:
     """Return a proposal only; caller applies with source-state-version gate.
 
     budget_ms bounds candidate search, not a hard process-level timeout.
@@ -72,7 +110,7 @@ def plan(snapshot: BrainSnapshot | dict, policy='multi', budget_ms=1000) -> Plan
     def count(j):
         return sum(t.status in ACTIVE and not t.manual and j.implement in t.implements and (not j.pinned_to or j.pinned_to==t.id) for t in s.tractors)
     orders=[todo] if policy=='fcfs' else [sorted(todo,key=lambda j:(-j.priority,j.deadline_t,j.id)),sorted(todo,key=lambda j:(j.deadline_t,-j.priority,j.id)),sorted(todo,key=lambda j:(count(j),j.deadline_t,-j.priority,j.id))]
-    best=base; best_reasons={j.id:['Search budget exhausted'] for j in todo}
+    best=base; best_queues={t.id:[] for t in s.tractors}; best_reasons={j.id:['Search budget exhausted'] for j in todo}
     exhausted=False
     for order in orders:
         queues={t.id:[] for t in s.tractors}; current=base;reasons={}
@@ -104,12 +142,23 @@ def plan(snapshot: BrainSnapshot | dict, policy='multi', budget_ms=1000) -> Plan
             else:
                 reasons[j.id]=sorted(set(rejected)) or ['Search budget exhausted']
         if _score(s,current)<_score(s,best) or best is base:
-            best=current;best_reasons=reasons
+            best=current;best_queues=queues;best_reasons=reasons
         if exhausted:break
+    improvement_attempts = improvement_moves = 0
+    if policy == 'multi' and improve and not exhausted:
+        best_queues, best, improvement_attempts, improvement_moves = _improve(
+            s, best_queues, best, router, began + budget_ms / 1000)
     old={e.job:e.tractor for e in s.previous_plan.entries if e.kind=='work'} if s.previous_plan else {}
     assigned={e.job:e.tractor for e in best.entries if e.kind=='work'}
     moved=[{'job':jid,'from':old[jid],'to':tid,'progress_kept':1-next(j.remaining_min/sum(u.minutes for u in j.work_units) for j in s.jobs if j.id==jid)} for jid,tid in assigned.items() if jid in old and old[jid]!=tid]
     best.diff['moved']=[{k:v for k,v in m.items() if k!='progress_kept'} for m in moved]
+    previous_work = {e.job: e for e in s.previous_plan.entries if e.kind == 'work'} if s.previous_plan else {}
+    best.diff['retimed'] = [
+        {'job': e.job, 'old_start_t': previous_work[e.job].start_t, 'new_start_t': e.start_t}
+        for e in best.entries if e.kind == 'work' and e.job in previous_work
+        and e.job not in frozen_ids and abs(previous_work[e.job].start_t - e.start_t) > EPS
+    ]
+    best.diff['added'] = [jid for jid in assigned if jid not in old]
     unassigned=[Unassigned(job=j.id,reason='no_feasible_assignment',detail='; '.join(best_reasons.get(j.id,['No feasible insertion found']))) for j in todo if j.id not in assigned]
     elapsed=round((perf_counter()-began)*1000,3);best.solve_ms=round(elapsed)
-    return PlanningResult(source_state_version=s.state_version,status='feasible',solve_ms=elapsed,plan=best,unassigned=unassigned,facts={'event':s.trigger,'moved':moved,'newly_assigned':[{'job':jid,'to':tid} for jid,tid in assigned.items() if jid not in old],'deadlines_missed':[],'search_budget_exhausted':exhausted},validation=validate(s,best))
+    return PlanningResult(source_state_version=s.state_version,status='feasible',solve_ms=elapsed,plan=best,unassigned=unassigned,facts={'context':{'jobs':{j.id:(j.label or f"{j.type.replace('_',' ').title()} Block {j.block}") for j in s.jobs},'tractors':{t.id:(t.name or f"Tractor {t.id.removeprefix('T')}") for t in s.tractors}},'event':s.trigger,'moved':moved,'newly_assigned':[{'job':jid,'to':tid} for jid,tid in assigned.items() if jid not in old],'deadlines_missed':[],'search_budget_exhausted':exhausted or (perf_counter()-began)*1000>=budget_ms,'retimed':best.diff['retimed'],'improvement_attempts':improvement_attempts,'improvement_moves':improvement_moves},validation=validate(s,best))

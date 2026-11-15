@@ -1,6 +1,10 @@
 """Internal snapshot subset shared with the platform; no world mutation."""
 from typing import Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field, model_validator
+
+
+class BaseModel(PydanticBaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
 
 
 class Point(BaseModel):
@@ -33,6 +37,7 @@ class Burn(BaseModel):
 
 
 class Tractor(BaseModel):
+    name: str | None = None
     id: str
     status: str
     manual: bool
@@ -58,6 +63,7 @@ class WorkUnit(BaseModel):
 
 
 class Job(BaseModel):
+    label: str | None = None
     id: str
     type: str
     implement: str

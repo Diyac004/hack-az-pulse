@@ -1091,3 +1091,17 @@ class Operation(BaseModel):
 ```
 
 Enforce result-kind matching and terminal-state consistency in service validation: succeeded requires the appropriate result and null error; failed requires error and null result; queued/running/superseded have null result. A new Snapshot model must include `operations: list[Operation]`. Optional metrics keys must be serialized even when null.
+
+## 14. FastAPI demo capability and fleet amendment
+
+`GET /api/capabilities` returns the following explicit support profile, using the dashboard's existing camelCase capability keys (an intentional exception to state-object snake_case):
+
+```json
+{"backend":"fastapi","events":{"breakdown":true,"block_route":true,"unblock_route":true,"tractor_repaired":true,"priority_change":true,"heat_alert":false,"weather_change":false,"ripening_change":false},"why":false,"controls":false,"mechanics":false,"approve":false,"scaleTest":false,"submitJobs":true,"patchJob":true,"weatherEnforced":false,"metricsMeasured":true}
+```
+
+Unsupported features remain disabled in the UI. No mechanic pending flow is claimed.
+
+For MockGateway, fleet creation is immediate: the existing HTTP 202 `{tractor}` body contains `status: "idle"`, with `tractor_ready`, `fleet` and `capacity` updates. This supersedes the requirement for a fake `starting` phase in this simulator only. Capacity is a configured limit (default 8, HFA_MAX_TRACTORS override), not measured hardware capacity. Both add and remove emit capacity updates. The backend enforces the limit with 409 AT_CAPACITY.
+
+404 and 405 errors use the normal envelope and codes NOT_FOUND and METHOD_NOT_ALLOWED; preserve Allow headers. Unsupported endpoint behavior remains as documented in backend/README.md. HFA_SCRIPTED=0 disables scenario-scripted events consistently for the live run and baseline twin; it does not disable manual events.

@@ -106,6 +106,16 @@ class Idle:
 
 
 @dataclass(frozen=True)
+class Idled:
+    """Exact interval in this tick when an operational tractor was neither
+    driving nor working (no orders, or waiting for an order's start time)."""
+    tractor: str
+    t: float
+    start: float
+    end: float
+
+
+@dataclass(frozen=True)
 class Halted:
     """Could not continue (e.g. road ahead blocked). Orders cleared."""
     tractor: str
@@ -121,7 +131,7 @@ class Stopped:
     t: float
 
 
-Report = Union[Moved, ReachedCell, Arrived, Worked, WorkDone, Idle, Halted, Stopped]
+Report = Union[Moved, ReachedCell, Arrived, Worked, WorkDone, Idle, Idled, Halted, Stopped]
 
 
 @dataclass(frozen=True)
@@ -145,10 +155,13 @@ class TractorGateway(Protocol):
     def add_tractor(self, spec: TractorSpec) -> None: ...
     def remove_tractor(self, tractor_id: str) -> None: ...
     def assign(self, tractor_id: str, orders: list[Order]) -> None: ...
+    def check(self, tractor_id: str, orders: list[Order]) -> None: ...   # dry-run assign
     def stop(self, tractor_id: str) -> None: ...
     def resume(self, tractor_id: str) -> None: ...
     def advance(self, dt_min: float) -> list[Report]: ...
+    def preview(self, dt_min: float) -> list[Report]: ...   # dry-run advance
     def pose(self, tractor_id: str) -> Pose: ...
+    def remaining_route(self, tractor_id: str) -> tuple[Cell, ...]: ...
     def tractor_ids(self) -> list[str]: ...
 
 
@@ -158,7 +171,8 @@ def orders_from_plan(entries: list[dict], tractor_id: str) -> list[Order]:
     """Turn one tractor's PlanEntry dicts (public Plan shape) into orders.
 
     travel -> Travel(route), work -> Work(end_t - start_t minutes).
-    start_t becomes not_before_t, so tractors never start early.
+    start_t becomes not_before_t, so tractors never start early. That also
+    covers `wait` entries: the next order simply doesn't start until its time.
     """
     mine = sorted((e for e in entries if e["tractor"] == tractor_id),
                   key=lambda e: e["start_t"])
@@ -169,6 +183,8 @@ def orders_from_plan(entries: list[dict], tractor_id: str) -> list[Order]:
                                  e.get("job"), e["start_t"]))
         elif e["kind"] == "work":
             orders.append(Work(e["job"], e["end_t"] - e["start_t"], e["start_t"]))
+        elif e["kind"] == "wait":
+            continue
         else:
             raise GatewayError(f"plan entry kind '{e['kind']}' is not supported yet")
     return orders
