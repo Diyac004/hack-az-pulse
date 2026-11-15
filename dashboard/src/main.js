@@ -27,6 +27,7 @@ import { createControlPanel } from './ui/controlPanel.js';
 import { createMapPick } from './scene/mapPick.js';
 import { createAiPanel } from './ui/aiPanel.js';
 import { createAiMapMarks } from './ui/aiMapMarks.js';
+import { createAiDemo } from './ui/aiDemo.js';
 
 const stage = document.getElementById('stage');
 const world = createWorld(stage);
@@ -313,6 +314,9 @@ Promise.resolve()
   .then(() => start())
   .then(() => { const s = store.get(); if (s) fullReset(s); })
   .catch((err) => { console.warn('[dashboard] start failed:', (err && (err.code ? err.code + ' ' : '') + err.message) || err); toast('Could not load data: ' + ((err && err.message) || err), 'err'); });
+
+// "▶ AI demo" (ui/aiDemo.js + data/demoScript.js): scripted walk through every agent, Mock / mock-backend only.
+createAiDemo({ stage, store, api, ops, sourceInfo, capabilities, sheets, viewToggle });
 
 // Debug handle for the console (read-only use).
 window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout, live, cockpit, mapPick };
