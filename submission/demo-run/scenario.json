@@ -1,0 +1,350 @@
+{
+  "_comment": "Demo farm day for the MockGateway integration. Public Scenario fields (ARCHITECTURE.md section 4) plus platform-only fields: entrances, tractors, jobs, events, constraints, work_unit_min. Times are sim minutes from 6:00 AM; positions are grid cells (x east, y south). Speeds are cells/min (1 cell = 40 m). Fuel burn is percent per minute. Numbers are demo defaults, not measured machine data.",
+  "name": "queen_creek_citrus_day1",
+  "grid": {
+    "width": 20,
+    "height": 14
+  },
+  "depot": {
+    "x": 0,
+    "y": 6
+  },
+  "roads": {
+    "rows": [
+      0,
+      6,
+      13
+    ],
+    "cols": [
+      0,
+      5,
+      10,
+      15
+    ]
+  },
+  "blocks": [
+    {
+      "id": "A",
+      "x": 1,
+      "y": 1,
+      "w": 4,
+      "h": 5,
+      "variety": "Navel",
+      "ripeness": 0.7
+    },
+    {
+      "id": "B",
+      "x": 6,
+      "y": 1,
+      "w": 4,
+      "h": 5,
+      "variety": "Valencia",
+      "ripeness": 0.4
+    },
+    {
+      "id": "C",
+      "x": 11,
+      "y": 1,
+      "w": 4,
+      "h": 5,
+      "variety": "Navel",
+      "ripeness": 0.8
+    },
+    {
+      "id": "D",
+      "x": 16,
+      "y": 1,
+      "w": 4,
+      "h": 5,
+      "variety": "Mandarin",
+      "ripeness": 0.5
+    },
+    {
+      "id": "E",
+      "x": 1,
+      "y": 7,
+      "w": 4,
+      "h": 6,
+      "variety": "Lemon",
+      "ripeness": 0.6
+    },
+    {
+      "id": "F",
+      "x": 6,
+      "y": 7,
+      "w": 4,
+      "h": 6,
+      "variety": "Valencia",
+      "ripeness": 0.3
+    },
+    {
+      "id": "G",
+      "x": 11,
+      "y": 7,
+      "w": 4,
+      "h": 6,
+      "variety": "Grapefruit",
+      "ripeness": 0.5
+    },
+    {
+      "id": "H",
+      "x": 16,
+      "y": 7,
+      "w": 4,
+      "h": 6,
+      "variety": "Navel",
+      "ripeness": 0.4
+    }
+  ],
+  "blocked_cells": [],
+  "sensitive": [
+    {
+      "block": "G",
+      "what": "canal",
+      "dir_deg": 90
+    }
+  ],
+  "basemap": {
+    "image_url": null,
+    "west": -111.62,
+    "east": -111.6114,
+    "south": 33.20697,
+    "north": 33.212
+  },
+  "geo": {
+    "origin_lat": 33.212,
+    "origin_lon": -111.62,
+    "cell_m": 40
+  },
+  "entrances": {
+    "A": [
+      [
+        3,
+        6
+      ]
+    ],
+    "B": [
+      [
+        8,
+        6
+      ]
+    ],
+    "C": [
+      [
+        13,
+        6
+      ]
+    ],
+    "D": [
+      [
+        18,
+        6
+      ]
+    ],
+    "E": [
+      [
+        3,
+        13
+      ]
+    ],
+    "F": [
+      [
+        8,
+        13
+      ]
+    ],
+    "G": [
+      [
+        13,
+        13
+      ]
+    ],
+    "H": [
+      [
+        18,
+        13
+      ]
+    ]
+  },
+  "work_unit_min": 20,
+  "day_minutes": 720,
+  "constraints": {
+    "fuel_reserve_pct": 10,
+    "refuel": false,
+    "weather": false
+  },
+  "tractors": [
+    {
+      "id": "T1",
+      "name": "Tractor 1",
+      "implements": [
+        "sprayer"
+      ],
+      "start": {
+        "x": 0,
+        "y": 6
+      },
+      "speed": 1.0,
+      "fuel_pct": 90,
+      "fuel_burn_pct_per_min": {
+        "travel": 0.05,
+        "work": 0.1
+      }
+    },
+    {
+      "id": "T2",
+      "name": "Tractor 2",
+      "implements": [
+        "mower",
+        "hedger",
+        "bin_trailer"
+      ],
+      "start": {
+        "x": 0,
+        "y": 5
+      },
+      "speed": 1.0,
+      "fuel_pct": 95,
+      "fuel_burn_pct_per_min": {
+        "travel": 0.05,
+        "work": 0.1
+      }
+    },
+    {
+      "id": "T3",
+      "name": "Tractor 3",
+      "implements": [
+        "sprayer",
+        "mower"
+      ],
+      "start": {
+        "x": 0,
+        "y": 7
+      },
+      "speed": 1.0,
+      "fuel_pct": 85,
+      "fuel_burn_pct_per_min": {
+        "travel": 0.05,
+        "work": 0.1
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": "J1",
+      "type": "spray",
+      "implement": "sprayer",
+      "block": "A",
+      "duration_min": 80,
+      "priority": 3,
+      "deadline_t": 240
+    },
+    {
+      "id": "J2",
+      "type": "spray",
+      "implement": "sprayer",
+      "block": "C",
+      "duration_min": 60,
+      "priority": 3,
+      "deadline_t": 300
+    },
+    {
+      "id": "J3",
+      "type": "mow",
+      "implement": "mower",
+      "block": "B",
+      "duration_min": 60,
+      "priority": 2,
+      "deadline_t": 360
+    },
+    {
+      "id": "J4",
+      "type": "mow",
+      "implement": "mower",
+      "block": "F",
+      "duration_min": 80,
+      "priority": 2,
+      "deadline_t": 480
+    },
+    {
+      "id": "J5",
+      "type": "hedge",
+      "implement": "hedger",
+      "block": "D",
+      "duration_min": 60,
+      "priority": 1,
+      "deadline_t": 600
+    },
+    {
+      "id": "J6",
+      "type": "haul_bins",
+      "implement": "bin_trailer",
+      "block": "E",
+      "duration_min": 40,
+      "priority": 2,
+      "deadline_t": 420
+    },
+    {
+      "id": "J7",
+      "type": "spray",
+      "implement": "sprayer",
+      "block": "G",
+      "duration_min": 80,
+      "priority": 2,
+      "deadline_t": 480
+    },
+    {
+      "id": "J8",
+      "type": "mow",
+      "implement": "mower",
+      "block": "H",
+      "duration_min": 60,
+      "priority": 1,
+      "deadline_t": 660
+    },
+    {
+      "id": "J9",
+      "type": "hedge",
+      "implement": "hedger",
+      "block": "B",
+      "duration_min": 40,
+      "priority": 1,
+      "deadline_t": 660
+    },
+    {
+      "id": "J10",
+      "type": "spray",
+      "implement": "sprayer",
+      "block": "H",
+      "duration_min": 60,
+      "priority": 2,
+      "deadline_t": 540
+    },
+    {
+      "id": "J11",
+      "type": "haul_bins",
+      "implement": "bin_trailer",
+      "block": "G",
+      "duration_min": 40,
+      "priority": 1,
+      "deadline_t": 700
+    },
+    {
+      "id": "J12",
+      "type": "mow",
+      "implement": "mower",
+      "block": "D",
+      "duration_min": 40,
+      "priority": 1,
+      "deadline_t": 700
+    }
+  ],
+  "events": [
+    {
+      "t": 50,
+      "type": "breakdown",
+      "tractor": "T1",
+      "issue": "hydraulic leak"
+    }
+  ]
+}

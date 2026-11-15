@@ -1,0 +1,28 @@
+{"t": 0.0, "kind": "plan", "plan_version": 1, "solver": "greedy", "solve_ms": 10, "assigned": 12, "search_complete": true}
+{"t": 3.0, "kind": "job_started", "job": "J1", "tractor": "T1", "block": "A"}
+{"t": 9.0, "kind": "job_started", "job": "J3", "tractor": "T2", "block": "B"}
+{"t": 50, "kind": "event", "type": "breakdown", "tractor": "T1", "issue": "hydraulic leak"}
+{"t": 50, "kind": "replan", "trigger": "breakdown", "plan_version": 2, "replan_ms": 12.629, "changes": [{"job": "J1", "from": "T1", "to": "T3", "progress_kept": 0.5875}, {"job": "J2", "from": "T1", "to": "T3", "progress_kept": 0.0}, {"job": "J7", "from": "T1", "to": "T3", "progress_kept": 0.0}, {"job": "J10", "from": "T1", "to": "T3", "progress_kept": 0.0}], "safety": "pass", "explanation_id": "X2", "search_complete": true}
+{"t": 69.0, "kind": "job_done", "job": "J3", "tractor": "T2", "on_time": true}
+{"t": 80.0, "kind": "job_started", "job": "J4", "tractor": "T2", "block": "F"}
+{"t": 87.0, "kind": "job_done", "job": "J1", "tractor": "T3", "on_time": true}
+{"t": 97.0, "kind": "job_started", "job": "J2", "tractor": "T3", "block": "C"}
+{"t": 157.0, "kind": "job_done", "job": "J2", "tractor": "T3", "on_time": true}
+{"t": 160.0, "kind": "job_done", "job": "J4", "tractor": "T2", "on_time": true}
+{"t": 168.0, "kind": "job_started", "job": "J7", "tractor": "T3", "block": "G"}
+{"t": 177.0, "kind": "job_started", "job": "J5", "tractor": "T2", "block": "D"}
+{"t": 237.0, "kind": "job_done", "job": "J5", "tractor": "T2", "on_time": true}
+{"t": 248.0, "kind": "job_done", "job": "J7", "tractor": "T3", "on_time": true}
+{"t": 253.0, "kind": "job_started", "job": "J10", "tractor": "T3", "block": "H"}
+{"t": 259.0, "kind": "job_started", "job": "J6", "tractor": "T2", "block": "E"}
+{"t": 299.0, "kind": "job_done", "job": "J6", "tractor": "T2", "on_time": true}
+{"t": 313.0, "kind": "job_done", "job": "J10", "tractor": "T3", "on_time": true}
+{"t": 314.0, "kind": "job_started", "job": "J8", "tractor": "T2", "block": "H"}
+{"t": 374.0, "kind": "job_done", "job": "J8", "tractor": "T2", "on_time": true}
+{"t": 391.0, "kind": "job_started", "job": "J9", "tractor": "T2", "block": "B"}
+{"t": 431.0, "kind": "job_done", "job": "J9", "tractor": "T2", "on_time": true}
+{"t": 443.0, "kind": "job_started", "job": "J11", "tractor": "T2", "block": "G"}
+{"t": 483.0, "kind": "job_done", "job": "J11", "tractor": "T2", "on_time": true}
+{"t": 495.0, "kind": "job_started", "job": "J12", "tractor": "T2", "block": "D"}
+{"t": 535.0, "kind": "job_done", "job": "J12", "tractor": "T2", "on_time": true}
+{"t": 720.0, "kind": "event", "type": "day_end"}

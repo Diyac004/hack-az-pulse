@@ -1,0 +1,59 @@
+{
+  "source_commit": "96983349ad7ec03b9a9e510cbb80026c18c7d249",
+  "scenario": "scenario.json",
+  "scenario_sha256": "c7b25462cfdff52f680af9ba6e6240b1be6a1dcc1fcef545abf3a33ffac54f04",
+  "simulator": "Python MockGateway (not AgOpenWeb)",
+  "tick_min": 1.0,
+  "python": "3.12.14",
+  "dependencies": {
+    "fastapi": "0.163.1",
+    "pydantic": "2.14.3",
+    "uvicorn": "0.54.0"
+  },
+  "policies": {
+    "ours": "multi-order greedy insertion + bounded move/swap search",
+    "baseline": "FCFS: submission order, first feasible compatible tractor"
+  },
+  "llm_used_in_comparison": false,
+  "scope": "One full-day scenario; same simulator, configuration and scripted events. No manually injected events. Timing is machine-dependent.",
+  "metrics": {
+    "ours": {
+      "jobs_total": 12,
+      "completed": 12,
+      "on_time": 12,
+      "travel_min": 76.0,
+      "idle_min": 80.0,
+      "violations": 0,
+      "weighted_on_time": 21,
+      "productive_min": 700.0,
+      "original_deadline_on_time": 12,
+      "replan_ms_last": 308.186,
+      "rejected_candidates": null
+    },
+    "baseline": {
+      "jobs_total": 12,
+      "completed": 12,
+      "on_time": 12,
+      "travel_min": 148.0,
+      "idle_min": 272.0,
+      "violations": 0,
+      "weighted_on_time": 21,
+      "productive_min": 700.0,
+      "original_deadline_on_time": 12,
+      "replan_ms_last": 12.629,
+      "rejected_candidates": null
+    }
+  },
+  "evidence": {
+    "ours": {
+      "log": "event_log_ours.jsonl",
+      "records": 28,
+      "sha256": "f15b1bdf76c70c20581100a0902591eddc46dcac073c23acbccee87a91bcc2ee"
+    },
+    "baseline": {
+      "log": "event_log_baseline.jsonl",
+      "records": 28,
+      "sha256": "0d24979bf460808674704da1b7651f65279edd70e50108b5cdb3011d3db5762b"
+    }
+  }
+}
