@@ -9,8 +9,8 @@
 | Person | Role | Owns |
 |---|---|---|
 | **Divi** | Frontend | The whole dashboard (3D diorama, Live feed, glass panels, all sheets), the in-browser MockSource, `contract/examples/`, demo script and backup video |
-| **Anay** | Platform | AgOpenWeb containers, compute pool / Fleet Manager, AgOpenWeb gateway, FastAPI app (routes, WebSocket hub, state store), world service (clock, progress, fuel, events, event log), Live feed data, tractor control mapping to AgOpenWeb |
-| **Diya** | Brain | Scenario data, MockGateway, all agents (Navigation, Fleet planner greedy + OR-Tools, Safety, Weather, Agronomy, Mechanic), re-planning, explanations, "Why?", preview, baseline, metrics, scale test, README |
+| **Anay** | Platform | AgOpenWeb containers, compute pool / Fleet Manager, MockGateway, AgOpenWeb gateway, FastAPI app (routes, WebSocket hub, state store), world service (clock, progress, fuel, events, event log), Live feed data, tractor control mapping to AgOpenWeb |
+| **Diya** | Brain | Scenario data, all agents (Navigation, Fleet planner greedy + OR-Tools, Safety, Weather, Agronomy, Mechanic), re-planning, explanations, "Why?", preview, baseline, metrics, scale test, README |
 
 Swap Anay and Diya if their strengths fit the other role better. Ownership stays per column, not per person.
 
@@ -41,9 +41,9 @@ Swap Anay and Diya if their strengths fit the other role better. Ownership stays
 - `app/models.py` and `app/main.py` from ARCHITECTURE.md Sections 9 and 10. State store in `core/`. `GET /api/state` and `/ws` sending `snapshot`, then `poses` from MockGateway.
 - **Done when:** a browser WebSocket client receives `snapshot` then `poses`.
 
-### 4. Scenario and MockGateway (Diya)
-- `data/scenario.json`: 8 blocks, depot, roads, about 12 jobs, 3 starting tractors, events, weather timeline, sensitive areas, basemap bounds, geo origin. Sized for a 10 to 12 minute live demo day.
-- MockGateway implementing the `TractorGateway` interface (instant movement in Python).
+### 4. Scenario (Diya) and MockGateway (Anay)
+- Diya: `data/scenario.json`: 8 blocks, depot, roads, about 12 jobs, 3 starting tractors, events, weather timeline, sensitive areas, basemap bounds, geo origin. Sized for a 10 to 12 minute live demo day.
+- Anay: MockGateway implementing the `TractorGateway` interface (instant movement in Python). It fills job work units, which feed `BrainSnapshot` (see `contract/examples/brain_snapshot.json`).
 - **Done when:** three mock tractors move along routes and report poses in the ARCHITECTURE.md `Tractor.pose` shape.
 
 ### 5. Navigation + greedy Fleet Agent (Diya)
