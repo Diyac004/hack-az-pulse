@@ -4,7 +4,7 @@ import { errText, whyTieBreak } from '../lib/derive.js';
 
 export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill, onRepair }) {
   const whyEl = document.getElementById('why'), mechEl = document.getElementById('mech'), addEl = document.getElementById('addsheet');
-  const all = [whyEl, mechEl, addEl];
+  const all = [whyEl, mechEl, addEl, document.getElementById('jobsheet')].filter(Boolean); // #jobsheet: ui/jobSheet.js
   // Hiding the mechanic sheet for any reason counts as "shown" for that pending item: it never re-pops by itself
   // (the chip's "Book mechanic" reopens it on purpose).
   const closeAll = (except) => {

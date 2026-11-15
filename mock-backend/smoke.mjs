@@ -133,6 +133,27 @@ ok(pjEnd.data.status === 'succeeded', 'patch op succeeded', pjEnd.data);
 const after = (await http('GET', '/api/jobs')).json.find((j) => j.id === target.id);
 ok(after.priority === 3, `${target.id} priority is now 3`);
 
+section('POST /api/jobs -> 202 Operation; validation 400 with row locs');
+{
+  const JOB = { type: 'mow', implement: 'mower', block: 'G', duration_min: 60, priority: 2, deadline_t: 480 };
+  const bad = await http('POST', '/api/jobs', { jobs: [JOB, { ...JOB, block: 'Z', implement: 'sprayer' }] }, { 'Idempotency-Key': randomUUID() });
+  const locs = bad.json && bad.json.error && bad.json.error.details.errors.map((e) => e.loc.join('.'));
+  ok(bad.status === 400 && bad.json.error.code === 'INVALID_INPUT' && locs.includes('body.jobs.1.block') && locs.includes('body.jobs.1.implement'), 'bad row -> 400 INVALID_INPUT with details.errors loc', bad.json);
+  const dup = await http('POST', '/api/jobs', { jobs: [{ ...JOB, id: 'J1' }] });
+  ok(dup.status === 409 && dup.json.error.code === 'CONFLICT', 'existing id -> 409 CONFLICT');
+  const n0 = (await http('GET', '/api/jobs')).json.length;
+  const jk = randomUUID();
+  const pj2 = await http('POST', '/api/jobs', { jobs: [JOB] }, { 'Idempotency-Key': jk });
+  ok(pj2.status === 202 && keys(pj2.json) === keys(EX('rest.post_jobs.json')) && pj2.json.source === 'jobs' && pj2.json.status === 'queued', 'POST /api/jobs -> 202 queued jobs Operation', pj2);
+  const pjr = await http('POST', '/api/jobs', { jobs: [JOB] }, { 'Idempotency-Key': jk });
+  ok(pjr.status === 202 && pjr.json.id === pj2.json.id, 'same key + body replays the op');
+  await A.until(opTerminal(pj2.json.id), 5000, 'jobs op terminal');
+  const ordJ = orderAfterRunning(A.msgs, pj2.json.id, ['plan', 'explanation', 'jobs', 'succeeded']);
+  ok(ordJ.ok, `WS order for jobs op (${ordJ.why})`);
+  const jobsNow = (await http('GET', '/api/jobs')).json;
+  ok(jobsNow.length === n0 + 1 && jobsNow.at(-1).label === 'Mow G', `job ${jobsNow.at(-1).id} added (Mow G)`);
+}
+
 section('POST /api/fleet add tractor');
 const add = await http('POST', '/api/fleet', { name: 'Smoke Tractor', implements: ['mower', 'hedger'], fuel_pct: 80, speed: 1.0, start: { x: 3, y: 6 }, endpoint: 'auto' });
 ok(add.status === 202 && add.json.tractor && add.json.tractor.status === 'starting', `POST /api/fleet -> 202 {tractor} starting (${add.json && add.json.tractor && add.json.tractor.id})`, add);

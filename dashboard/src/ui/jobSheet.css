@@ -1,0 +1,39 @@
+/* "Add jobs" sheet (jobSheet.js). Same light glass as the other sheets (.sheet.gl); inputs re-enable text selection
+   (#stage sets user-select:none for orbit dragging). */
+#jobsheet{max-width:660px}
+#jobsheet input,#jobsheet select,#jobsheet textarea{user-select:text;-webkit-user-select:text}
+#jobsheet .jtabs{margin:0 0 12px}
+#jobsheet .jtabs button{padding:5px 18px}
+.jrows{display:flex;flex-direction:column;gap:8px}
+.jrow{background:rgba(255,255,255,.62);border:0.5px solid rgba(0,0,0,.06);border-radius:14px;padding:10px 12px 12px}
+.jrh{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;font-size:12px}
+.jrh b{font-weight:600}
+.jlab{color:#6e6e73}
+.jx{margin-left:auto;border:none;background:none;color:#B3261E;font:inherit;font-size:12px;cursor:pointer;padding:2px 4px;border-radius:6px}
+.jx:hover{background:rgba(255,69,58,.1)}
+.jgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px 12px}
+.jf{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:11px;color:#6e6e73}
+.jf>span{font-weight:500}
+.jf>span i{font-style:normal;color:#8e8e93;font-weight:400}
+.jf select,.jf input{font:inherit;font-size:13px;color:#1d1d1f;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.1);border-radius:10px;padding:7px 9px;min-width:0;width:100%;height:34px;outline:none;transition:border-color .2s,box-shadow .2s}
+.jf select:focus,.jf input:focus{border-color:#0A84FF;box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+.jf.jpri .seg{align-self:flex-start;height:34px;align-items:center}
+.jf.jpri .seg button{padding:5px 9px}
+.jf em{font-style:normal;font-size:10.5px;color:#8e8e93;min-height:13px}
+.jf.bad select,.jf.bad input{border-color:#FF453A;box-shadow:0 0 0 3px rgba(255,69,58,.14)}
+.jf.bad.jpri .seg{box-shadow:0 0 0 1.5px #FF453A}
+.jerr{display:block;font-size:11px;line-height:1.35;color:#B3261E}
+.jrow>.jerr{margin-top:6px}
+.jadd{margin:10px 0 2px;border:1px dashed rgba(10,132,255,.45);background:rgba(10,132,255,.06);color:#0A84FF;font:inherit;font-size:13px;font-weight:500;border-radius:12px;padding:8px 12px;cursor:pointer;width:100%}
+.jadd:hover{background:rgba(10,132,255,.1)}
+.jjson{display:block;width:100%;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#1d1d1f;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.1);border-radius:12px;padding:10px 12px;resize:vertical;min-height:150px;outline:none;tab-size:2}
+.jjson:focus{border-color:#0A84FF;box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+#jobsheet .sub code{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(0,0,0,.05);padding:0 4px;border-radius:4px}
+.jnote{font-size:12px;line-height:1.45;margin:10px 0 0;padding:8px 11px;border-radius:10px}
+.jnote.err{background:rgba(255,69,58,.1);color:#B3261E}
+.jnote.ok{background:rgba(48,209,88,.14);color:#1E7A3C}
+.jnote ul{margin:4px 0 0;padding-left:18px}
+/* footer sticks to the sheet bottom like #addsheet's, so Submit is never scrolled away */
+#jobsheet>.jfoot{position:sticky;bottom:-14px;margin:12px -16px -14px;padding:10px 16px 14px;background:rgba(246,246,248,.96);border-radius:0 0 16px 16px;z-index:1;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.jst{margin-right:auto;font-size:11px;color:#6e6e73}
+@media (max-width:520px){.jgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}

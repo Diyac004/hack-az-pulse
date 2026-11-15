@@ -63,6 +63,7 @@ function liveAdapter() {
       setClock: (body) => req('POST', '/clock', body),
       postEvent: (body, o) => mutate('POST', '/events', body, o),
       patchJob: (id, patch, o) => mutate('PATCH', '/jobs/' + enc(id), patch, o),
+      submitJobs: (jobs, o) => mutate('POST', '/jobs', { jobs }, o),
       addTractor: (entry) => req('POST', '/fleet', entry),
       removeTractor: (id) => req('DELETE', '/fleet/' + enc(id)),
       why: (jobId) => req('GET', '/why/' + enc(jobId)),
@@ -124,7 +125,7 @@ const call = (name) => (...args) => {
 
 /**
  * REST actions. Each returns a Promise of the response body (ARCHITECTURE.md §5/§13) or rejects with
- * {code,message,details} (live adds `status`). run/postEvent/patchJob/bookMechanic/approve resolve to an
+ * {code,message,details} (live adds `status`). run/postEvent/patchJob/submitJobs/bookMechanic/approve resolve to an
  * Operation (HTTP 202, §13.2) and accept an optional trailing `{ idempotencyKey }` to reuse on retry.
  * Live-only client codes (status 0): NETWORK (no reply), CLIENT_TIMEOUT (our abort), UNCONFIRMED (async mutation
  * re-sent with its key but never answered; outcome unknown, may still apply). Server TIMEOUT = HTTP 503.
@@ -134,6 +135,9 @@ export const api = {
   setClock: call('setClock'),
   postEvent: call('postEvent'),
   patchJob: call('patchJob'),
+  /** POST /jobs {jobs: JobInput[]} -> Operation (source "jobs"). Rejects INVALID_INPUT (400; details.errors[].loc =
+   *  ["body","jobs",i,field] when the backend knows the row) or CONFLICT (409, job id exists). See jobInput.js. */
+  submitJobs: call('submitJobs'),
   addTractor: call('addTractor'),
   removeTractor: call('removeTractor'),
   why: call('why'),
