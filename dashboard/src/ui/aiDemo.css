@@ -1,0 +1,66 @@
+/* "▶ AI demo" (ui/aiDemo.js): Run-row chip, caption pill above the dock, progress dots, highlights. */
+
+/* entry chip in the compact control bar (sits before the view icons; same chip recipe as controls.css) */
+#ctlbar .cb-demo{color:#BF5AF2; padding:0 9px 0 7px}
+#ctlbar .cb-demo svg{fill:currentColor; stroke-width:1.2; width:12px; height:12px}
+#ctlbar .cb-demo[aria-pressed="true"]{background:rgba(191,90,242,.16); border-color:rgba(191,90,242,.35)}
+
+/* caption pill: glass, centred above the dock (or above an open sheet); bottom is set by aiDemo.js */
+.aidemo{
+  position:absolute; left:50%; bottom:160px; z-index:6;
+  width:max-content; max-width:min(600px, calc(100% - 32px)); box-sizing:border-box;
+  padding:8px 12px 10px 14px; border-radius:22px;
+  transform:translate(-50%, 12px); opacity:0; visibility:hidden; pointer-events:none;
+  transition:transform .45s cubic-bezier(.34,1.3,.64,1), opacity .25s ease-out, visibility 0s linear .45s, bottom .35s ease-out;
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
+}
+.aidemo.on{transform:translate(-50%,0); opacity:1; visibility:visible; pointer-events:auto; transition:transform .45s cubic-bezier(.34,1.3,.64,1), opacity .2s ease-out, visibility 0s, bottom .35s ease-out}
+.aidemo .adm-top{display:flex; align-items:center; gap:8px; min-height:22px}
+.aidemo .adm-dots{display:flex; gap:5px; margin:0; padding:0; list-style:none}
+.aidemo .adm-dots li{width:7px; height:7px; border-radius:50%; background:rgba(60,60,67,.22); transition:background-color .25s, transform .25s}
+.aidemo .adm-dots li.done{background:#30D158}
+.aidemo .adm-dots li.skipped{background:transparent; box-shadow:inset 0 0 0 1.5px rgba(60,60,67,.45)}
+.aidemo .adm-dots li.failed{background:#FF453A}
+.aidemo .adm-dots li.cur{background:#BF5AF2; transform:scale(1.3)}
+.aidemo .adm-step{font-size:11px; font-weight:600; color:#6e6e73; white-space:nowrap; font-variant-numeric:tabular-nums}
+.aidemo .adm-btns{display:inline-flex; gap:4px; margin-left:auto; padding-left:6px}
+.aidemo .adm-btns [hidden]{display:none}
+.aidemo .adm-b{
+  display:inline-flex; align-items:center; justify-content:center; gap:4px; height:24px; min-width:24px; padding:0 6px;
+  font:inherit; font-size:11.5px; font-weight:600; color:#1d1d1f;
+  background:rgba(120,120,128,.14); border:0; border-radius:999px; cursor:pointer;
+}
+.aidemo .adm-b:hover{background:rgba(120,120,128,.24)}
+.aidemo .adm-b:focus-visible{outline:2px solid #0A84FF; outline-offset:2px}
+.aidemo .adm-b.adm-txt{padding:0 9px 0 7px}
+.aidemo .adm-b svg{width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round}
+.aidemo .adm-b[data-pp] svg{fill:currentColor; stroke-width:1}
+.aidemo .adm-cap{margin:5px 0 0; font-size:15px; font-weight:600; line-height:1.3; letter-spacing:-.01em; color:#1d1d1f; text-wrap:balance}
+.aidemo .adm-det{margin:3px 0 0; font-size:12px; line-height:1.35; color:#4a4a4f}
+.aidemo .adm-det[hidden]{display:none}
+.aidemo.skip .adm-cap{color:#6e6e73; font-weight:500}
+.aidemo.err .adm-cap{color:#B3261E}
+.aidemo.pop .adm-cap{animation:admIn .35s ease-out}
+@keyframes admIn{from{opacity:.25; transform:translateY(3px)} to{opacity:1; transform:none}}
+
+/* while the demo runs: toast above the pill, sheets leave room for it */
+body.aidemo-on #toast{bottom:var(--aidemo-b, 240px)}
+body.aidemo-on #stage .sheet{max-height:max(150px, calc(100% - var(--dockh,150px) - 44px - var(--chipsb,170px) - 16px - var(--aidemo-h,70px)))}
+
+/* AI Supervisor finding the demo is talking about */
+#aisheet .aif.aidemo-hl{box-shadow:0 0 0 2px #BF5AF2, 0 0 0 6px rgba(191,90,242,.18); border-radius:12px; animation:admHl 1.6s ease-in-out infinite}
+@keyframes admHl{50%{box-shadow:0 0 0 2px #BF5AF2, 0 0 0 9px rgba(191,90,242,.08)}}
+/* plot findings (A/E outlines from ui/aiMapMarks.js) flash while the demo names them */
+body.aidemo-plots .aimarks polygon{animation:admFlash .7s ease-in-out infinite alternate; stroke-width:3.5}
+body.aidemo-plots .aimarks .aitag{animation:admFlash .7s ease-in-out infinite alternate}
+@keyframes admFlash{from{opacity:1} to{opacity:.35}}
+
+@media (prefers-reduced-motion:reduce){
+  .aidemo, .aidemo.on{transition:opacity .2s linear, visibility 0s; transform:translate(-50%,0)}
+  .aidemo.pop .adm-cap{animation:none}
+  .aidemo .adm-dots li{transition:none}
+  .aidemo .adm-dots li.cur{transform:none; box-shadow:0 0 0 2px rgba(191,90,242,.35)}
+  #aisheet .aif.aidemo-hl{animation:none}
+  body.aidemo-plots .aimarks polygon, body.aidemo-plots .aimarks .aitag{animation:none}
+  body.aidemo-plots .aimarks polygon{stroke-width:4.5; stroke-dasharray:none}
+}
