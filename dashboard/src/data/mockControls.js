@@ -497,7 +497,8 @@ function stats(world, per) {
 function plan(world, travel, env = {}) {
   const tractors = world.fleet.map((tr) => plannerTractor(world, tr, travel));
   const jobs = world.jobs.map((j) => ({ ...j, progress: j.progress || 0 }));
-  const res = planAssign({ tractors, jobs, blocked: new Set((world.scenario?.blocked_cells || []).map((c) => c[0] + ',' + c[1])), t: world.t, wx: env.wx || null });
+  const disabled = new Map((world.scenario?.disabled_blocks || []).map((d) => [d.block, d]));
+  const res = planAssign({ tractors, jobs, blocked: new Set((world.scenario?.blocked_cells || []).map((c) => c[0] + ',' + c[1])), t: world.t, wx: env.wx || null, disabled });
   return { assign: res.assign, unassigned: res.unassigned };
 }
 
