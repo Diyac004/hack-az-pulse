@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 400" width="1280" height="400" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Harvest Fleet AI</title>
+<desc id="dsc">AI that runs a citrus farm's fleet of autonomous tractors: plans, re-plans in milliseconds, explains every decision. An autonomous tractor drives along an orchard row, painting its coverage.</desc>
+<defs>
+<style>
+.t{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif}
+.drive{animation:drive 16s linear infinite}
+@keyframes drive{from{transform:translateX(-870px)}to{transform:translateX(650px)}}
+.paint{transform-box:view-box;transform-origin:0 0;animation:paint 16s linear infinite}
+@keyframes paint{0%,7.2%{transform:scaleX(0);opacity:1}88%{opacity:1}100%{transform:scaleX(1.8553);opacity:0}}
+.ring{transform-box:fill-box;transform-origin:center;animation:ring 2.2s ease-out infinite}
+@keyframes ring{from{transform:scale(.35);opacity:.9}to{transform:scale(1.35);opacity:0}}
+.beacon{animation:blink 1.1s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.25}}
+.wheel{transform-box:fill-box;transform-origin:center;animation:spin 1.6s linear infinite}
+.wheel2{transform-box:fill-box;transform-origin:center;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.plan{animation:flow 1.4s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-28}}
+.chip{animation:chip 8.0s ease-in-out infinite}
+@keyframes chip{0%,12%{opacity:0;transform:translateY(6px)}20%,70%{opacity:1;transform:translateY(0)}80%,100%{opacity:0;transform:translateY(-4px)}}
+.glow{animation:glow 6s ease-in-out infinite alternate}
+@keyframes glow{to{opacity:.55}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070D1F"/><stop offset=".55" stop-color="#0E1F44"/><stop offset="1" stop-color="#16345F"/></linearGradient>
+<radialGradient id="g1" cx=".86" cy=".05" r=".55"><stop offset="0" stop-color="#BF5AF2" stop-opacity=".45"/><stop offset="1" stop-color="#BF5AF2" stop-opacity="0"/></radialGradient>
+<radialGradient id="g2" cx=".1" cy=".95" r=".5"><stop offset="0" stop-color="#0A84FF" stop-opacity=".35"/><stop offset="1" stop-color="#0A84FF" stop-opacity="0"/></radialGradient>
+<linearGradient id="soil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14361F"/><stop offset="1" stop-color="#0A1F14"/></linearGradient>
+<linearGradient id="cov" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#30D158" stop-opacity=".05"/><stop offset=".85" stop-color="#30D158" stop-opacity=".38"/><stop offset="1" stop-color="#30D158" stop-opacity=".6"/></linearGradient>
+<linearGradient id="title" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".7" stop-color="#DCEBFF"/><stop offset="1" stop-color="#9CCBFF"/></linearGradient>
+<clipPath id="card"><rect width="1280" height="400" rx="24"/></clipPath>
+<symbol id="tb" overflow="visible"><polygon points="-3,0 3,0 2,-30 -2,-30" fill="#5B4430"/><polygon points="0,-43.1 9.9,-62.1 24.0,-49.2" fill="#1F6B45"/><polygon points="0,-43.1 24.0,-49.2 24.0,-30.8" fill="#185A3A"/><polygon points="0,-43.1 24.0,-30.8 9.9,-17.9" fill="#134A30"/><polygon points="0,-43.1 9.9,-17.9 -9.9,-17.9" fill="#114129"/><polygon points="0,-43.1 -9.9,-17.9 -24.0,-30.8" fill="#134A30"/><polygon points="0,-43.1 -24.0,-30.8 -24.0,-49.2" fill="#1A5E3D"/><polygon points="0,-43.1 -24.0,-49.2 -9.9,-62.1" fill="#237A4F"/><polygon points="0,-43.1 -9.9,-62.1 9.9,-62.1" fill="#22764C"/><circle cx="-9.1" cy="-45.2" r="2.3" fill="#FF9F0A"/><circle cx="10.4" cy="-37.4" r="2.3" fill="#FF9F0A"/><circle cx="1.3" cy="-28.3" r="2.3" fill="#FF9F0A"/><circle cx="-13.0" cy="-30.9" r="2.3" fill="#FF9F0A"/><circle cx="7.8" cy="-51.7" r="2.3" fill="#FF9F0A"/></symbol>
+<symbol id="tf" overflow="visible"><polygon points="-3,0 3,0 2,-24 -2,-24" fill="#5B4430"/><polygon points="0,-31.9 6.1,-43.6 14.8,-35.6" fill="#16503A"/><polygon points="0,-31.9 14.8,-35.6 14.8,-24.4" fill="#16503A"/><polygon points="0,-31.9 14.8,-24.4 6.1,-16.4" fill="#16503A"/><polygon points="0,-31.9 6.1,-16.4 -6.1,-16.4" fill="#16503A"/><polygon points="0,-31.9 -6.1,-16.4 -14.8,-24.4" fill="#16503A"/><polygon points="0,-31.9 -14.8,-24.4 -14.8,-35.6" fill="#16503A"/><polygon points="0,-31.9 -14.8,-35.6 -6.1,-43.6" fill="#16503A"/><polygon points="0,-31.9 -6.1,-43.6 6.1,-43.6" fill="#16503A"/></symbol>
+<symbol id="tF" overflow="visible"><polygon points="-3,0 3,0 2,-40 -2,-40" fill="#5B4430"/><polygon points="0,-63.3 16.8,-95.4 40.7,-73.5" fill="#2B8A57"/><polygon points="0,-63.3 40.7,-73.5 40.7,-42.5" fill="#227347"/><polygon points="0,-63.3 40.7,-42.5 16.8,-20.6" fill="#1B5E3A"/><polygon points="0,-63.3 16.8,-20.6 -16.8,-20.6" fill="#174F31"/><polygon points="0,-63.3 -16.8,-20.6 -40.7,-42.5" fill="#1B5E3A"/><polygon points="0,-63.3 -40.7,-42.5 -40.7,-73.5" fill="#24774A"/><polygon points="0,-63.3 -40.7,-73.5 -16.8,-95.4" fill="#33A163"/><polygon points="0,-63.3 -16.8,-95.4 16.8,-95.4" fill="#2F955C"/><circle cx="15.4" cy="-69.0" r="4.0" fill="#FF9F0A"/><circle cx="-17.6" cy="-51.4" r="4.0" fill="#FF9F0A"/><circle cx="4.4" cy="-36.0" r="4.0" fill="#FF9F0A"/><circle cx="24.2" cy="-40.4" r="4.0" fill="#FF9F0A"/></symbol>
+</defs>
+<g clip-path="url(#card)">
+<rect width="1280" height="400" fill="url(#sky)"/>
+<rect class="glow" width="1280" height="400" fill="url(#g1)"/>
+<rect width="1280" height="400" fill="url(#g2)"/>
+<g fill="#fff" opacity=".5"><circle cx="980" cy="48" r="1.2"/><circle cx="1104" cy="92" r="1"/><circle cx="1200" cy="36" r="1.4"/><circle cx="870" cy="120" r="1"/><circle cx="1030" cy="150" r=".9"/><circle cx="1236" cy="140" r="1"/><circle cx="760" cy="40" r="1"/></g>
+<polygon points="0,270 140,236 300,258 470,228 640,252 820,222 1000,248 1150,226 1280,244 1280,300 0,300" fill="#0F2A3C" opacity=".9"/>
+<use href="#tf" x="-10" y="266" opacity=".55"/><use href="#tf" x="36" y="262" opacity=".55"/><use href="#tf" x="82" y="266" opacity=".55"/><use href="#tf" x="128" y="262" opacity=".55"/><use href="#tf" x="174" y="266" opacity=".55"/><use href="#tf" x="220" y="262" opacity=".55"/><use href="#tf" x="266" y="266" opacity=".55"/><use href="#tf" x="312" y="262" opacity=".55"/><use href="#tf" x="358" y="266" opacity=".55"/><use href="#tf" x="404" y="262" opacity=".55"/><use href="#tf" x="450" y="266" opacity=".55"/><use href="#tf" x="496" y="262" opacity=".55"/><use href="#tf" x="542" y="266" opacity=".55"/><use href="#tf" x="588" y="262" opacity=".55"/><use href="#tf" x="634" y="266" opacity=".55"/><use href="#tf" x="680" y="262" opacity=".55"/><use href="#tf" x="726" y="266" opacity=".55"/><use href="#tf" x="772" y="262" opacity=".55"/><use href="#tf" x="818" y="266" opacity=".55"/><use href="#tf" x="864" y="262" opacity=".55"/><use href="#tf" x="910" y="266" opacity=".55"/><use href="#tf" x="956" y="262" opacity=".55"/><use href="#tf" x="1002" y="266" opacity=".55"/><use href="#tf" x="1048" y="262" opacity=".55"/><use href="#tf" x="1094" y="266" opacity=".55"/><use href="#tf" x="1140" y="262" opacity=".55"/><use href="#tf" x="1186" y="266" opacity=".55"/><use href="#tf" x="1232" y="262" opacity=".55"/><use href="#tf" x="1278" y="266" opacity=".55"/>
+<rect y="296" width="1280" height="104" fill="url(#soil)"/>
+<use href="#tb" x="20" y="300"/><use href="#tb" x="84" y="307"/><use href="#tb" x="148" y="300"/><use href="#tb" x="212" y="307"/><use href="#tb" x="276" y="300"/><use href="#tb" x="340" y="307"/><use href="#tb" x="404" y="300"/><use href="#tb" x="468" y="307"/><use href="#tb" x="532" y="300"/><use href="#tb" x="596" y="307"/><use href="#tb" x="660" y="300"/><use href="#tb" x="724" y="307"/><use href="#tb" x="788" y="300"/><use href="#tb" x="852" y="307"/><use href="#tb" x="916" y="300"/><use href="#tb" x="980" y="307"/><use href="#tb" x="1044" y="300"/><use href="#tb" x="1108" y="307"/><use href="#tb" x="1172" y="300"/><use href="#tb" x="1236" y="307"/>
+<rect y="342" width="1280" height="24" fill="#3B2E22" opacity=".55"/>
+<line class="plan" x1="0" y1="354" x2="1280" y2="354" stroke="#BF5AF2" stroke-width="2.5" stroke-dasharray="14 14" stroke-linecap="round" opacity=".75"/>
+<rect class="paint" x="0" y="342" width="760" height="24" fill="url(#cov)"/>
+<g transform="translate(760 352)"><g class="drive">
+<ellipse class="ring" cx="0" cy="-2" rx="80" ry="22" fill="none" stroke="#0A84FF" stroke-width="3"/>
+<g transform="translate(50 0)"><g transform="scale(.21)" stroke-linejoin="round">
+<ellipse cx="-10" cy="2" rx="230" ry="14" fill="#000" opacity=".35"/>
+<polygon points="-240,-62 -226,-62 -226,-74 -240,-74" fill="#636366"/>
+<polygon points="-175.6,-73.2 -231.6,-61.2 -234.4,-74.8 -178.4,-86.8" fill="#636366"/>
+<polygon points="127.6,-180 112.4,-180 112.4,-348 127.6,-348" fill="#3A3A3C"/>
+<polygon points="-184,-48 184,-48 184,-100 -184,-100" fill="#3A3A3C"/>
+<polygon points="-16,-96 184,-100 184,-172 -16,-200" fill="#0A84FF"/>
+<polygon points="-16,-180 184,-168 184,-172 -16,-200" fill="#5AB0FF"/>
+<polygon points="180,-52 208,-52 208,-120 180,-120" fill="#2C2C2E"/>
+<polygon points="-160,-96 -12,-96 -12,-180 -160,-180" fill="#0A6FD6"/>
+<polygon points="-160,-180 0,-180 -28,-320 -152,-320" fill="#33444F" stroke="#1C1C1E" stroke-width="5"/>
+<polygon points="-140,-190 -20,-190 -42,-305 -136,-305" fill="#9FD3FF" opacity=".35"/>
+<polygon points="-120,-300 -60,-300 -100,-200 -130,-200" fill="#fff" opacity=".18"/>
+<polygon points="-172,-320 -12,-320 -12,-340 -172,-340" fill="#0A84FF"/>
+<rect class="beacon" x="-146" y="-372" width="14" height="32" rx="5" fill="#FF9F0A"/>
+<polygon points="-4,-248 12,-248 12,-280 -4,-280" fill="#2C2C2E"/>
+<polygon points="-150.9,-174.8 -127.1,-190.9 -99.9,-200.1 -71.1,-201.6 -43.1,-195.4 -17.7,-181.8 -11.8,-189.8 -39.6,-204.7 -70.3,-211.6 -101.7,-209.9 -131.6,-199.9 -157.6,-182.2" fill="#0A84FF"/>
+<g class="wheel"><circle cx="-80" cy="-96" r="96" fill="#2A2A2D"/><circle cx="-80" cy="-96" r="63" fill="#AEAEB2"/><circle cx="-80" cy="-96" r="48" fill="#636366"/><circle cx="-80" cy="-96" r="23" fill="#D1D1D6"/>
+<g stroke="#2A2A2D" stroke-width="9"><line x1="-80" y1="-159" x2="-80" y2="-33"/><line x1="-143" y1="-96" x2="-17" y2="-96"/></g></g>
+<g class="wheel2"><circle cx="132" cy="-60" r="60" fill="#2A2A2D"/><circle cx="132" cy="-60" r="40" fill="#AEAEB2"/><circle cx="132" cy="-60" r="30" fill="#636366"/><circle cx="132" cy="-60" r="14" fill="#D1D1D6"/>
+<g stroke="#2A2A2D" stroke-width="7"><line x1="132" y1="-100" x2="132" y2="-20"/><line x1="92" y1="-60" x2="172" y2="-60"/></g></g>
+</g></g>
+<g class="chip" transform="translate(20 -112)"><rect x="0" y="0" width="150" height="30" rx="15" fill="#fff" fill-opacity=".14" stroke="#fff" stroke-opacity=".28"/><circle cx="17" cy="15" r="5" fill="#30D158"/><text class="t" x="30" y="20" font-size="13" font-weight="600" fill="#fff">Re-planned · 4 ms</text></g>
+</g></g>
+<use href="#tF" x="40" y="440"/><use href="#tF" x="190" y="440"/><use href="#tF" x="340" y="440"/><use href="#tF" x="490" y="440"/><use href="#tF" x="640" y="440"/><use href="#tF" x="790" y="440"/><use href="#tF" x="940" y="440"/><use href="#tF" x="1090" y="440"/><use href="#tF" x="1240" y="440"/>
+<text class="t" x="64" y="104" font-size="58" font-weight="800" letter-spacing="-1.5" fill="url(#title)">Harvest Fleet AI</text>
+<text class="t" x="66" y="146" font-size="20" font-weight="500" fill="#fff" fill-opacity=".78">AI that runs a citrus farm’s fleet of autonomous tractors — plans, re-plans in milliseconds, explains every decision</text>
+<g class="t" font-size="13" font-weight="600">
+<g transform="translate(66 170)"><rect width="122" height="28" rx="14" fill="#0A84FF" fill-opacity=".22" stroke="#0A84FF" stroke-opacity=".6"/><circle cx="16" cy="14" r="4" fill="#0A84FF"/><text x="28" y="19" fill="#CFE5FF">Fleet planner</text></g>
+<g transform="translate(198 170)"><rect width="128" height="28" rx="14" fill="#BF5AF2" fill-opacity=".2" stroke="#BF5AF2" stroke-opacity=".6"/><circle cx="16" cy="14" r="4" fill="#BF5AF2"/><text x="28" y="19" fill="#EBD4FA">AI supervisor</text></g>
+<g transform="translate(336 170)"><rect width="152" height="28" rx="14" fill="#30D158" fill-opacity=".18" stroke="#30D158" stroke-opacity=".6"/><circle cx="16" cy="14" r="4" fill="#30D158"/><text x="28" y="19" fill="#D2F5DC">0 safety violations</text></g>
+</g>
+<rect x=".75" y=".75" width="1278.5" height="398.5" rx="23.5" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="1.5"/>
+</g>
+</svg>
