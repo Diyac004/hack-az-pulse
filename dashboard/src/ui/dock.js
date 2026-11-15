@@ -153,7 +153,7 @@ export function createDock({ onPill, onLane = null }) {
         'Plan v' + (p && p.version != null ? p.version : '–') + ' · <b>' + esc(label) + '</b>' +
         // solver_status stays as the contract says; these chips say what "feasible" does not: overtime and lateness
         (h.overtimeMin > 0 ? '<span class="wchip ot" title="Planned work ends ' + esc(clock(h.endT)) + ', after the ' + esc(clock(D)) + ' end of day">Overtime +' + h.overtimeMin + ' min</span>' : '') +
-        (h.late.length || h.afterDay.length ? '<span class="wchip late" title="Late = planned to finish after its deadline. Violations count only broken constraints.">' +
+        (h.late.length || h.afterDay.length ? '<span class="wchip late" title="Late = planned to finish after its deadline. Deadlines are modeled constraints; late jobs are also counted on the scorecard (Finished late).">' +
           [h.late.length ? h.late.length + ' late' : '', h.afterDay.length ? h.afterDay.length + ' after ' + esc(clock(D)) : ''].filter(Boolean).join(' · ') + '</span>' : '');
       badge.title = st === 'feasible' ? 'Valid schedule; optimality not proven' : st === 'optimal' ? 'Solver proved optimality' : st === 'fallback' ? 'Primary optimizer failed or timed out; validated heuristic plan applied' : '';
     },

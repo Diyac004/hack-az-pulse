@@ -224,4 +224,4 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 .pop.confirm .crow{display:flex;gap:6px}
 .pop.confirm .crow button{flex:1;justify-content:center;font-weight:600}
 .pop.confirm .cyes{background:rgba(255,69,58,.14);color:#c4271c}
-button.unsup{opacity:.45}
+.ctl button:disabled:not(.busy){opacity:.45;cursor:not-allowed}

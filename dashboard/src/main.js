@@ -35,7 +35,7 @@ const labels = createLabels(world, farm);
 const toast = createToast();
 const island = createIsland();
 const ops = createOps({ store, api, toast });
-const panel = createPanel();
+const panel = createPanel({ caps: capabilities.get });
 const keynote = createKeynote();
 // Live feed (M8): second view of the same fleet (+ its coverage/trails/AB/readout/follow in the 3D view).
 // Wraps world.focus/home/overview so they pan the map while it shows.

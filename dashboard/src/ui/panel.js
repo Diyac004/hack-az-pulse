@@ -10,7 +10,12 @@ const fmtN = (v) => (v == null ? NOT_MEASURED : String(Math.round(v)));
 const lateOf = (m) => (m && n(m.completed) != null && n(m.on_time) != null ? Math.max(0, n(m.completed) - n(m.on_time)) : null);
 
 /** Rows shown in scorecard + keynote. Extra §13.4 rows only when non-null on either side. */
-export function scoreRows(metrics) {
+/** Label for metrics a backend does not measure (AgOpenWeb bridge: no scheduler run; its zeros are placeholders). */
+export const NOT_MEASURED_BRIDGE = 'not measured (bridge mode)';
+
+/** opts.measured === false (capabilities.metricsMeasured): travel, idle and violations show as not measured. */
+export function scoreRows(metrics, opts = {}) {
+  const unmeasured = opts.measured === false;
   const o = (metrics && metrics.ours) || {}, b = (metrics && metrics.baseline) || null;
   const hasBase = !!(metrics && metrics.baseline && metrics.baseline_source);
   const bv = (k) => (hasBase && b ? n(b[k]) : null);
@@ -34,7 +39,8 @@ export function scoreRows(metrics) {
     if (a == null && bb == null) continue;
     rows.push({ k, label, a, b: bb, f, better, detail: !!detail, unit: f === fmtMin ? 'min' : k === 'replan_ms_last' ? 'ms' : '' });
   }
-  return { rows, hasBase, violations: n(o.violations) || 0 };
+  if (unmeasured) for (const r of rows) if (r.k === 'travel_min' || r.k === 'idle_min') { r.a = null; r.nm = NOT_MEASURED_BRIDGE; }
+  return { rows, hasBase, violations: unmeasured ? null : n(o.violations) || 0 };
 }
 
 export function baselineLabel(metrics) {
@@ -45,7 +51,7 @@ export function baselineLabel(metrics) {
   return 'Baseline: ' + src + '.';
 }
 
-export function createPanel() {
+export function createPanel({ caps = () => ({}) } = {}) {
   const exp = document.getElementById('exp');
   const score = document.getElementById('score'), viol = document.getElementById('viol'), basesrc = document.getElementById('basesrc');
   const feed = document.getElementById('feed');
@@ -72,16 +78,17 @@ export function createPanel() {
     },
     sync(state) {
       const m = state.metrics;
-      const sig = JSON.stringify(m || null) + showDetails;
+      const measured = caps().metricsMeasured !== false;
+      const sig = JSON.stringify(m || null) + showDetails + measured;
       if (sig !== scoreSig) {
         scoreSig = sig;
-        const { rows, hasBase, violations } = scoreRows(m);
-        const cell = (v, r) => (v == null ? '<span class="nm">' + NOT_MEASURED + '</span>' : r.f(v) + (r.sub || ''));
+        const { rows, hasBase, violations } = scoreRows(m, { measured });
+        const cell = (v, r) => (v == null ? '<span class="nm">' + (r.nm || NOT_MEASURED) + '</span>' : r.f(v) + (r.sub || ''));
         const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + cell(r.a, r) + '</span><span style="color:var(--faint)">' + (hasBase ? cell(r.b, { f: r.f }) : '<span class="nm">' + NOT_MEASURED + '</span>') + '</span>';
         const main = rows.filter((r) => !r.detail), det = rows.filter((r) => r.detail);
         score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + main.map(row).join('') +
           (det.length ? '<button class="dtl" data-det>' + (showDetails ? 'Hide details' : 'Details') + '</button>' + (showDetails ? det.map(row).join('') : '') : '');
-        viol.textContent = plural(violations, 'violation');
+        viol.textContent = violations == null ? 'Violations ' + NOT_MEASURED_BRIDGE : plural(violations, 'violation');
         viol.title = 'Broken constraints in applied plans (deadlines, implements, fuel, safety). Jobs that finished late are also shown on their own row.';
         viol.classList.toggle('bad', violations > 0);
         basesrc.textContent = baselineLabel(m);
