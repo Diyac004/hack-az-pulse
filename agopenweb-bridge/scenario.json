@@ -115,15 +115,15 @@
   }
  ],
  "basemap": {
-  "image_url": null,
-  "west": -111.62,
-  "east": -111.611,
-  "south": 33.207,
-  "north": 33.212
+  "image_url": "/static/naip.png",
+  "west": -111.74666891,
+  "east": -111.73374758,
+  "south": 33.45461238,
+  "north": 33.4632364
  },
  "geo": {
-  "origin_lat": 33.212,
-  "origin_lon": -111.62,
+  "origin_lat": 33.46126,
+  "origin_lon": -111.7443,
   "cell_m": 40
  }
 }

@@ -1,0 +1,34 @@
+{
+  "image": "naip.jpg",
+  "image_png": "naip.png",
+  "west": -111.74666891,
+  "east": -111.73374758,
+  "south": 33.45461238,
+  "north": 33.4632364,
+  "width": 2400,
+  "height": 1920,
+  "m_per_px": 0.5,
+  "origin": {
+    "lat": 33.46126,
+    "lon": -111.7443,
+    "cell_m": 40,
+    "note": "centre of grid cell (0,0); = scenario.geo origin_lat/origin_lon"
+  },
+  "grid": {
+    "w": 20,
+    "h": 14,
+    "margin_cells": 5
+  },
+  "farm_bounds": {
+    "west": -111.74451536,
+    "east": -111.73590114,
+    "north": 33.46143966,
+    "south": 33.45640912
+  },
+  "source": "USGS The National Map, USGSNAIPPlus ImageServer (NAIP + HRO orthoimagery)",
+  "service": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage",
+  "attribution": "Imagery: USGS The National Map / NAIP, public domain",
+  "license": "Public domain (US Government work, USGS/USDA)",
+  "fetched_at": "2026-11-15T22:20:46.537Z",
+  "tool": "tools/fetch-basemap.mjs"
+}

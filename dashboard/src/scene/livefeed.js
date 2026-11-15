@@ -20,6 +20,8 @@ import { createLiveTractors, disposeShared, ICON_LEN } from './liveTractors.js';
 import { createLiveOverlay } from '../ui/liveOverlay.js';
 import { createViewState } from '../lib/viewState.js';
 import { createSimOverlay } from './simOverlay.js';
+import { createSatBasemap } from './satBasemap.js';
+import { createMapOverlays } from './mapOverlays.js';
 
 const DUR = 1150;                         // ms for the camera tilt + cross-fade
 const OVERHEAD_PHI = 1e-4;                // polar angle for "straight down" (north stays up)
@@ -67,6 +69,10 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     onRepair: (id, els) => onRepair && onRepair(id, els),
     onControls: onControls ? (id) => onControls(id) : null,
   });
+  // AgOpenGPS-style field view: real NAIP aerial under everything (Satellite | Simple switch) + map chrome
+  // (implement sections, headlands, scale bar, north arrow, attribution: scene/mapOverlays.js)
+  const sat = createSatBasemap({ scene: L, stage, onChange: () => { textDirty = true; } });
+  const overlays = createMapOverlays({ scene: L, camera: O, renderer: R, stage, geo: null, grid: null, store, tractors, getView: () => ({ satellite: sat.mode === 'satellite' }) });
 
   // ---------- data
   let grid = null, geo = null, ground = null, scSig = null;
@@ -94,8 +100,12 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     if (ground) ground.dispose();
     disposeCoverage(); clearBarriers(); tractors.clear(); prevStatus.clear();
     grid = makeGrid(sc); geo = makeGeo(sc);
-    ground = buildGround(grid, geo, sc, sourceInfo && sourceInfo.kind === 'live' ? sourceInfo.api : null);
+    const apiBase = sourceInfo && sourceInfo.kind === 'live' ? sourceInfo.api : null;
+    // the real image is satBasemap's job (toned, switchable, re-anchored if needed); the ground keeps the generated aerial
+    ground = buildGround(grid, geo, sc ? { ...sc, basemap: null } : sc, apiBase);
     L.add(ground.group);
+    sat.rebuild(grid, geo, sc, apiBase);
+    if (overlays.rebuild) overlays.rebuild(grid, geo, sc);
     if (geo) {
       cov = createCoverageGrid(grid.w, grid.h, geo);
       covTex = new THREE.DataTexture(cov.data, cov.width, cov.height, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -186,6 +196,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
       }
     }
     if (type === 'log' || type === 'scenario') syncBarriers(state);
+    if (overlays.sync) overlays.sync(state);
     textDirty = true;
   }
   store.subscribe(onMessage);
@@ -220,6 +231,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     SW = w; SH = h; R.setSize(SW, SH); PC.aspect = SW / SH; PC.updateProjectionMatrix();
     const z = O.zoom, tx = ctl.target.x, tz = ctl.target.z;
     computeFit(); setOrtho(tx, tz, z);
+    if (overlays.resize) overlays.resize(SW, SH);
   }
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
   if (ro) ro.observe(stage); else window.addEventListener('resize', resize);
@@ -382,7 +394,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     }
     if (p < 1 && sim) sim.frame(now, tractors.records()); // diorama (partly) visible: 3D coverage, trails, AB
     if (p === 0) {
-      if (el.style.opacity !== '0') { el.style.opacity = '0'; overlay.setOpacity(0); }
+      if (el.style.opacity !== '0') { el.style.opacity = '0'; overlay.setOpacity(0); sat.setVisible(false); if (overlays.setVisible) overlays.setVisible(false); }
       if (selectedId && sim) overlay.placeCard(simCardPos(selectedId), simIconPx());
       if (textDirty && now - lastText > 250) { lastText = now; textDirty = false; overlay.sync(store.get() || {}); }
       return;
@@ -431,6 +443,10 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     }
     if (cov && cov.version !== covVer && now - lastUpload > 120) { covVer = cov.version; covTex.needsUpdate = true; lastUpload = now; }
     tractors.frame(now, dt, wpp);
+    sat.frame(dt);
+    const mapOn = view === 'live' && p >= 1;
+    sat.setVisible(mapOn); if (overlays.setVisible) overlays.setVisible(mapOn);
+    if (overlays.frame) overlays.frame(dt, O.zoom);
     R.render(L, cam);
 
     // DOM overlay
@@ -474,7 +490,10 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
         groundToScreen(x, z) { const o = project(x, z, { x: 0, y: 0 }); return { x: o.x, y: o.y }; },
       };
     },
-    _debug: { tractors, L, R },
+    _debug: { tractors, L, R, sat, overlays },
+    /** 'satellite' | 'simple' basemap (Map view) */
+    get basemap() { return sat.info; },
+    setBasemap(m) { sat.setMode(m); },
     /** debug / leak checks */
     get info() { return { memory: { ...R.info.memory }, render: { ...R.info.render }, programs: R.info.programs.length, trails: Object.fromEntries(tractors.ids().map((id) => [id, tractors.get(id).trail.count])), realCoverage, painted: cov ? cov.painted : 0, coverageOutside: cov ? cov.outside : 0 }; },
     dispose() {
@@ -485,7 +504,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
       Object.assign(world, orig);
       ctl.dispose(); tractors.clear(); if (sim) sim.dispose(); disposeShared(); clearBarriers();
       barrierGeo.dispose(); barrierMats.fill.dispose(); barrierMats.x.dispose();
-      if (ground) ground.dispose(); disposeCoverage(); overlay.dispose();
+      if (ground) ground.dispose(); disposeCoverage(); overlay.dispose(); sat.dispose(); if (overlays.dispose) overlays.dispose();
       R.dispose(); R.forceContextLoss(); R.domElement.remove();
     },
   };

@@ -80,7 +80,18 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
       const g = gusty();
       bWind.textContent = g ? 'Calm the wind' : 'Wind gust';
       bWind.title = g ? 'Send weather_change: wind drops to 6 mph, away from sensitive areas' : 'Send weather_change: 14 mph gust toward a sensitive area (above the 10 mph spray limit)';
-      bWind.disabled = ended || !state.weather;
+      // nothing happens after the workday ends (6:00 PM): no new breakdowns, road blocks or weather
+      const over = ended || (c.t != null && c.day_minutes != null && c.t >= c.day_minutes);
+      bWind.disabled = over || !state.weather;
+      for (const b of [bBreak, bBlock, bHeat, bWind]) {
+        b.disabled = over || (b === bWind && !state.weather);
+        if (over) b.title = 'The workday is over (6:00 PM). Events can only happen during the day.';
+        else if (b !== bWind && b.title === 'The workday is over (6:00 PM). Events can only happen during the day.') b.title = '';
+      }
+      if (over) pick.classList.remove('on');
+      const cap = state.capacity, full = !!(cap && cap.max != null && cap.used >= cap.max);
+      bAdd.disabled = full;
+      bAdd.title = full ? `Fleet is full: ${cap.used} of ${cap.max} tractors. Remove one to add another.` : '';
     },
     /** Brief slow motion: speed 0.15 for ~1.7 s, then restore the speed captured before. */
     slowMotion(ms = 1700) {

@@ -30,6 +30,7 @@ const SWAP_MIN = 10;            // implement swap at the depot
 const REFUEL_MIN = 15;
 const SPEED_STEP = 0.5;         // sim.speedUp / speedDown, mph
 const MAX_SIM_MPH = 12;
+const WORK_MPH = 4;               // speed the mock sim rolls at when an AB line is set while stopped
 
 const err = (code, message, details = {}) => ({ code, message, details });
 const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
@@ -307,7 +308,7 @@ export function applyControl(cs, tractor, jobs, control, value) {
     abEffect();
   };
   switch (id) {
-    case 'speed_up': cs.speed_mph = Math.min(MAX_SIM_MPH, cs.speed_mph + SPEED_STEP); effect = { kind: 'drive' }; break;
+    case 'speed_up': cs.speed_mph = Math.min(MAX_SIM_MPH, fin(cs.max_speed) ? cs.max_speed : MAX_SIM_MPH, cs.speed_mph + SPEED_STEP); effect = { kind: 'drive' }; break;
     case 'speed_down': cs.speed_mph = Math.max(0, cs.speed_mph - SPEED_STEP); effect = { kind: 'drive' }; break;
     case 'stop': cs.speed_mph = 0; cs.drive_to = null; effect = { kind: 'drive', stop: true }; break;
     case 'sim_10x': cs.sim_10x = value; effect = { kind: 'drive' }; break;
@@ -316,13 +317,16 @@ export function applyControl(cs, tractor, jobs, control, value) {
     case 'reverse': cs.dir = -cs.dir; effect = { kind: 'drive' }; break;
     case 'drive_to': cs.drive_to = value; effect = { kind: 'drive_to', point: value }; break;
     case 'place_here': cs.place_here = value; cs.speed_mph = 0; effect = { kind: 'teleport', point: value }; break;
-    case 'autosteer': cs.autosteer = value; break;
+    case 'autosteer': cs.autosteer = value; if (value && cs.ab_select && !(cs.speed_mph > 0)) { cs.speed_mph = WORK_MPH; effect = { kind: 'drive' }; } break;
     case 'ab_line': {
+      // a new line implies "follow it": autosteer on, and roll at work speed if stopped (mock sim)
       const n = cs.lines.length + 1, line = { id: 'AB' + n, name: 'AB ' + n, a: { ...value[0] }, b: { ...value[1] } };
-      cs.lines.push(line); cs.ab_select = line.id; cs.nudge_m = 0; abEffect(); break;
+      cs.lines.push(line); cs.ab_select = line.id; cs.nudge_m = 0; cs.guide = null; cs.autosteer = true;
+      if (!(cs.speed_mph > 0)) cs.speed_mph = WORK_MPH;
+      abEffect(); break;
     }
-    case 'ab_select': cs.ab_select = value; abEffect(); break;
-    case 'ab_swap': { const l = ab(); [l.a, l.b] = [l.b, l.a]; abEffect(); break; }
+    case 'ab_select': cs.ab_select = value; cs.guide = null; abEffect(); break;
+    case 'ab_swap': { const l = ab(); [l.a, l.b] = [l.b, l.a]; cs.guide = null; abEffect(); break; }
     case 'nudge_left': nudge(-0.1); break; case 'nudge_right': nudge(0.1); break;
     case 'fine_nudge_left': nudge(-0.01); break; case 'fine_nudge_right': nudge(0.01); break;
     case 'snap_left': case 'snap_right': { // jump one implement width
@@ -330,8 +334,9 @@ export function applyControl(cs, tractor, jobs, control, value) {
     }
     case 'youturn': case 'youturn_dir': case 'youturn_skip': case 'headland': case 'contour': cs[id] = value; break;
     case 'section_master': cs.section_master = value; if (value === 'auto') cs.sections = cs.sections.map(() => false); break;
-    case 'num_sections': { const n = value; cs.sections = Array.from({ length: n }, (_, i) => cs.sections[i] ?? false); cs.num_sections = n; break; }
-    case 'section_width': case 'overlap': case 'look_ahead': case 'tool_offset':
+    case 'num_sections': { const n = value; cs.sections = Array.from({ length: n }, (_, i) => cs.sections[i] ?? false); cs.num_sections = n; cs.width_set = true; break; }
+    case 'section_width': cs.section_width = value; cs.width_set = true; break;
+    case 'overlap': case 'look_ahead': case 'tool_offset':
     case 'vehicle_type': case 'wheelbase': case 'track_width': case 'antenna_height': case 'antenna_offset':
     case 'max_steer_angle': case 'gain_p': case 'steer_mode': case 'uturn_radius': case 'uturn_style': case 'uturn_extension':
       cs[id] = value; break;
@@ -341,7 +346,7 @@ export function applyControl(cs, tractor, jobs, control, value) {
     case 'name': effect = { kind: 'tractor', patch: { name: value } }; break;
     case 'color': effect = { kind: 'tractor', patch: { color: value } }; break;
     case 'refuel': effect = { kind: 'refuel', depot_min: REFUEL_MIN }; break;
-    case 'max_speed': cs.max_speed = value; effect = { kind: 'tractor', patch: { speed: value / NOMINAL_MPH } }; break;
+    case 'max_speed': cs.max_speed = value; cs.speed_mph = Math.min(cs.speed_mph, value); effect = { kind: 'tractor', patch: { speed: value / NOMINAL_MPH } }; break;
     case 'off_duty_t': cs.off_duty_t = value; effect = { kind: 'off_duty', t: value }; break;
     case 'pin_job': effect = { kind: 'pin', job: value, tractor: tractor.id, unpin: jobs.filter((j) => j.pinned_to === tractor.id && unfinished(j)).map((j) => j.id) }; break;
     case 'ban_type': cs.ban_type = value; effect = { kind: 'ban', type: value === 'none' ? null : value }; break;
@@ -366,6 +371,54 @@ export function stepManual(pose, cs, dtMin, grid = { width: 20, height: 14 }) {
   let x = pose.x + Math.sin(h2) * d, y = pose.y - Math.cos(h2) * d;
   x = Math.max(0, Math.min(grid.width - 1, x)); y = Math.max(0, Math.min(grid.height - 1, y));
   return { x, y, heading_deg: ((((hd + yaw) * 180) / Math.PI) % 360 + 360) % 360, speed_mph: mph };
+}
+
+/** Mock visual exaggeration for implement width on 40 m cells (pass spacing and painted stripe). */
+export const MOCK_WIDTH_VIS = 2;
+const CELL_M = 40;
+/** Implement width in metres from the Implement tab (sections x section width). */
+export const implWidthM = (cs) => Math.max(0.5, (cs.num_sections || 1) * (cs.section_width || 1));
+
+/**
+ * Autosteer for the mock sim: pure pursuit onto the active AB line (offset by the current pass), U-turn at the
+ * line's ends onto the next pass (one implement width over, `youturn_dir` side, `youturn_skip` extra passes).
+ * Returns the new pose like stepManual, or null when guidance does not apply (no line / autosteer off / stopped).
+ * Mutates cs.guide = { off (cells, + = right of A->B), dir (+1 A->B, -1 B->A), side (pass step sign), turns }.
+ */
+export function stepGuided(pose, cs, dtMin, grid = { width: 20, height: 14 }) {
+  const l = cs.autosteer && cs.ab_select ? cs.lines.find((x) => x.id === cs.ab_select) : null;
+  if (!l || !(cs.speed_mph > 0)) return null;
+  const g = cs.guide || (cs.guide = { off: 0, dir: 1, turns: 0 });
+  const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  const nx = -uy, ny = ux; // right of A->B (grid y points south)
+  let ox = l.a.x + nx * g.off, oy = l.a.y + ny * g.off;
+  const s = (pose.x - ox) * ux + (pose.y - oy) * uy;
+  // end of the pass: turn onto the next one
+  if ((g.dir > 0 && s > L + 0.25) || (g.dir < 0 && s < -0.25)) {
+    const spacing = (implWidthM(cs) * MOCK_WIDTH_VIS) / CELL_M * (1 + (cs.youturn_skip || 0));
+    // first turn goes to the `youturn_dir` side of travel; later turns alternate so passes keep stepping that way
+    if (!g.side) { const leftSign = -g.dir; g.side = cs.youturn_dir === 'right' ? -leftSign : leftSign; }
+    const inside = (off) => { const mx = (l.a.x + l.b.x) / 2 + nx * off, my = (l.a.y + l.b.y) / 2 + ny * off; return mx >= 0 && mx <= grid.width - 1 && my >= 0 && my <= grid.height - 1; };
+    if (!inside(g.off + g.side * spacing)) g.side = -g.side; // reached the farm edge: work back the other way
+    const next = g.off + g.side * spacing;
+    g.off = Math.round(next * 1000) / 1000; g.dir = -g.dir; g.turns++;
+    ox = l.a.x + nx * g.off; oy = l.a.y + ny * g.off;
+  }
+  const Ld = 0.8, wb = 0.6;
+  const s2 = (pose.x - ox) * ux + (pose.y - oy) * uy;
+  const st = s2 + g.dir * Ld;
+  const tx = ox + ux * st, ty = oy + uy * st;
+  const h = ((pose.heading_deg || 0) * Math.PI) / 180, hx = Math.sin(h), hy = -Math.cos(h);
+  const vx = tx - pose.x, vy = ty - pose.y;
+  const alpha = Math.atan2(hx * vy - hy * vx, hx * vx + hy * vy);
+  const maxS = fin(cs.max_steer_angle) ? cs.max_steer_angle : 35;
+  let steer = (Math.atan((2 * wb * Math.sin(alpha)) / Ld) * 180) / Math.PI;
+  if (Math.cos(alpha) < 0) steer = Math.sign(alpha || 1) * maxS; // target behind: full lock toward it
+  steer = Math.max(-maxS, Math.min(maxS, steer));
+  // on the pass (implement down, paints) vs turning / joining the line (implement up)
+  const xt = Math.abs((pose.x - ox) * nx + (pose.y - oy) * ny);
+  const onLine = xt < 0.12 && Math.cos(alpha) > 0.9 && s2 > -0.05 && s2 < L + 0.05;
+  return { ...stepManual(pose, { ...cs, steer, dir: 1 }, dtMin, grid), on_line: onLine };
 }
 
 // ---------------------------------------------------------------- preview (re-plan impact, applies nothing)

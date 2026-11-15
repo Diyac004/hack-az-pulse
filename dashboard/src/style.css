@@ -65,7 +65,10 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 /* Sheets dock ABOVE the timeline (bottom = dock height + room for tray/plan badge) and below the chips.
    --dockh / --chipsb are set on #stage by main.js. Closed sheets are visibility:hidden after the exit
    transition so nothing inside them can take focus and scroll the stage. */
-.sheet{position:absolute;left:10px;right:10px;bottom:calc(var(--dockh,150px) + 44px);padding:14px 16px;transform:translateY(calc(100% + var(--dockh,150px) + 60px));visibility:hidden;opacity:0;transition:transform .65s cubic-bezier(.34,1.25,.64,1),opacity .3s,visibility 0s linear .65s;z-index:4;max-width:620px;margin:0 auto;max-height:calc(100% - var(--dockh,150px) - 44px - var(--chipsb,170px) - 8px);overflow-y:auto}
+.sheet{position:absolute;left:10px;right:10px;bottom:calc(var(--dockh,150px) + 44px);padding:14px 16px;transform:translateY(calc(100% + var(--dockh,150px) + 60px));visibility:hidden;opacity:0;transition:transform .65s cubic-bezier(.34,1.25,.64,1),opacity .3s,visibility 0s linear .65s;z-index:4;max-width:620px;margin:0 auto;max-height:max(150px,calc(100% - var(--dockh,150px) - 44px - var(--chipsb,170px) - 8px));overflow-y:auto;overscroll-behavior:contain}
+/* Short viewports: the sheet scrolls inside its max-height, and its action row (always the last child of
+   #mech / #addsheet) sticks to the sheet's bottom edge so Approve/Book/Add are never scrolled away. */
+#mech>div:last-child,#addsheet>div:last-child{position:sticky;bottom:-14px;margin:6px -16px -14px!important;padding:10px 16px 14px;background:rgba(246,246,248,.96);border-radius:0 0 16px 16px;z-index:1}
 .sheet.on{transform:translateY(0);visibility:visible;opacity:1;transition:transform .65s cubic-bezier(.34,1.25,.64,1),opacity .2s,visibility 0s}
 .shead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
 .shead p{margin:0;font-size:15px;font-weight:600}

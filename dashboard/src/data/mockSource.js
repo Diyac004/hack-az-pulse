@@ -53,12 +53,12 @@ export const FARM_MIN_PER_REAL_S = 1.2;
 /** Valid pace override (farm min per real second) or null. */
 export const parsePace = (v) => { const n = Number(v); return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n > 0 && n <= 120 ? n : null; };
 import { clockText, plural, verb, listText, durText, priorityWord } from './text.js';
-import { createControlHost, stepManual, leadText as controlLeadText } from './mockControls.js';
+import { createControlHost, stepManual, stepGuided, implWidthM, leadText as controlLeadText } from './mockControls.js';
 const GW = 20, GH = 14;
 const RX = [0, 5, 10, 15], RY = [0, 6, 13];
 const DEPOT = { x: 1, y: 6 };
-const VAN_FROM = { x: 0, y: 6 };
-const GEO = { origin_lat: 33.212, origin_lon: -111.62, cell_m: 40 };
+const VAN_FROM = { x: 2, y: 5 }; // Fleet hub service bay (depotHub service bay ~ grid 1.98, 5.07): the van leaves from and returns here
+const GEO = { origin_lat: 33.46126, origin_lon: -111.7443, cell_m: 40 }; // centre of cell (0,0): citrus groves in Mesa, AZ (NAIP satellite basemap)
 const COLORS = ['#0A84FF', '#BF5AF2', '#FF9F0A', '#30D158', '#FF375F', '#5E5CE6', '#64D2FF', '#FFD60A'];
 const IMPLEMENTS = ['sprayer', 'mower', 'hedger', 'bin_trailer'];
 const IMPL_TYPE = { sprayer: 'spray', mower: 'mow', hedger: 'hedge', bin_trailer: 'haul_bins' };
@@ -66,7 +66,7 @@ const IMPL_NAME = { sprayer: 'sprayer', mower: 'mower', hedger: 'hedger', bin_tr
 const IMPL_VERB = { sprayer: 'spraying', mower: 'mowing', hedger: 'hedging', bin_trailer: 'hauling' };
 const TOOL_WIDTH = { sprayer: 6, mower: 4.5, hedger: 3, bin_trailer: 2.5 };
 const HEAT_BLOCKS = ['G', 'H'];
-const POOL_MAX = 24;
+const POOL_MAX = 5; // demo fleet cap (Fleet capacity: n of 5)
 const SCHEDULABLE = new Set(['ready', 'idle', 'traveling', 'working', 'waiting_weather', 'refueling']); // refueling: operator-ordered depot stop, still plannable
 
 const BLOCKS = [
@@ -459,6 +459,8 @@ export function createMockSource(opts = {}) {
   function addLog(entry) { const e = { t: r2(w.t), ...entry }; w.log.push(e); emit('log', e); }
 
   // ---------------- output builders
+  // the operator's Implement tab (sections x section width) sets the mock tool width once touched
+  const toolWidthOf = (tr, impl) => { const cs = controls && controls.state(tr.id); return cs && cs.width_set ? r1(implWidthM(cs)) : TOOL_WIDTH[impl] ?? 3; };
   function tractorOut(tr) {
     const g = toGeo(tr.x, tr.y);
     const curJob = tr.current_job ? w.jobs.find((j) => j.id === tr.current_job) : null;
@@ -470,7 +472,7 @@ export function createMockSource(opts = {}) {
       id: tr.id, name: tr.name, color: tr.color, implements: tr.implements.slice(), status: tr.status, manual: tr.manual,
       fuel_pct: r1(tr.fuel),
       pose: { x: r2(tr.x), y: r2(tr.y), lat: g.lat, lon: g.lon, heading_deg: hd, speed_mph: tr.manual ? r1(tr.mspeed || 0) : tr.status === 'traveling' ? r1(8 * (tr.speed || 1)) : tr.status === 'working' ? 4.5 : 0 },
-      tool: { lat: tg.lat, lon: tg.lon, heading_deg: hd, width_m: TOOL_WIDTH[impl] ?? 3 },
+      tool: { lat: tg.lat, lon: tg.lon, heading_deg: hd, width_m: toolWidthOf(tr, impl) },
       current_job: tr.current_job, queue: tr.queue.slice(), available_from_t: r1(tr.available_from_t), host: 'mock', agopenweb: null,
     };
   }
@@ -481,7 +483,7 @@ export function createMockSource(opts = {}) {
     name: 'queen_creek_citrus_day1', grid: { width: GW, height: GH }, depot: { ...DEPOT }, roads: { rows: RY.slice(), cols: RX.slice() },
     blocks: BLOCKS.map((b) => ({ ...b })), blocked_cells: [...w.blocked].map((k) => k.split(',').map(Number)),
     sensitive: [{ block: 'E', what: 'canal', dir_deg: 90 }, { block: 'H', what: 'houses', dir_deg: 0 }, { block: 'B', what: 'apiary', dir_deg: 270 }],
-    basemap: { image_url: null, west: -111.62, east: -111.611, south: 33.207, north: 33.212 },
+    basemap: { image_url: '/static/naip.png', west: -111.74666891, east: -111.73374758, south: 33.45461238, north: 33.4632364 }, // naip.png true extent (5-cell margin), public/static/naip.json
     geo: { ...GEO },
   });
   function metricsOut() {
@@ -1035,6 +1037,12 @@ export function createMockSource(opts = {}) {
       if (followPath(tr, tr.mroute, dt)) { tr.mroute = null; tr.status = 'idle'; tr.mspeed = 0; if (cs) cs.drive_to = null; addLog({ kind: 'manual_arrived', tractor: tr.id, x: r2(tr.x), y: r2(tr.y) }); }
       return;
     }
+    const gp = cs && stepGuided({ x: tr.x, y: tr.y, heading_deg: tr.hd }, cs, dt, { width: GW, height: GH });
+    if (gp) { // autosteer on an operator AB line: follow it, U-turn at the ends, paint (status working)
+      tr.x = gp.x; tr.y = gp.y; tr.hd = gp.heading_deg; tr.mspeed = gp.speed_mph; tr.status = gp.on_line ? 'working' : 'traveling';
+      tr.fuel = Math.max(5, tr.fuel - dt * 0.05);
+      return;
+    }
     if (cs && cs.speed_mph > 0) {
       const p = stepManual({ x: tr.x, y: tr.y, heading_deg: tr.hd }, cs, dt, { width: GW, height: GH });
       tr.x = p.x; tr.y = p.y; tr.hd = p.heading_deg; tr.mspeed = p.speed_mph; tr.status = 'traveling';
@@ -1169,6 +1177,9 @@ export function createMockSource(opts = {}) {
       const meta = { key: o.idempotencyKey, sig: sigOf('events', body) };
       const again = replay(meta); if (again) return again;
       const ev = body;
+      if ((w.ended || w.t >= DAY_MIN) && ['breakdown', 'block_route', 'heat_alert', 'weather_change'].includes(ev.type)) {
+        throw apiError('CONFLICT', `The workday ended at ${fmtClock(DAY_MIN)}. Nothing more happens today, so that event can't be added.`, { day_end_t: DAY_MIN });
+      }
       switch (ev.type) {
         case 'breakdown': {
           const tr = trById(ev.tractor);
@@ -1289,7 +1300,7 @@ export function createMockSource(opts = {}) {
       if (entry.id && trById(entry.id)) throw apiError('CONFLICT', `Tractor ${entry.id} already exists.`, { tractor: entry.id });
       if (entry.start && !(typeof entry.start.x === 'number' && typeof entry.start.y === 'number' && entry.start.x >= 0 && entry.start.x <= GW - 1 && entry.start.y >= 0 && entry.start.y <= GH - 1)) throw apiError('INVALID_INPUT', 'start must be a grid point inside the farm.', { field: 'start' });
       if (entry.fuel_pct !== undefined && !(typeof entry.fuel_pct === 'number' && entry.fuel_pct >= 0 && entry.fuel_pct <= 100)) throw apiError('INVALID_INPUT', 'fuel_pct must be 0 to 100.', { field: 'fuel_pct' });
-      if (w.tractors.length >= POOL_MAX) throw apiError('AT_CAPACITY', `The compute pool is full (${POOL_MAX} tractors).`, { max: POOL_MAX });
+      if (w.tractors.length >= POOL_MAX) throw apiError('AT_CAPACITY', `The fleet is full: ${POOL_MAX} of ${POOL_MAX} tractors. Remove one before adding another.`, { max: POOL_MAX });
       let id = entry.id; if (!id) { let n = 1; while (trById('T' + n)) n++; id = 'T' + n; }
       const tr = newTractor({ ...entry, id, name: entry.name || 'Tractor ' + idNum(id), status: 'starting' }, w.created++);
       tr.readyAt = realMs + 3000;

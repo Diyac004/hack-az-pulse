@@ -214,3 +214,32 @@
 }
 @media (prefers-reduced-transparency:reduce){ .cp{background:#f5f5f7;-webkit-backdrop-filter:none;backdrop-filter:none} }
 @media (max-width:620px){ .cp{top:auto;bottom:calc(var(--dockh,150px) + 44px);height:min(70%,520px)} }
+
+/* simulated tractors: which settings only matter on real AgOpenWeb tractors */
+.cp-simnote { margin: -2px 0 8px; font-size: 11px; line-height: 1.35; color: var(--ink3); }
+/* subtle "Saved" tick after a change is re-read from the backend */
+.cw:has(> .cp-saved) { position: relative; }
+.cp-saved { position: absolute; left: 0; bottom: -3px; font-size: 10px; line-height: 1; color: #248a3d; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+.cp-saved.on { opacity: 1; }
+@media (prefers-color-scheme: dark) { .cp-saved { color: #30d158; } }
+
+/* "Drive this line": autosteer on + speed up to a target (real AgOpenWeb has no set-speed command) */
+.cp-stopped{margin:0;font-size:12px;font-weight:600;color:var(--man-ink);background:var(--warnbg);border-radius:9px;padding:6px 9px}
+.cp-stopped[hidden]{display:none}
+.cp-drive{margin:8px 0 2px;padding:10px;border-radius:14px;background:rgba(10,132,255,.08);box-shadow:inset 0 0 0 1px rgba(10,132,255,.18)}
+.cp-drive[hidden]{display:none}
+.cp-drive-row{display:flex;align-items:center;gap:6px}
+.cp-drive-go{position:relative;flex:1;min-width:0;border:none;border-radius:11px;padding:9px 10px;font-size:13px;font-weight:600;background:var(--acc);color:#fff;cursor:pointer;box-shadow:0 3px 10px rgba(10,132,255,.3);transition:transform .1s}
+.cp-drive-go:active{transform:scale(.97)}
+.cp-drive-go:disabled{opacity:.55;cursor:default;box-shadow:none}
+.cp-drive-go.busy::after{content:"";position:absolute;right:10px;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin2 .8s linear infinite}
+.cp-drive-sp{display:flex;align-items:center;gap:1px;background:var(--fill);border-radius:10px;padding:2px;flex:none}
+.cp-drive-sp button{width:24px;height:28px;border:none;background:none;border-radius:8px;cursor:pointer;display:grid;place-items:center;padding:0}
+.cp-drive-sp button:hover{background:rgba(255,255,255,.8)}
+.cp-drive-sp svg{width:11px;height:11px;stroke:var(--ink);stroke-width:1.7;stroke-linecap:round;fill:none}
+.cp-drive-sp span{display:flex;flex-direction:column;align-items:center;line-height:1;min-width:30px}
+.cp-drive-sp b{font-size:13px;font-variant-numeric:tabular-nums}
+.cp-drive-sp small{font-size:9px;color:var(--ink3)}
+.cp-drive-stop{flex:none;border:none;border-radius:11px;padding:9px 12px;font-size:13px;font-weight:600;background:rgba(255,59,48,.12);color:var(--bad);cursor:pointer}
+.cp-drive-stop:disabled{opacity:.45;cursor:default}
+.cp-drive-msg{margin:6px 2px 0;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;min-height:14px}

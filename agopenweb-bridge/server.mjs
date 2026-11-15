@@ -24,6 +24,7 @@ import { AgOpenWebClient } from './client.mjs';
 import { loadScenario, blockGeom } from './lib/farm.mjs';
 import { makeBlockPath } from './lib/blockpath.mjs';
 import { makeGridGeo, enToLatLon, latLonToEn, MPS_TO_MPH } from './lib/geo.mjs';
+import { guardDecision } from './lib/guard.mjs';
 import * as docker from './lib/docker.mjs';
 
 const env = (k, d) => (process.env[k] === undefined || process.env[k] === '' ? d : process.env[k]);
@@ -103,7 +104,7 @@ function tractorOut(tr) {
     pose: p ? { x: Math.round(g.x * 100) / 100, y: Math.round(g.y * 100) / 100, lat: r6(p.lat), lon: r6(p.lon), heading_deg: r1(p.heading), speed_mph: r1(p.speed * MPS_TO_MPH) } : null,
     tool: tr.tool ? { lat: r6(tr.tool.lat), lon: r6(tr.tool.lon), heading_deg: r1(tr.tool.heading), width_m: tr.tool.width } : null,
     current_job: tr.job && jobs.get(tr.job) && jobs.get(tr.job).status !== 'done' ? tr.job : null,
-    queue: [], available_from_t: null, host: tr.slot ? tr.slot.host : 'bridge-sim',
+    queue: [], available_from_t: tr.availableFrom ?? null, host: tr.slot ? tr.slot.host : 'bridge-sim',
     agopenweb: agopenwebOut(tr),
   };
 }
@@ -251,7 +252,7 @@ function simStep(dt) {
   for (const tr of tractors.values()) {
     const j = tr.job && jobs.get(tr.job);
     if (tr.slot) { realStep(tr, j); continue; }
-    if (!j || j.status === 'done' || tr.status === 'broken' || tr.manual) { if (tr.pose) tr.pose.speed = 0; continue; }
+    if (!j || j.status === 'done' || DOWN_STATUSES.includes(tr.status) || tr.manual) { if (tr.pose) tr.pose.speed = 0; continue; }
     const prev = j.path.at(j.s);
     j.s = Math.min(j.path.total, j.s + tr.simSpeed * dt);
     const p = setSimPose(tr, j);
@@ -263,6 +264,28 @@ function simStep(dt) {
   }
 }
 
+/** Geofence + deadman recovery for a real tractor (lib/guard.mjs explains why). */
+function guardReal(tr, j, c, pose, t) {
+  if (tr.guardBusy) return;
+  const now = Date.now(), working = tr.status === 'working' && !!j && j.status !== 'done';
+  const lost = !t.autosteer || !c.hasControl;
+  if (!(working && !tr.manual && lost)) tr.lostSince = null; else if (tr.lostSince == null) tr.lostSince = now;
+  const d = guardDecision({ g: geo.toGrid(pose.lat, pose.lon), grid: scenario.grid, speedMps: t.speed, working, manual: tr.manual, autosteer: !!t.autosteer, hasControl: c.hasControl, lostSince: tr.lostSince, now });
+  if (d === 'geofence') {
+    tr.guardBusy = true;
+    addLog({ kind: 'agopenweb', tractor: tr.id, what: 'geofence', detail: { lat: pose.lat, lon: pose.lon, reason: 'left the farm; stopped, autosteer off, back to the simulation' } });
+    log(`${tr.id} GEOFENCE: outside the farm at ${pose.lat.toFixed(6)},${pose.lon.toFixed(6)}; stopping and demoting`);
+    c.send('control.acquire', c.name);
+    demote(tr, 'geofence').catch((e) => log(`${tr.id} geofence demote failed: ${e.message}`)).finally(() => { tr.guardBusy = false; tr.lostSince = null; fleetDirty = true; });
+  } else if (d === 'reengage' && (!tr.reengagedAt || now - tr.reengagedAt > 5000)) {
+    tr.guardBusy = true; tr.reengagedAt = now;
+    addLog({ kind: 'agopenweb', tractor: tr.id, what: 'reengage', detail: { autosteer: !!t.autosteer, has_control: c.hasControl } });
+    log(`${tr.id} autosteer/control lost (deadman?); re-acquiring and re-engaging`);
+    c.send('control.acquire', c.name);
+    onSlot(tr.slot, () => c.resume({ speedKph: KPH })).catch((e) => log(`${tr.id} re-engage failed: ${e.message}`)).finally(() => { tr.guardBusy = false; });
+  }
+}
+
 /** Real tractor: pose from the latest Tick; progress = projection of the real pose onto the block path. */
 function realStep(tr, j) {
   if (tr.handingOff) return; // keep the last simulated pose until the container is on the job
@@ -271,6 +294,7 @@ function realStep(tr, j) {
   tr.pose = { lat: pose.lat, lon: pose.lon, heading: pose.heading_deg, speed: t.speed };
   tr.tool = { lat: pose.tool.lat, lon: pose.tool.lon, heading: pose.tool.heading_deg, width: pose.tool.width_m || (j ? j.toolWidth : 3) };
   if (tr.status === 'starting') { tr.status = j && j.status !== 'done' ? 'working' : 'idle'; addLog({ kind: 'tractor_ready', tractor: tr.id }); fleetDirty = true; }
+  guardReal(tr, j, c, pose, t);
   if (!j || j.status === 'done' || !c.origin || c.scene.fieldName !== j.geom.field) return;
   const en = latLonToEn(j.geom.origin.lat, j.geom.origin.lon, pose.lat, pose.lon);
   const pr = j.path.project(en.e, en.n, j.s);
@@ -337,9 +361,8 @@ function prewarm(s) {
   return onSlot(s, async () => {
     for (const b of scenario.blocks) {
       if (s.tractorId || shuttingDown) return;
-      const name = `Block_${b.id}`;
+      const g = blockGeom(scenario, b.id), name = g.field;
       if (s.fields.has(name)) continue;
-      const g = blockGeom(scenario, b.id);
       try { await s.client.openOrCreateField(name, { originLat: g.origin.lat, originLon: g.origin.lon, boundary: g.boundary, exists: false }); s.fields.add(name); }
       catch (e) { log(`prewarm ${name} on slot ${s.index}: ${e.message}`); }
     }
@@ -365,7 +388,7 @@ async function handoffToReal(tr, s) {
     // sim.setCoords re-initialises the simulator heading to north; flip for southbound passes.
     if (!h.north) { c.send('sim.reverseDir'); await c.waitForTick((t) => Math.abs(t.heading - Math.PI) < 0.3, 2000, 'heading south').catch((e) => log(e.message)); }
     await c.setABLine(...(h.north ? h.ab : [h.ab[2], h.ab[3], h.ab[0], h.ab[1]]));
-    const working = !tr.manual && tr.status !== 'broken';
+    const working = !tr.manual && !DOWN_STATUSES.includes(tr.status);
     await c.setSectionMaster(working);
     await c.setYouTurn(true);
     await c.setTurnDirection(h.turn);
@@ -590,6 +613,15 @@ function asOperation(kind, source, message, fn) {
   return { status: 202, body: op };
 }
 
+// Sample mechanic listings, same as dashboard/src/data/mockSource.js MECHANICS (nothing is booked for real).
+const MECHANICS = [
+  { id: 'M1', name: 'Sonoran Field Diesel', source: 'Google', distance_mi: 11.8, rating: 4.9, reviews: 212, mobile: true, ag_equipment: true, eta_min: 45, est_cost: 380, repair_min_estimate: 60, url: null, score: 0.93, recommended: true, reason: 'Only mobile ag specialist arriving within an hour' },
+  { id: 'M2', name: 'Valley Ag Repair', source: 'BBB', distance_mi: 19.4, rating: 4.7, reviews: 98, mobile: true, ag_equipment: true, eta_min: 80, est_cost: 340, repair_min_estimate: 70, url: null, score: 0.81, recommended: false, reason: 'Cheapest ag specialist, but arrives later' },
+  { id: 'M3', name: 'Pinal Tractor Works', source: 'Thumbtack', distance_mi: 23.1, rating: 4.8, reviews: 61, mobile: true, ag_equipment: false, eta_min: 95, est_cost: 410, repair_min_estimate: 65, url: null, score: 0.72, recommended: false, reason: 'Well rated, slowest to arrive' },
+  { id: 'M4', name: 'Desert Heavy Equipment', source: 'Google', distance_mi: 16.2, rating: 4.5, reviews: 140, mobile: true, ag_equipment: false, eta_min: 70, est_cost: 460, repair_min_estimate: 80, url: null, score: 0.69, recommended: false, reason: 'Heavy diesel shop, not ag-specific' },
+];
+const DOWN_STATUSES = ['broken', 'awaiting_mechanic', 'repair_scheduled', 'repairing'];
+
 const ROUTES = [
   ['GET', '/api/state', () => ({ body: snapshot() })],
   ['GET', '/api/scenario', () => ({ body: scenario })],
@@ -613,9 +645,18 @@ const ROUTES = [
       tr.status = 'broken'; tr.simSpeed = 0; addLog({ kind: 'event', type: 'breakdown', tractor: tr.id, issue: body.issue || null });
       if (tr.slot) { await onSlot(tr.slot, () => tr.slot.client.stop()); addLog({ kind: 'agopenweb', tractor: tr.id, what: 'stopped', detail: { endpoint: tr.slot.url } }); }
       fleetDirty = true; });
-    if (body.type === 'tractor_repaired' && tr) return asOperation('replan', 'events', `${tr.name} is back in service.`, async () => {
-      tr.status = 'working'; tr.simSpeed = SPEED_MPS; addLog({ kind: 'event', type: 'tractor_repaired', tractor: tr.id });
-      if (tr.slot) await onSlot(tr.slot, () => handoffToReal(tr, tr.slot)); fleetDirty = true; });
+    if (body.type === 'tractor_repaired' && tr) {
+      if (!DOWN_STATUSES.includes(tr.status)) throw httpErr(409, 'CONFLICT', `${tr.name} is not down (${tr.status}).`, { status: tr.status });
+      return asOperation('replan', 'events', `${tr.name} returned to service.`, async () => {
+        const j = tr.job && jobs.get(tr.job), hasWork = !!(j && j.status !== 'done');
+        tr.status = hasWork ? 'working' : 'idle'; tr.simSpeed = hasWork && !tr.manual ? SPEED_MPS : 0;
+        tr.booking = null; tr.availableFrom = null; if (!hasWork) tr.idleSince = Date.now();
+        addLog({ kind: 'tractor_repaired', tractor: tr.id });
+        if (tr.slot && hasWork && !tr.manual) await onSlot(tr.slot, () => handoffToReal(tr, tr.slot));
+        fleetDirty = true;
+        return { applied_plan_version: planVersion, unassigned_job_ids: [], message: `${tr.name} back in service.` };
+      });
+    }
     throw notImpl(`Event "${body.type}"`);
   }],
   ['GET', '/api/operations/:id', ({ p }) => { const op = operations.get(p.id); if (!op) throw httpErr(404, 'NOT_FOUND', `No operation ${p.id}.`); return { body: op }; }],
@@ -625,7 +666,26 @@ const ROUTES = [
   ['GET', '/api/why/:id', () => { throw notImpl('Why'); }],
   ['PATCH', '/api/jobs/:id', () => { throw notImpl('Job edits'); }],
   ['POST', '/api/jobs', () => { throw notImpl('Adding jobs'); }],
-  ['GET', '/api/mechanics', () => { throw notImpl('Mechanics'); }],
+  ['GET', '/api/mechanics', ({ q }) => {
+    const id = q.get('tractor');
+    if (!id) throw httpErr(400, 'INVALID_INPUT', 'Say which tractor needs a mechanic (?tractor=T1).', { field: 'tractor' });
+    const tr = getTr(id); addLog({ kind: 'mechanic_search', tractor: tr.id, results: MECHANICS.length });
+    return { body: { options: MECHANICS.map((m) => ({ ...m })) } };
+  }],
+  ['POST', '/api/mechanics/book', ({ body }) => {
+    const tr = getTr(body.tractor), mech = MECHANICS.find((m) => m.id === body.mechanic);
+    if (!mech) throw httpErr(404, 'NOT_FOUND', `Mechanic ${body.mechanic} does not exist.`, { mechanic: body.mechanic });
+    if (!['broken', 'awaiting_mechanic'].includes(tr.status)) throw httpErr(409, 'CONFLICT', `${tr.name} does not need a mechanic (${tr.status}).`, { status: tr.status });
+    return asOperation('repair_booking', 'mechanics_book', `Booking ${mech.name} for ${tr.name}.`, async () => {
+      if (!['broken', 'awaiting_mechanic'].includes(tr.status)) throw httpErr(409, 'CONFLICT', `${tr.name} no longer needs a mechanic.`, { status: tr.status });
+      const arrival = r1(nowT() + mech.eta_min), ret = r1(arrival + mech.repair_min_estimate);
+      tr.status = 'repair_scheduled'; tr.simSpeed = 0; tr.availableFrom = ret;
+      tr.booking = { mechanic: mech.id, arrival_t: arrival, estimated_return_t: ret };
+      addLog({ kind: 'mechanic_booked', tractor: tr.id, mechanic: mech.id, name: mech.name, arrival_t: arrival, estimated_return_t: ret });
+      fleetDirty = true;
+      return { tractor: tr.id, mechanic: mech.id, arrival_t: arrival, estimated_return_t: ret };
+    });
+  }],
   ['POST', '/api/approve', () => { throw notImpl('Approvals'); }],
 ];
 const compiled = ROUTES.map(([m, pat, fn]) => { const names = []; const re = new RegExp('^' + pat.replace(/:(\w+)/g, (_, n) => { names.push(n); return '([^/]+)'; }) + '/?$'); return { m, re, names, fn }; });

@@ -19,6 +19,7 @@
 
 import { makeGeo, hexToInt } from '../lib/geo.js';
 import { tractorColor } from '../lib/format.js';
+const MOCK_WIDTH_VIS = 2; // = mockControls.MOCK_WIDTH_VIS (pass spacing exaggeration)
 
 export const MOCK_COVERAGE_PER_CELL = 16; // coverage cells per grid cell (40 m / 16 = 2.5 m)
 const ROWS = 3;
@@ -37,6 +38,7 @@ export function sweepProgress(b, x, y) {
 
 export function createMockCoverage() {
   let heads = new Map(); // jobId -> painted progress
+  const lastPose = new Map(); // manual tractor id -> last painted pose
   let primed = false;
   let sig = null, geo = null, H = 14, origin = null, cellM = 2.5, blocks = {};
   const K = MOCK_COVERAGE_PER_CELL;
@@ -75,7 +77,7 @@ export function createMockCoverage() {
 
   return {
     /** Forget all paint (call on every snapshot / run). The next update() backfills from job progress. */
-    reset() { heads = new Map(); primed = false; },
+    reset() { heads = new Map(); primed = false; lastPose.clear(); },
     /**
      * Advance paint from the current State. Returns contract-shaped coverage payloads (maybe empty).
      * Call it on poses/jobs/fleet/snapshot messages.
@@ -107,6 +109,20 @@ export function createMockCoverage() {
         if (target > head + 1e-5) {
           bandCells(b, head, target, rgbOf(painter), cellsFor(painter));
           heads.set(j.id, target);
+        }
+      }
+      // operator-driven passes: a manual tractor following its AB line (mockSource sets status 'working' with no job)
+      for (const t of fleet) {
+        if (!t || !t.manual || t.status !== 'working' || t.current_job || !t.pose) { if (t) lastPose.delete(t.id); continue; }
+        const p = { x: +t.pose.x, y: +t.pose.y }, q = lastPose.get(t.id) || p;
+        lastPose.set(t.id, p);
+        const hw = Math.max(0.04, ((t.tool && +t.tool.width_m) || 3) * MOCK_WIDTH_VIS / geo.cellM / 2);
+        const d = Math.hypot(p.x - q.x, p.y - q.y); if (d > 2) continue; // teleport: don't smear
+        const n = Math.max(1, Math.ceil(d / 0.04)), out = cellsFor(t.id), seen = new Set();
+        for (let i = 0; i <= n; i++) {
+          const x = q.x + ((p.x - q.x) * i) / n, y = q.y + ((p.y - q.y) * i) / n, tmp = [];
+          rectCells(x - hw, x + hw, y - hw, y + hw, rgbOf(t.id), tmp);
+          for (const c of tmp) { const k = c[0] + ',' + c[1]; if (!seen.has(k)) { seen.add(k); out.push(c); } }
         }
       }
       primed = true;

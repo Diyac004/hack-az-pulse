@@ -29,7 +29,7 @@ export function createVans(world, farm) {
     const d = (opts.from && isFinite(opts.from.x) && isFinite(opts.from.y)) ? opts.from : farm.grid.depot, blocked = blockedCells(state);
     const path = gridPath(farm.grid, blocked, d.x, d.y, tr.pose.x, tr.pose.y);
     path.push([tr.pose.x, tr.pose.y]);
-    const v = { id: tractorId, g: mesh(), path, bookT, arrivalT: Math.max(bookT + 1, arrivalT ?? bookT + 45), phase: opts.parked ? 'there' : 'in', outT: null, outPath: null };
+    const v = { id: tractorId, g: mesh(), path, bookT, arrivalT: Math.max(bookT + 1, arrivalT ?? bookT + 45), phase: opts.parked ? 'there' : 'in', outT: null, outPath: null, home: { x: d.x, y: d.y } };
     const p0 = opts.parked ? path[path.length - 1] : path[0];
     v.g.position.copy(W(p0[0], p0[1]));
     vans.set(tractorId, v);
@@ -50,7 +50,9 @@ export function createVans(world, farm) {
         if ((v.phase === 'in' || v.phase === 'there') && (!tr || !DOWN.has(tr.status))) {
           const pos = v.g.position, g = farm.grid, ox = (g.w - 1) / 2, oy = (g.h - 1) / 2;
           v.phase = 'out'; v.outT = t;
-          v.outPath = gridPath(g, blockedCells(state), pos.x + ox, pos.z + oy, g.depot.x, g.depot.y);
+          const home = v.home || g.depot; // back to where it came from (the hub's service bay)
+          v.outPath = gridPath(g, blockedCells(state), pos.x + ox, pos.z + oy, home.x, home.y);
+          v.outPath.push([home.x, home.y]);
         }
       }
     },

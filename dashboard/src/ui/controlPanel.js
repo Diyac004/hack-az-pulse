@@ -50,7 +50,7 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
     '<span class="cp-badge" hidden>Manual</span>' +
     '<button type="button" class="cp-x" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></header>' +
     '<div class="cp-aow"><i></i><span></span></div>' +
-    '<div class="cp-man"><button type="button" class="cp-manb"></button><p class="cp-mant"></p></div>' +
+    '<div class="cp-man"><button type="button" class="cp-manb"></button><p class="cp-mant"></p><p class="cp-stopped" hidden>Stopped. Press Drive this line or Faster to move.</p></div>' +
     '<nav class="cp-tabs" role="tablist"></nav>' +
     '<div class="cp-err" role="alert" hidden><div><b></b><p></p></div><div class="cp-erra"></div><button type="button" class="cp-errx" aria-label="Dismiss"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button></div>' +
     '<div class="cp-body"></div>' +
@@ -58,7 +58,7 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
   stage.appendChild(el);
   const $ = (s) => el.querySelector(s);
   const E = { dot: $('.cp-dot'), name: $('.cp-name'), sub: $('.cp-sub'), badge: $('.cp-badge'), x: $('.cp-x'), aow: $('.cp-aow'), aowT: $('.cp-aow span'),
-    manb: $('.cp-manb'), mant: $('.cp-mant'), tabs: $('.cp-tabs'), err: $('.cp-err'), errB: $('.cp-err b'), errP: $('.cp-err p'), errA: $('.cp-erra'), errX: $('.cp-errx'),
+    manb: $('.cp-manb'), mant: $('.cp-mant'), stop: $('.cp-stopped'), tabs: $('.cp-tabs'), err: $('.cp-err'), errB: $('.cp-err b'), errP: $('.cp-err p'), errA: $('.cp-erra'), errX: $('.cp-errx'),
     body: $('.cp-body'), dlg: $('.cp-dlg'), card: $('.cp-card'), scrim: $('.cp-scrim') };
 
   let trId = null, schema = null, values = {}, tab = 'Drive', req = 0, loadErr = null, search = '';
@@ -71,7 +71,7 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
   function open(id) {
     if (!id) return;
     const same = id === trId && el.classList.contains('on');
-    if (!same) { trId = id; schema = null; values = {}; schemaSig = ''; widgets = new Map(); E.body.innerHTML = ''; busyIds.clear(); clearError(); closeDialog(); lastManual = null; search = ''; }
+    if (!same) { drive.run++; drive.on = false; drive.msg = ''; trId = id; schema = null; values = {}; schemaSig = ''; widgets = new Map(); E.body.innerHTML = ''; busyIds.clear(); clearError(); closeDialog(); lastManual = null; search = ''; }
     el.classList.add('on'); el.setAttribute('aria-hidden', 'false');
     onOpen && onOpen(id);
     renderHead(); refresh();
@@ -80,6 +80,7 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
     el.classList.remove('on'); el.setAttribute('aria-hidden', 'true'); closeDialog();
     const a = document.activeElement; if (a && el.contains(a)) a.blur();
     if (picking && mapPick) mapPick.cancel();
+    drive.run++; drive.on = false; drive.msg = '';
     trId = null;
     onClose && onClose();
   }
@@ -142,7 +143,12 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
       : down && !tr.manual ? `${tr.name || tr.id} is ${DOWN_TEXT[tr.status] || tr.status}; it can't be driven right now.`
         : tr.manual ? 'Out of AI planning. Drive and guidance controls are live. Handing back re-plans from where it is now; job progress is kept.'
           : 'The AI is driving. Driving and guidance controls need manual control; taking it moves this tractor\'s jobs to others.';
+    const spd0 = !(tr.pose && +tr.pose.speed_mph > 0.05);
+    const asOff = tr.agopenweb && typeof tr.agopenweb.autosteer === 'boolean' ? !tr.agopenweb.autosteer : values.autosteer === false;
+    const stopped = tr.manual && !manualBusy && !down && spd0 && asOff && !drive.on;
     if (E.mant.textContent !== mt) E.mant.textContent = mt;
+    E.stop.hidden = !stopped;
+    if (drive.card) syncDriveCard();
   }
   E.manb.addEventListener('click', () => setManual());
   function setManual(on) {
@@ -216,6 +222,16 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
     return { disabled: false, reason: null, busy };
   }
 
+  // Simulated (mock) tractors have no AgOpenWeb behind them: say which settings only matter on real ones.
+  const STORED = 'Applies on AgOpenWeb tractors — stored, no effect in simulation.';
+  function simNote(tabName, group, tr) {
+    if (!tr || tr.agopenweb) return null; // real AgOpenWeb tractor: every setting is live
+    if (tabName === 'Vehicle') return group === 'Steering' ? 'In simulation only Max steer angle is used (it limits autosteer). ' + STORED : STORED;
+    if (tabName === 'Advanced') return STORED;
+    if (tabName === 'Implement' && group === 'Setup') return 'In simulation, Sections × Section width sets the implement bar and the painted stripe. The rest applies on AgOpenWeb tractors.';
+    return null;
+  }
+
   function groupsOf(list) {
     const out = []; let cur = null;
     for (const c of list) {
@@ -248,9 +264,13 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
       }
       // tab-level lock note: one sentence + action instead of a reason under every control
       const lock = document.createElement('div'); lock.className = 'cp-lock'; E.body.appendChild(lock);
+      drive.card = null;
+      if (tab === 'Guidance' && canDriveLine()) { drive.card = driveCardEl(); E.body.appendChild(drive.card); }
       for (const g of groupsOf(list)) {
         const sec = document.createElement('section'); sec.className = 'cp-g';
         if (g.name) { const h = document.createElement('h3'); h.textContent = g.name; sec.appendChild(h); }
+        const note = simNote(tab, g.name, tr);
+        if (note) { const n = document.createElement('p'); n.className = 'cp-simnote'; n.textContent = note; sec.appendChild(n); }
         let row = null, rowKind = null;
         for (const c of g.items) {
           const w = createWidget(c, { onChange: change, onPick: pick });
@@ -283,6 +303,70 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
       }
       lock._on = show;
     }
+    if (drive.card) syncDriveCard();
+  }
+
+  // ---------------------------------------------------------------- "Drive this line"
+  // Real AgOpenWeb starts at 0 speed with autosteer off and has no set-speed command, so a fresh AB line leaves
+  // the tractor parked. This turns autosteer on (the schema's `autosteer` toggle) and taps the schema's
+  // `speed_up` button (~5/s, waiting for the reported speed to move) until pose.speed_mph reaches the target.
+  const drive = { card: null, on: false, run: 0, target: 4.5, msg: '' };
+  const has = (id) => !!(schema && schema.some((c) => c.id === id));
+  const canDriveLine = () => has('autosteer') && has('speed_up');
+  const lineActive = () => { const v = values.ab_line; return Array.isArray(v) ? v.length >= 2 : !!v || !!values.ab_select; };
+  const speedNow = () => { const t = tractor(); return t && t.pose && isFinite(t.pose.speed_mph) ? +t.pose.speed_mph : 0; };
+  function driveCardEl() {
+    const d = document.createElement('div'); d.className = 'cp-drive';
+    d.innerHTML = '<div class="cp-drive-row"><button type="button" class="cp-drive-go">Drive this line</button>' +
+      '<div class="cp-drive-sp" title="Target speed"><button type="button" data-d="-0.5" aria-label="Slower target"><svg viewBox="0 0 12 12"><path d="M2.5 6h7"/></svg></button>' +
+      '<span><b></b><small>mph</small></span><button type="button" data-d="0.5" aria-label="Faster target"><svg viewBox="0 0 12 12"><path d="M2.5 6h7M6 2.5v7"/></svg></button></div>' +
+      '<button type="button" class="cp-drive-stop">Stop</button></div><p class="cp-drive-msg"></p>';
+    d.querySelector('.cp-drive-go').addEventListener('click', driveLine);
+    d.querySelector('.cp-drive-stop').addEventListener('click', stopLine);
+    d.querySelectorAll('.cp-drive-sp button').forEach((b) => b.addEventListener('click', () => { drive.target = Math.max(1, Math.min(10, Math.round((drive.target + +b.dataset.d) * 2) / 2)); syncDriveCard(); }));
+    return d;
+  }
+  function syncDriveCard() {
+    const d = drive.card; if (!d || !d.isConnected) return;
+    const tr = tractor(); const ok = !!tr && tr.manual && !unusable(tr) && !manualBusy;
+    d.hidden = !lineActive() || !tr || !tr.manual;
+    d.querySelector('.cp-drive-sp b').textContent = drive.target.toFixed(1);
+    const go = d.querySelector('.cp-drive-go'); go.disabled = !ok || drive.on; go.classList.toggle('busy', drive.on);
+    d.querySelector('.cp-drive-stop').disabled = !ok;
+    const msg = drive.on ? drive.msg : drive.msg || (speedNow() > 0.05 ? 'Moving at ' + speedNow().toFixed(1) + ' mph' + (values.autosteer ? ' on autosteer.' : '.') : 'Autosteer on, then speeds up to the target.');
+    const m = d.querySelector('.cp-drive-msg'); if (m.textContent !== msg) m.textContent = msg;
+  }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function driveLine() {
+    if (drive.on || !trId) return;
+    const id = trId, my = ++drive.run; drive.on = true; clearError();
+    const alive = () => drive.run === my && trId === id && drive.on;
+    const say = (t) => { drive.msg = t; syncDriveCard(); renderHead(); };
+    try {
+      if (values.autosteer !== true && !(tractor() && tractor().agopenweb && tractor().agopenweb.autosteer === true)) {
+        say('Turning autosteer on…');
+        await api.control(id, { control: 'autosteer', value: true });
+        await refresh();
+      }
+      const target = drive.target, t0 = Date.now();
+      let presses = 0;
+      while (alive() && speedNow() < target - 0.05) {
+        if (presses > 60 || Date.now() - t0 > 30000) throw { code: 'INTERNAL', message: `Speed stayed at ${speedNow().toFixed(1)} mph after ${presses} presses. The tractor may not be responding.` };
+        const before = speedNow();
+        say(`Speeding up… ${before.toFixed(1)} → ${target.toFixed(1)} mph`);
+        await api.control(id, { control: 'speed_up', value: null }); presses++;
+        // ~5 presses a second, but wait (up to 1 s) for the reported speed to move so lag can't overshoot much
+        const until = Date.now() + 1000; await wait(200);
+        while (alive() && speedNow() <= before + 1e-6 && Date.now() < until) await wait(100);
+      }
+      if (alive()) say(`Driving the line at ${speedNow().toFixed(1)} mph.`);
+    } catch (e) { if (trId === id) { showError(e); drive.msg = ''; } }
+    finally { if (drive.run === my) { drive.on = false; syncDriveCard(); renderHead(); if (trId === id) refresh(); } }
+  }
+  function stopLine() {
+    drive.run++; drive.on = false; drive.msg = 'Stopping…'; syncDriveCard();
+    const id = trId; if (!id) return;
+    Promise.resolve(api.control(id, { control: 'stop', value: null })).then(() => { if (trId === id) { drive.msg = 'Stopped.'; refresh(); syncDriveCard(); } }, (e) => { if (trId === id) { drive.msg = ''; showError(e); } });
   }
 
   // ---------------------------------------------------------------- changes
@@ -294,6 +378,7 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
   }
 
   function send(c, value) {
+    if (c.type === 'map_pick' && pickCount(c) === 2) drive.msg = '';
     const id = trId, w = widgets.get(c.id);
     busyIds.add(c.id); if (c.replans) busyIds.add('*replan'); renderBody();
     const done = () => { busyIds.delete(c.id); if (c.replans) busyIds.delete('*replan'); };
@@ -306,11 +391,20 @@ export function createControlPanel({ stage, store, api, ops, toast, mapPick = nu
         });
       }
       return res;
-    }).then(() => { done(); if (id === trId) return refresh(); }, (e) => {
+    }).then(() => { done(); if (id === trId) return Promise.resolve(refresh()).then(() => savedTick(c.id)); }, (e) => {
       done(); if (id !== trId) return;
       if (w) w.revert();
       showError(e); renderBody();
     });
+  }
+
+  // subtle confirmation after the value was re-read from the backend
+  function savedTick(cid) {
+    const w = widgets.get(cid); if (!w || !w.el || !w.el.isConnected) return;
+    let t = w.el.querySelector(':scope > .cp-saved');
+    if (!t) { t = document.createElement('span'); t.className = 'cp-saved'; t.setAttribute('role', 'status'); w.el.appendChild(t); }
+    t.textContent = '\u2713 Saved'; t.classList.remove('on'); void t.offsetWidth; t.classList.add('on');
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 1600);
   }
 
   // ---------------------------------------------------------------- map pick

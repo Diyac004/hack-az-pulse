@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FRAME, TICK_FIELDS, decodeTick, decodeScene, decodeCoverageInit, decodeCoverageCells, decodeFrame,
   encodeTick, encodeScene, encodeCoverageInit, encodeCoverageCells, Writer, WireError } from '../lib/wire.mjs';
-import { enToLatLon, latLonToEn, makeGridGeo, radToHeadingDeg } from '../lib/geo.mjs';
+import { enToLatLon, latLonToEn, makeGridGeo, radToHeadingDeg, MPS_TO_MPH } from '../lib/geo.mjs';
 import { blockGeom, loadScenario } from '../lib/farm.mjs';
 import { makeBlockPath } from '../lib/blockpath.mjs';
 
@@ -91,7 +91,7 @@ test('block path: passes, handoff and projection agree', () => {
   const sc = loadScenario();
   const geom = blockGeom(sc, 'A', { toolWidth: 6 });
   const path_ = makeBlockPath(geom, 6);
-  assert.equal(geom.field, 'Block_A');
+  assert.match(geom.field, /^Block_A_\d+$/); // origin-tagged field name
   assert.ok(Math.abs(geom.widthM - 160) < 0.1 && Math.abs(geom.heightM - 120) < 0.1);
   assert.equal(path_.passes, 26);
   const h0 = path_.handoff(10);
@@ -123,4 +123,25 @@ test('real capture (if present): every raw frame decodes exactly', (t) => {
     }
   }
   assert.ok(n > 0, 'at least one raw frame');
+});
+
+test('Tick speed is m/s: 12 km/h (24 x speedUp) reads 3.333 and shows as 7.5 mph, one speedUp = +0.3 mph', () => {
+  const kph = 12, mps = kph / 3.6;
+  assert.equal(Math.round(mps * 1000) / 1000, 3.333); // captures/agopenweb-A-*.jsonl tick speed at KPH 12
+  assert.equal(Math.round(mps * MPS_TO_MPH * 10) / 10, 7.5);
+  assert.equal(Math.round((0.5 / 3.6) * MPS_TO_MPH * 10) / 10, 0.3);
+});
+
+test('guard: geofence outside the farm while moving, re-engage after autosteer/control lost, field names carry the origin', async () => {
+  const { guardDecision, insideFarm } = await import('../lib/guard.mjs');
+  const grid = { width: 20, height: 14 }, base = { grid, speedMps: 3.3, working: true, manual: false, autosteer: true, hasControl: true, lostSince: null, now: 10000 };
+  assert.equal(insideFarm({ x: 2, y: 3 }, grid), true);
+  assert.equal(guardDecision({ ...base, g: { x: 2.4, y: -12.8 } }), 'geofence'); // the 15.5 mph run north off the farm
+  assert.equal(guardDecision({ ...base, g: { x: 2.4, y: -12.8 }, speedMps: 0 }), null); // already stopped
+  assert.equal(guardDecision({ ...base, g: { x: 2, y: 3 } }), null);
+  assert.equal(guardDecision({ ...base, g: { x: 2, y: 3 }, autosteer: false, lostSince: 9000 }), null); // grace
+  assert.equal(guardDecision({ ...base, g: { x: 2, y: 3 }, hasControl: false, lostSince: 6000 }), 'reengage');
+  assert.equal(guardDecision({ ...base, g: { x: 2, y: 3 }, autosteer: false, lostSince: 6000, manual: true }), null);
+  const sc = loadScenario();
+  assert.match(blockGeom(sc, 'A').field, /^Block_A_\d+$/);
 });

@@ -169,16 +169,18 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
   let addImpl = new Set(['sprayer']), addFuel = 80;
   function renderAdd() {
     const s = st(), cap = s.capacity;
+    const full = !!(cap && cap.max != null && cap.used >= cap.max);
     addEl.innerHTML = '<div class="shead"><p>Add a tractor</p><button class="gbtn sm" data-x>Close</button></div>' +
       '<p class="sub">Implements</p><div class="chkrow">' + IMPLEMENTS.map((i) => '<label class="chk' + (addImpl.has(i) ? ' sel' : '') + '"><input type="checkbox" data-impl="' + i + '"' + (addImpl.has(i) ? ' checked' : '') + '>' + implName(i) + '</label>').join('') + '</div>' +
       '<div class="srow"><span style="width:78px">Starting fuel</span><input type="range" min="10" max="100" step="1" value="' + addFuel + '" data-fuel><b style="width:38px;text-align:right" data-fv>' + addFuel + '%</b></div>' +
       (cap && cap.max != null ? '<p class="sub">Fleet capacity: ' + esc(cap.used ?? '?') + ' of ' + esc(cap.max) + ' tractors' + (cap.warm ? ' · ' + esc(cap.warm) + ' ready to start fast' : '') + '</p>' : '') +
-      '<div style="display:flex;gap:8px;margin-top:6px"><button class="abtn" data-add' + (addImpl.size ? '' : ' disabled') + '>Add tractor</button><button class="gbtn" data-x>Cancel</button></div>';
+      (full ? '<p class="sub" style="color:#c93400">The fleet is full (' + esc(cap.max) + ' tractors). Remove a tractor before adding another.</p>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:6px"><button class="abtn" data-add' + (addImpl.size && !full ? '' : ' disabled') + '>Add tractor</button><button class="gbtn" data-x>Cancel</button></div>';
   }
   addEl.addEventListener('click', (e) => {
     if (e.target.closest('[data-x]')) { addEl.classList.remove('on'); return; }
     const b = e.target.closest('[data-add]');
-    if (b && !b.classList.contains('busy') && addImpl.size) {
+    if (b && !b.classList.contains('busy') && !b.disabled && addImpl.size) {
       const s = st(), fleet = s.fleet || [];
       // id omitted (backend assigns the lowest free Tn); name follows the same rule.
       const used = new Set(fleet.map((t) => String(t.id)));

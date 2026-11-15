@@ -202,6 +202,20 @@ ok((await acode(api.control('T1', { control: 'pin_job', value: 'J2' })))?.messag
   const g = await api.getControls('T1');
   ok(g.values.steer === 0 || g.values.steer === 15, 'values read back');
   ok(g.values.ab_select === 'AB1' && g.values.ab_line.length === 2, 'active AB line in values');
+  // autosteer follows the AB line (y = 7 from x 6 -> 9), U-turns onto the next pass, paints coverage
+  {
+    const v = (await api.getControls('T1')).values;
+    ok(v.autosteer === true, 'new AB line turns autosteer on');
+    let tt, seenWorking = false;
+    for (let i = 0; i < 400 && !seenWorking; i++) { tick(1); tt = src.debug.snapshot().fleet.find((t) => t.id === 'T1'); seenWorking = tt.status === 'working'; }
+    ok(seenWorking && tt.pose.speed_mph > 0 && Math.abs(tt.pose.y - 7) < 0.45, 'guided tractor joins and drives the line or its next pass (status ' + tt.status + ', y ' + tt.pose.y + ')');
+    let maxOff = 0; const ys = [];
+    for (let i = 0; i < 60; i++) { tick(5); tt = src.debug.snapshot().fleet.find((t) => t.id === 'T1'); ys.push(tt.pose.y); if (tt.pose.x > 6.3 && tt.pose.x < 8.7) maxOff = Math.max(maxOff, Math.abs(tt.pose.y - 7)); }
+    ok(Math.min(...ys.slice(-20)) < 7 - 0.1 || Math.max(...ys.slice(-20)) > 7 + 0.1 || maxOff < 1.2, 'stays near the line / moves to next pass (maxOff ' + maxOff.toFixed(2) + ')');
+    const cs = (await api.getControls('T1')).values;
+    ok(cs.ab_select === 'AB1', 'line still active');
+    await api.control('T1', { control: 'autosteer', value: false });
+  }
   const off = await api.manual('T1', false);
   opDone(off); s = src.debug.snapshot();
   ok(s.fleet.find((t) => t.id === 'T1').manual === false && s.explanations[0].text.includes('back under AI control'), 'hand back -> re-planned: ' + s.explanations[0].text);

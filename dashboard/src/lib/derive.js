@@ -292,6 +292,7 @@ export function errText(err) {
     case 'CLIENT_TIMEOUT': return 'The backend did not answer in time. Check the connection and try again.';
     case 'NETWORK': return "Can't reach the backend. Check that it is running; the dashboard reconnects on its own.";
     case 'UNCONFIRMED': return 'No confirmation from the backend yet. It may still apply; watch the plan.';
+    case 'AT_CAPACITY': { const m = err.details && err.details.max; return `The fleet is full${m ? ` (${m} tractors)` : ''}. Remove a tractor before adding another.`; }
     default: return err.message || String(err);
   }
 }

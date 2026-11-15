@@ -48,9 +48,15 @@ export function paintBlockGround(w, h, variant = 'normal') {
     c.fillStyle = gr; c.beginPath(); c.arc(0, 0, 1, 0, Math.PI * 2); c.fill(); c.restore();
   }));
   // B's twin tram lines along every sweep lane, full grass length; the one outside the grass is dropped
-  for (const ln of L.lanes) for (const d of [-0.24, 0.24]) {
+  // On tight pitches (A-D: h 3, pitch 1) the berm edge sits at lane +-0.25, right on the +-0.24 track, and
+  // tilledDark ~= berm, so the lines vanish into it: pull them in to keep a grass gap, darken and widen a touch.
+  // Roomy pitches (E-H: h 4, pitch 1.33) keep the original look.
+  const tight = L.pitch / 2 - 0.25 - 0.24 < 0.08;
+  const tramD = tight ? 0.2 : 0.24, tramHw = tight ? 0.042 : 0.035;
+  const tramC = tight ? hex(mix(P.tilledDark, '#3E2F1E', heat ? 0.35 : 0.45)) : P.tilledDark;
+  for (const ln of L.lanes) for (const d of [-tramD, tramD]) {
     const z = ln + d; if (z < z0 + 0.02 || z > z1 - 0.02) continue;
-    rect(x0, x1, z - 0.035, z + 0.035, P.tilledDark, 0.85);
+    rect(x0, x1, z - tramHw, z + tramHw, tramC, tight ? 0.9 : 0.85);
   }
   return cv;
 }

@@ -35,7 +35,7 @@ export function blockGeom(scenario, blockId, { toolWidth = 6, headland = 8 } = {
   /** Centre line of pass k (where the tractor actually drives; what we draw as the guidance line). */
   const passCenter = (k) => lineAt(toolWidth / 2 + k * toolWidth);
   return {
-    id: blockId, field: `Block_${blockId}`, origin: sw, widthM, heightM, passes, at, passAB, passCenter,
+    id: blockId, field: `Block_${blockId}_${Math.round(Math.abs(scenario.geo.origin_lat) * 100)}`, origin: sw, widthM, heightM, passes, at, passAB, passCenter, // field name carries the origin: a field saved at an old farm origin is never reopened
     boundary: [[sw.lat, sw.lon], [se.lat, se.lon], [ne.lat, ne.lon], [nw.lat, nw.lon]],
     gridRect: { x0, x1, y0, y1 },
   };
