@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-312 -546 648 570" width="648" height="570" role="img">
-<title>B. Autonomous fleet hub, side view</title>
+<title>B. Fleet hub, side view</title>
 <desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
 <defs><style>
 .b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
@@ -19,13 +19,14 @@
 <g data-part="controlRoof"><polygon points="-212,-248 180,-248 180,-272 -212,-272" fill="#4A4D52" stroke="#4A4D52"/></g>
 <g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
 <g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
-<g data-part="cable"><polygon points="-209.3,-118 -212.9,-118 -206.7,-122 -203.1,-122" fill="#4E4E50" stroke="#4E4E50"/><polygon points="-153.3,-10 -209.3,-118 -203.1,-122 -147.1,-14" fill="#161618" stroke="#161618"/><polygon points="-212.9,-118 -209.3,-118 -153.3,-10 -156.9,-10" fill="#161618" stroke="#161618"/></g>
-<g data-part="charger"><polygon points="-248,-8 -208,-8 -208,-176 -248,-176" fill="#E5E5EA" stroke="#E5E5EA"/></g>
+<g data-part="reelpost"><polygon points="-248,-8 -232,-8 -232,-184 -248,-184" fill="#636366" stroke="#636366"/></g>
+<g data-part="reel"><polygon points="-202,-144 -207.3,-144 -207.3,-160 -202,-160" fill="#58585B" stroke="#58585B"/><polygon points="-207.3,-144 -220,-144 -220,-160 -207.3,-160" fill="#727276" stroke="#727276"/><polygon points="-220,-144 -232.7,-144 -232.7,-160 -220,-160" fill="#8E8E93" stroke="#8E8E93"/><polygon points="-232.7,-144 -238,-144 -238,-160 -232.7,-160" fill="#8E8E93" stroke="#8E8E93"/></g>
+<g data-part="toolchest"><polygon points="-256,-8 -208,-8 -208,-120 -256,-120" fill="#C2463A" stroke="#C2463A"/></g>
 <g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
 <g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
 <g data-part="canopy"><polygon points="-280,-328 272,-328 272,-352 -280,-352" fill="#4A4D52" stroke="#4A4D52"/></g>
-<g data-part="cable"><polygon points="-209.3,-118 -212.9,-118 -206.7,-122 -203.1,-122" fill="#4E4E50" stroke="#4E4E50"/><polygon points="-153.3,-10 -209.3,-118 -203.1,-122 -147.1,-14" fill="#161618" stroke="#161618"/><polygon points="-212.9,-118 -209.3,-118 -153.3,-10 -156.9,-10" fill="#161618" stroke="#161618"/></g>
-<g data-part="charger"><polygon points="-248,-8 -208,-8 -208,-176 -248,-176" fill="#E5E5EA" stroke="#E5E5EA"/></g>
+<g data-part="hose"><polygon points="-209.3,-118 -212.9,-118 -206.7,-122 -203.1,-122" fill="#4E4E50" stroke="#4E4E50"/><polygon points="-153.3,-10 -209.3,-118 -203.1,-122 -147.1,-14" fill="#161618" stroke="#161618"/><polygon points="-212.9,-118 -209.3,-118 -153.3,-10 -156.9,-10" fill="#161618" stroke="#161618"/></g>
+<g data-part="pump"><polygon points="-248,-8 -208,-8 -208,-176 -248,-176" fill="#E5E5EA" stroke="#E5E5EA"/></g>
 <g data-part="post"><polygon points="-258,-8 -238,-8 -238,-328 -258,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g>
 <g data-part="post"><polygon points="230,-8 250,-8 250,-328 230,-328" fill="#3A3A3C" stroke="#3A3A3C"/></g></g>
 </svg>

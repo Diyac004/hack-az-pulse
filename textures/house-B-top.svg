@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-644 -336 1328 648" width="1328" height="648" role="img">
-<title>B. Autonomous fleet hub, top view</title>
+<title>B. Fleet hub, top view</title>
 <desc>Flat-shaded orthographic projection of the three.js part list. Recolour by setting the CSS custom property --body on the svg element.</desc>
 <defs><style>
 .b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
@@ -11,12 +11,13 @@
 <filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter></defs>
 <g id="ground"><polygon points="-620,-312 660,-312 661.3,-310.7 690.6,-213.4 690.6,338.6 -253.4,338.6 -618.7,289.3 -620,288" fill="#000" opacity=".2" filter="url(#soft)"/></g>
 <g id="tractor" stroke-width=".8" stroke-linejoin="round">
-<g data-part="pad"><polygon points="660,-312 -620,-312 -620,288 660,288" fill="#DFDCD5" stroke="#DFDCD5"/><polygon points="597.1,-264 586.9,-264 586.9,228 597.1,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="165.1,-264 154.9,-264 154.9,228 165.1,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="-266.9,-264 -277.1,-264 -277.1,228 -266.9,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="583.2,180 199.2,180 199.2,228 583.2,228" fill="#0A84FF" stroke="none" opacity="0.55"/><polygon points="148,180 -236,180 -236,228 148,228" fill="#0A84FF" stroke="none" opacity="0.55"/></g>
-<g data-part="cable"><polygon points="361.1,209.3 354,212.9 350.9,206.7 358,203.1" fill="#161618" stroke="#161618"/><polygon points="322.9,150.7 330,147.1 358,203.1 350.9,206.7" fill="#4E4E50" stroke="#4E4E50"/></g>
-<g data-part="cable"><polygon points="-70.9,209.3 -78,212.9 -81.1,206.7 -74,203.1" fill="#161618" stroke="#161618"/><polygon points="-109.1,150.7 -102,147.1 -74,203.1 -81.1,206.7" fill="#4E4E50" stroke="#4E4E50"/></g>
-<g data-part="charger"><polygon points="404,208 348,208 348,248 404,248" fill="#EBEBEF" stroke="#EBEBEF"/></g>
-<g data-part="charger"><polygon points="-28,208 -84,208 -84,248 -28,248" fill="#EBEBEF" stroke="#EBEBEF"/></g>
+<g data-part="pad"><polygon points="660,-312 -620,-312 -620,288 660,288" fill="#DFDCD5" stroke="#DFDCD5"/><polygon points="597.1,-264 586.9,-264 586.9,228 597.1,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="165.1,-264 154.9,-264 154.9,228 165.1,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="-266.9,-264 -277.1,-264 -277.1,228 -266.9,228" fill="#fff" stroke="none" opacity="0.85"/><polygon points="583.2,180 199.2,180 199.2,228 583.2,228" fill="#FF9F0A" stroke="none" opacity="0.6"/><polygon points="148,180 -236,180 -236,228 148,228" fill="#8E8E93" stroke="none" opacity="0.6"/><polygon points="570.4,-300 180,-300 180,-258 570.4,-258" fill="#FF9F0A" stroke="none" opacity="0.9"/><polygon points="135.2,-300 -248.8,-300 -248.8,-258 135.2,-258" fill="#8E8E93" stroke="none" opacity="0.9"/></g>
+<g data-part="toolchest"><polygon points="-20,208 -92,208 -92,256 -20,256" fill="#CF6F65" stroke="#CF6F65"/></g>
+<g data-part="hose"><polygon points="361.1,209.3 354,212.9 350.9,206.7 358,203.1" fill="#161618" stroke="#161618"/><polygon points="322.9,150.7 330,147.1 358,203.1 350.9,206.7" fill="#4E4E50" stroke="#4E4E50"/></g>
+<g data-part="pump"><polygon points="404,208 348,208 348,248 404,248" fill="#EBEBEF" stroke="#EBEBEF"/></g>
+<g data-part="reelpost"><polygon points="-112,232 -128,232 -128,248 -112,248" fill="#858588" stroke="#858588"/></g>
 <g data-part="control"><polygon points="-344,-168 -592,-168 -592,200 -344,200" fill="#F0EFEB" stroke="#F0EFEB"/></g>
+<g data-part="reel"><polygon points="-138,220 -132.7,207.3 -120,202 -107.3,207.3 -102,220 -107.3,232.7 -120,238 -132.7,232.7" fill="#A7A7AB" stroke="#A7A7AB"/></g>
 <g data-part="post"><polygon points="602,238 582,238 582,258 602,258" fill="#656567" stroke="#656567"/></g>
 <g data-part="post"><polygon points="602,-250 582,-250 582,-230 602,-230" fill="#656567" stroke="#656567"/></g>
 <g data-part="post"><polygon points="170,238 150,238 150,258 170,258" fill="#656567" stroke="#656567"/></g>

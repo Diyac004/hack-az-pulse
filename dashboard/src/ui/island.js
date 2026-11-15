@@ -1,5 +1,5 @@
 // Dynamic Island pill + toast.
-import { clock, isBusy } from '../lib/format.js';
+import { clock, isBusy, plural } from '../lib/format.js';
 
 export function createIsland() {
   const island = document.getElementById('island'), itxt = document.getElementById('itxt'), idot = document.getElementById('idot');
@@ -19,7 +19,7 @@ export function createIsland() {
       const fleet = (state && state.fleet) || [];
       const w = fleet.filter((x) => isBusy(x.status)).length;
       const t = state && state.clock ? state.clock.t : null;
-      itxt.textContent = (t == null ? 'Waiting for data' : clock(t)) + ' · ' + w + ' tractor' + (w === 1 ? '' : 's') + ' working';
+      itxt.textContent = (t == null ? 'Waiting for data' : clock(t)) + ' · ' + plural(w, 'tractor') + ' working';
       idot.style.background = state && state.connected === false ? '#FF453A' : '#30D158';
       island.classList.remove('big');
     },
@@ -29,10 +29,16 @@ export function createIsland() {
 export function createToast() {
   const el = document.getElementById('toast');
   let timer = null;
-  return (text, kind) => {
+  /** action: optional { label, onClick(buttonEl) } rendered as a button inside the toast. */
+  return (text, kind, action) => {
     el.textContent = text;
-    el.className = 'on' + (kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '');
+    if (action) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tact'; b.textContent = action.label;
+      b.addEventListener('click', (e) => { e.stopPropagation(); if (!b.classList.contains('busy')) action.onClick(b); });
+      el.appendChild(b);
+    }
+    el.className = 'on' + (kind === 'err' ? ' err' : kind === 'warn' ? ' warn' : '') + (action ? ' act' : '');
     clearTimeout(timer);
-    timer = setTimeout(() => { el.className = ''; }, kind === 'err' || kind === 'warn' ? 5200 : 3200);
+    timer = setTimeout(() => { el.className = ''; }, action ? 8000 : kind === 'err' || kind === 'warn' ? 5200 : 3200);
   };
 }

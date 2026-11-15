@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-224 -156 481.6 312" width="481.6" height="312" role="img">
+<title>B. Orchard hedgerow (one cell), top view</title>
+<desc>Flat-shaded orthographic projection of the three.js part list (scene units, light from the top left).</desc>
+<defs><style>
+.b0{fill:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff);stroke:color-mix(in srgb,var(--body,#0A84FF) 78%,#fff)}.b1{fill:var(--body,#0A84FF);stroke:var(--body,#0A84FF)}
+.b2{fill:color-mix(in srgb,var(--body,#0A84FF) 80%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 80%,#000)}.b3{fill:color-mix(in srgb,var(--body,#0A84FF) 62%,#000);stroke:color-mix(in srgb,var(--body,#0A84FF) 62%,#000)}
+.ring{fill:var(--body,#0A84FF)}
+</style>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+<filter id="tight" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+<filter id="puff" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+<filter id="ao" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter></defs>
+<g id="ground"></g>
+<g id="contact-ao" filter="url(#ao)"><polygon points="200,-108 -200,-108 -200,108 200,108" fill="#1A1A0E" opacity="0.3"/></g>
+<g id="shadows" filter="url(#soft)"><polygon points="-195.3,-63.3 -186.7,-72.7 61.9,-82.5 162.1,-82.4 213.3,-72.7 226.6,-57.4 257.6,14.4 260,20 260,36 235.9,95.9 226.6,110.6 -111.9,121.4 -173.4,110.6 -186.7,99.3 -195.3,72.7" fill="#000" opacity=".2"/></g>
+<g id="objects" stroke-width=".8" stroke-linejoin="round">
+<g data-part="trunk"><polygon points="88,0 96.3,-11.4 109.7,-7.1 109.7,7.1 96.3,11.4" fill="#8E8477" stroke="#8E8477"/></g>
+<g data-part="trunk"><polygon points="-112,0 -103.7,-11.4 -90.3,-7.1 -90.3,7.1 -103.7,11.4" fill="#8E8477" stroke="#8E8477"/></g>
+<g data-part="fruit"><polygon points="106.1,87.2 117.3,87.2 117.3,76" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="117.3,76 117.3,87.2 128.5,87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="128.5,87.2 117.3,87.2 117.3,98.4" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="117.3,98.4 117.3,87.2 106.1,87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="fruit"><polygon points="-53.5,87.2 -42.3,87.2 -42.3,76" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="-42.3,76 -42.3,87.2 -31.1,87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="-31.1,87.2 -42.3,87.2 -42.3,98.4" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="-42.3,98.4 -42.3,87.2 -53.5,87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="post"><polygon points="232,-8 216,-8 216,8 232,8" fill="#D5D0C6" stroke="#D5D0C6"/></g>
+<g data-part="fruit"><polygon points="34.8,-87.2 46,-87.2 46,-98.4" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="46,-98.4 46,-87.2 57.2,-87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="57.2,-87.2 46,-87.2 46,-76" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="46,-76 46,-87.2 34.8,-87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="fruit"><polygon points="134.8,-87.2 146,-87.2 146,-98.4" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="146,-98.4 146,-87.2 157.2,-87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="157.2,-87.2 146,-87.2 146,-76" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="146,-76 146,-87.2 134.8,-87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="hedge"><polygon points="200,86 200,84 -200,84 -200,86" fill="#24431C" stroke="#24431C"/><polygon points="200,84 200,60 -200,60 -200,84" fill="#314F1F" stroke="#314F1F"/><polygon points="200,60 200,-60 -200,-60 -200,60" fill="#749A5E" stroke="#749A5E"/><polygon points="200,-60 200,-84 -200,-84 -200,-60" fill="#4C7D31" stroke="#4C7D31"/><polygon points="200,-84 200,-86 -200,-86 -200,-84" fill="#3C6E2D" stroke="#3C6E2D"/></g>
+<g data-part="postTag"><polygon points="233.6,-9.6 214.4,-9.6 214.4,9.6 233.6,9.6" fill="#FFFFFF" stroke="#FFFFFF"/></g>
+<g data-part="fruit"><polygon points="-146,87.2 -134.8,87.2 -134.8,76" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="-134.8,76 -134.8,87.2 -123.6,87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="-123.6,87.2 -134.8,87.2 -134.8,98.4" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="-134.8,98.4 -134.8,87.2 -146,87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="fruit"><polygon points="45.6,-87.2 56.8,-87.2 56.8,-98.4" fill="#FFBF6E" stroke="#FFBF6E"/><polygon points="56.8,-98.4 56.8,-87.2 68,-87.2" fill="#FFAD45" stroke="#FFAD45"/><polygon points="68,-87.2 56.8,-87.2 56.8,-76" fill="#9E6B2B" stroke="#9E6B2B"/><polygon points="56.8,-76 56.8,-87.2 45.6,-87.2" fill="#FFAD45" stroke="#FFAD45"/></g>
+<g data-part="top"><polygon points="131.8,-29.1 144.2,-70.2 64.3,-45.3" fill="#81A563" stroke="#81A563"/><polygon points="131.8,-29.1 64.3,-45.3 44.2,21.1" fill="#7EA261" stroke="#7EA261"/><polygon points="131.8,-29.1 44.2,21.1 111.7,37.3" fill="#588735" stroke="#588735"/><polygon points="131.8,-29.1 111.7,37.3 173.5,-19.1" fill="#4B702C" stroke="#4B702C"/><polygon points="131.8,-29.1 173.5,-19.1 144.2,-70.2" fill="#5B8A36" stroke="#5B8A36"/><polygon points="44.2,21.1 64.3,-45.3 2.5,11.1" fill="#7DA161" stroke="#7DA161"/><polygon points="111.7,37.3 44.2,21.1 31.8,62.2" fill="#476D2A" stroke="#476D2A"/><polygon points="2.5,11.1 31.8,62.2 44.2,21.1" fill="#578635" stroke="#578635"/></g>
+<g data-part="top"><polygon points="-59.6,-24.6 -54.6,-64.5 -124.4,-32.1" fill="#80A462" stroke="#80A462"/><polygon points="-59.6,-24.6 -124.4,-32.1 -132.4,32.6" fill="#80A562" stroke="#80A562"/><polygon points="-59.6,-24.6 -132.4,32.6 -67.6,40.1" fill="#5D8C37" stroke="#5D8C37"/><polygon points="-59.6,-24.6 -67.6,40.1 -19.6,-19.9" fill="#4D722C" stroke="#4D722C"/><polygon points="-59.6,-24.6 -19.6,-19.9 -54.6,-64.5" fill="#5C8B36" stroke="#5C8B36"/><polygon points="-132.4,32.6 -124.4,-32.1 -172.4,27.9" fill="#82A763" stroke="#82A763"/><polygon points="-67.6,40.1 -132.4,32.6 -137.4,72.5" fill="#486E2B" stroke="#486E2B"/><polygon points="-172.4,27.9 -137.4,72.5 -132.4,32.6" fill="#5D8C37" stroke="#5D8C37"/></g></g>
+</svg>

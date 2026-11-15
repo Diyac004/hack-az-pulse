@@ -47,7 +47,9 @@ function opOk(op, label) {
   else if (op.status === 'failed') ok(op.result === null && op.error && typeof op.error.code === 'string', `${label}: failed op needs error, null result`);
   else ok(op.result === null, `${label}: ${op.status} op must have null result`);
 }
-const LOG_KINDS = new Set(['plan', 'event', 'replan', 'job_started', 'job_done', 'job_dropped', 'operator_action', 'tractor_added', 'tractor_removed', 'tractor_ready', 'mechanic_search', 'mechanic_booked', 'tractor_repaired', 'weather', 'agopenweb', 'safety_reject', 'violation']);
+const LOG_KINDS = new Set(['plan', 'event', 'replan', 'job_started', 'job_done', 'job_dropped', 'operator_action', 'tractor_added', 'tractor_removed', 'tractor_ready', 'mechanic_search', 'mechanic_booked', 'tractor_repaired', 'weather', 'agopenweb', 'safety_reject', 'violation',
+  // Tractor Control Panel (contract gap: kinds not in §7): operator depot stops + manual drive-to arrival
+  'refueled', 'implement_swapped', 'manual_arrived']);
 
 // ---------------- harness
 function harness(opts) {
@@ -90,11 +92,56 @@ const opMsgs = (msgs, id) => msgs.filter((m) => m.type === 'operation' && m.data
 const idxOf = (msgs, m) => msgs.indexOf(m);
 
 // ===================================================================
+section('Tractor Control Panel traffic through the contract checker (instance C)');
+{
+  const C = harness();
+  C.tick(150);
+  const run = async (p) => { const op = await p; C.tick(3); return op; };
+  const pv = await C.api.preview('T3', { control: 'implements', value: ['sprayer'] });
+  shapeOk(pv, 'rest.post_preview', 'preview');
+  const gc = await C.api.getControls('T2');
+  // `group` is a proposed optional Control key (section header); the contract example has no such key yet
+  shapeOk({ controls: gc.controls.slice(0, 1).map(({ group, ...c }) => c), values: gc.values }, 'rest.get_controls', 'get_controls');
+  ok(gc.controls.every((c) => Object.keys(c).filter((k) => k !== 'group').sort().join() === Object.keys(EX['rest.get_controls'].controls[0]).sort().join()), 'every Control has exactly the §5 keys (+ optional group)');
+  const opM = await run(C.api.manual('T2', true));
+  shapeOk(opM, 'rest.post_manual', 'manual 202');
+  const st = await C.api.control('T2', { control: 'steer', value: 10 });
+  shapeOk(st, 'rest.post_control', 'control 200');
+  await C.api.control('T2', { control: 'speed_up', value: null }); C.tick(40);
+  await C.api.control('T2', { control: 'drive_to', value: { x: 5, y: 6 } }); C.tick(300);
+  await C.api.control('T2', { control: 'ab_line', value: [{ x: 6, y: 7 }, { x: 9, y: 7 }] });
+  const opI = await run(C.api.control('T3', { control: 'implements', value: ['sprayer'] }));
+  const opR = await run(C.api.control('T1', { control: 'refuel', value: null }));
+  const opB = await run(C.api.manual('T2', false));
+  C.tick(400);
+  const kinds = new Set(C.msgs.filter((m) => m.type === 'log').map((m) => m.data.kind));
+  for (const k of ['operator_action', 'agopenweb', 'implement_swapped', 'refueled', 'manual_arrived']) ok(kinds.has(k), 'control traffic logs ' + k);
+  for (const m of C.msgs) {
+    if (m.type === 'log') { ok(LOG_KINDS.has(m.data.kind), `log line kind ${m.data.kind}`); continue; }
+    const errs = []; shape(m, EX[m.type === 'operation' ? 'ws.operation' : 'ws.' + m.type], m.type, errs);
+    if (errs.length) { ok(false, `C ${m.type}#${m.seq}: ${errs.slice(0, 3).join(' | ')}`); break; }
+    if (m.type === 'operation') opOk(m.data, 'C op#' + m.seq);
+  }
+  for (const op of [opM, opI, opR, opB]) {
+    const ms = opMsgs(C.msgs, op.id), stt = ms.map((m) => m.data.status).join('>');
+    ok(stt === 'queued>running>succeeded', `control/manual op ${op.id} (${op.source}) lifecycle ${stt}`);
+    const end = ms[2], between = C.msgs.slice(idxOf(C.msgs, ms[1]) + 1, idxOf(C.msgs, end));
+    const pl = between.filter((m) => m.type === 'plan');
+    ok(pl.length === 1 && pl[0].data.version === end.data.plan_version, `op ${op.id} applied exactly its plan`);
+    const i = idxOf(C.msgs, pl[0]);
+    ok(C.msgs[i + 1].type === 'explanation' && C.msgs[i + 1].data.trigger === 'operator_action' && C.msgs[i + 2].type === 'jobs', `op ${op.id}: plan -> operator_action explanation -> jobs`);
+  }
+  ok(C.msgs.some((m) => m.type === 'plan' && m.data.entries.some((e) => e.kind === 'swap_implement')) && C.msgs.some((m) => m.type === 'plan' && m.data.entries.some((e) => e.kind === 'refuel')), 'plans show swap_implement and refuel entries (PlanKind)');
+  ok(C.store.get().fleet.every((t) => t.manual === false), 'every tractor back with the AI');
+  ok(C.gaps === 0, 'no seq gaps');
+}
+
+// ===================================================================
 section('index.js exports');
 ok(Object.keys(index).sort().join(',') === 'api,sourceInfo,start,store', 'index exports exactly api, sourceInfo, start, store');
 ok(index.sourceInfo.kind === 'mock' && index.sourceInfo.api === null, 'no location => mock');
 ok(typeof index.store.get === 'function' && typeof index.store.subscribe === 'function', 'store.get/subscribe');
-for (const k of ['run', 'setClock', 'postEvent', 'patchJob', 'addTractor', 'removeTractor', 'why', 'mechanics', 'bookMechanic', 'approve', 'scaleTest', 'getLog', 'getOperation']) ok(typeof index.api[k] === 'function', 'api.' + k);
+for (const k of ['run', 'setClock', 'postEvent', 'patchJob', 'addTractor', 'removeTractor', 'why', 'mechanics', 'bookMechanic', 'approve', 'scaleTest', 'getLog', 'getOperation', 'getControls', 'control', 'preview', 'manual']) ok(typeof index.api[k] === 'function', 'api.' + k);
 
 // ===================================================================
 section('scenario run with events');
@@ -516,6 +563,76 @@ section('index.js live adapter mapping');
     ok(op?.id === EX['rest.post_events'].id && keys.length === 2 && keys.every((k) => k === 'retry-k'), `CLIENT_TIMEOUT on mutation re-sent with same key, resolves to the op (${JSON.stringify(keys)})`);
   }
   delete globalThis.location; globalThis.fetch = realFetch; globalThis.WebSocket = realWS;
+}
+
+// ===================================================================
+section('wording: clock wrap, plurals, feed = explanation, overtime, priority words (user-testing round)');
+{
+  const T = await import('./text.js');
+  const D2 = await import('../lib/derive.js');
+  ok(T.clockText(0) === '6:00 AM' && T.clockText(720) === '6:00 PM' && T.clockText(748) === '6:28 PM', 'clock: day times');
+  ok(T.clockText(1080) === '12:00 AM (+1 day)' && T.clockText(1134) === '12:54 AM (+1 day)' && T.clockText(1079) === '11:59 PM', `clock: past midnight says +1 day (${T.clockText(1134)})`);
+  ok(T.clockText(2520) === '12:00 AM (+2 days)', 'clock: two days');
+  ok(T.plural(1, 'job') === '1 job' && T.plural(2, 'job') === '2 jobs' && T.plural(0, 'job') === '0 jobs' && T.verb(1, 'carries', 'carry') === 'carries' && T.verb(3, 'carries', 'carry') === 'carry', 'plural + verb helpers');
+  // the judge's sequence: breakdown -> block road -> heat alert -> add tractor -> sunset
+  const J = harness();
+  J.until(() => J.w().t >= 95);
+  await J.api.postEvent({ type: 'breakdown', tractor: 'T1' }); J.tick();
+  J.until(() => J.w().t >= 110);
+  await J.api.postEvent({ type: 'block_route' }); J.tick();
+  J.until(() => J.w().t >= 125);
+  await J.api.postEvent({ type: 'heat_alert', temp_f: 112, at_t: 480 }); J.tick();
+  await J.api.addTractor({ name: 'Tractor 4', implements: ['sprayer', 'mower', 'hedger', 'bin_trailer'], fuel_pct: 80, speed: 1, start: { x: 1, y: 6 }, endpoint: 'auto' });
+  J.tick(40);
+  await J.api.patchJob('J10', { priority: 1 }); J.tick();
+  J.until(() => J.w().ended);
+  const st = J.store.get();
+  const expls = J.msgs.filter((m) => m.type === 'explanation').map((m) => m.data);
+  const logs = J.msgs.filter((m) => m.type === 'log').map((m) => m.data);
+  const strip = (h) => String(h || '').replace(/<[^>]+>/g, '');
+  const feed = logs.map((e) => strip(D2.logLine(e, st))).filter(Boolean);
+  const all = [...expls.map((x) => x.text), ...feed];
+  ok(!all.some((t) => /\bmock\b|simulat/i.test(t)), `no mock/simulation wording in explanations or feed: ${all.filter((t) => /\bmock\b|simulat/i.test(t)).slice(0, 2).join(' | ')}`);
+  ok(!all.some((t) => /\b0 jobs (moved|changed)\b/.test(t)), 'never "0 jobs moved/changed"');
+  ok(!all.some((t) => /\b1 (job|tractor|cell|deadline)s\b/.test(t) || /\b([2-9]|\d\d+) (job|tractor|cell|deadline)\b(?!s)/.test(t)), `count/noun agreement: ${all.filter((t) => /\b1 (job|tractor)s\b/.test(t) || /\b([2-9]|\d\d+) (job|tractor)\b(?!s)/.test(t)).slice(0, 2).join(' | ')}`);
+  ok(!all.some((t) => /\b1 job(?: \([^)]*\))? (carry|move|are|wait)\b/.test(t) || /\b([2-9]|\d\d+) jobs(?: \([^)]*\))? (carries|moves|is|waits)\b/.test(t)), 'verb agreement after job counts');
+  ok(!all.some((t) => /\bP[123]\b|priority [123]\b/.test(t)), 'priority shown as High/Medium/Low, never P1 or numbers');
+  // "X min earlier than before (Y)" must be true on raw t: the earlier time really is earlier
+  const add = expls.find((x) => x.trigger === 'tractor_added');
+  ok(add && !/earlier than the previous/.test(add.text) || add.facts.context.makespan_new_t < add.facts.context.makespan_old_t, 'add-tractor "earlier" claim true on raw t');
+  ok(!expls.some((x) => /(1[3-9]|2\d):\d\d (AM|PM)/.test(x.text)), 'no impossible clock hours');
+  // feed and explanation agree: the replan line counts exactly the jobs the explanation names
+  for (const e of logs.filter((l) => l.kind === 'replan')) {
+    const x = expls.find((y) => y.id === e.explanation_id);
+    const ids = D2.replanChanges(e);
+    const missing = ids.filter((id) => !x.text.includes(st.jobs.find((j) => j.id === id).label));
+    ok(x && missing.length === 0, `${e.trigger}: explanation names all ${ids.length} changed jobs the feed counts (missing ${missing})`);
+    const ln = strip(D2.logLine(e, st));
+    ok(ids.length ? ln.includes(T.plural(ids.length, 'job') + ' changed') : !/jobs? (moved|changed)/.test(ln), `${e.trigger}: feed count = ${ids.length} (${ln})`);
+  }
+  const heatLog = logs.find((l) => l.kind === 'replan' && l.trigger === 'heat_alert');
+  const heatPlan = J.msgs.filter((m) => m.type === 'plan').map((m) => m.data).find((p) => p.version === heatLog.plan_version);
+  ok(heatPlan.diff.moved.length + heatPlan.diff.retimed.length === D2.replanChanges(heatLog).length, 'heat replan feed count == plan.diff moved + retimed');
+  // heat explanation is true to the plan: "done before the peak" only when its work really ends by at_t
+  const hx = expls.find((x) => x.trigger === 'heat_alert');
+  for (const id of hx.facts.context.raised || []) {
+    const lab = st.jobs.find((j) => j.id === id).label;
+    const end = Math.max(...heatPlan.entries.filter((e) => e.kind === 'work' && e.job === id).map((e) => e.end_t));
+    const claimsBefore = new RegExp(lab + ' on [^.]*done before the').test(hx.text);
+    ok(claimsBefore === (end <= 480 + 1e-9), `heat: ${lab} ends ${T.clockText(end)}; "done before peak" claim ${claimsBefore}`);
+  }
+  // overtime: explanation says so whenever the plan runs past day end, and planHealth agrees with entries
+  for (const x of expls.filter((y) => y.trigger !== 'end_of_day' && y.facts.context.overtime_min > 0)) ok(/past sunset/.test(x.text), `${x.trigger}: overtime ${x.facts.context.overtime_min} min is mentioned`);
+  const heatState = { clock: { t: 130, day_minutes: 720, ended: false }, plan: heatPlan, jobs: st.jobs.map((j) => ({ ...j, status: 'assigned', end_t: null })) };
+  const H = D2.planHealth(heatState);
+  const maxEnd = Math.max(...heatPlan.entries.filter((e) => e.kind === 'work' || e.kind === 'travel').map((e) => e.end_t));
+  ok(H.overtimeMin === Math.max(0, Math.round(maxEnd - 720)) && H.overtimeMin > 0 && H.afterDay.length > 0 && H.late.length > 0, `planHealth overtime ${H.overtimeMin} min, ${H.late.length} late, ${H.afterDay.length} after day`);
+  ok(D2.planHealth({ ...heatState, clock: { ...heatState.clock, ended: true } }).overtimeMin === 0, 'planHealth quiet once the day ended');
+  // why tie-break
+  const fl = { fleet: [{ id: 'T1', name: 'Tractor 1', fuel_pct: 80, pose: { x: 2, y: 2 } }, { id: 'T3', name: 'Tractor 3', fuel_pct: 40, pose: { x: 2, y: 2 } }] };
+  ok(/more fuel \(80% vs 40%\)/.test(D2.whyTieBreak({ tractor: 'T3', finish_t: 100.2, travel_delta_min: 0, idle_delta_min: 0, deadlines_missed: [] }, { tractor: 'T1', finish_t: 100, deadlines_missed: [] }, fl, { block: 'A' })), 'why tie: fuel');
+  ok(/12 min of driving/.test(D2.whyTieBreak({ tractor: 'T3', finish_t: 100, travel_delta_min: 12, idle_delta_min: 0, deadlines_missed: [] }, { tractor: 'T1', finish_t: 100, deadlines_missed: [] }, fl, null)), 'why tie: travel');
+  ok(D2.whyTieBreak({ tractor: 'T3', finish_t: 130, travel_delta_min: 0 }, { tractor: 'T1', finish_t: 100 }, fl, null) === null, 'why: clear loser gets no tie text');
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed${failures ? `, ${failures} FAILED` : ''}`);

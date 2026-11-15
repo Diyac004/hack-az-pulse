@@ -1,11 +1,16 @@
 // Glass bottom sheets: Why (+ priority control), Mechanic booking, Approval, Add tractor.
-import { clock, esc, tractorColor, priName, IMPLEMENTS, implName } from '../lib/format.js';
-import { errText } from '../lib/derive.js';
+import { clock, esc, tractorColor, priName, IMPLEMENTS, implName, plural } from '../lib/format.js';
+import { errText, whyTieBreak } from '../lib/derive.js';
 
-export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill }) {
+export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill, onRepair }) {
   const whyEl = document.getElementById('why'), mechEl = document.getElementById('mech'), addEl = document.getElementById('addsheet');
   const all = [whyEl, mechEl, addEl];
-  const closeAll = (except) => all.forEach((e) => { if (e !== except) e.classList.remove('on'); });
+  // Hiding the mechanic sheet for any reason counts as "shown" for that pending item: it never re-pops by itself
+  // (the chip's "Book mechanic" reopens it on purpose).
+  const closeAll = (except) => {
+    all.forEach((e) => { if (e !== except) e.classList.remove('on'); });
+    if (except !== mechEl && mechPending) { shown.add(mechPending.id); mechPending = null; }
+  };
   // A focused control inside a sheet that slides off-stage makes Chrome scroll #stage (overflow:hidden) to keep it
   // visible. Blur it the moment its sheet closes, wherever the close came from.
   const mo = new MutationObserver((recs) => recs.forEach((r) => {
@@ -46,15 +51,15 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
         let txt;
         if (!o.feasible) txt = esc(o.reason || 'Not feasible');
         else if (isC) txt = 'Chosen · finishes ' + clock(o.finish_t);
-        else if (cho && cho.finish_t != null && o.finish_t != null) txt = '+' + Math.max(0, Math.round(o.finish_t - cho.finish_t)) + ' min later finish';
+        else if (cho && cho.finish_t != null && o.finish_t != null) txt = esc(whyTieBreak(o, cho, s, j) || ('+' + Math.round(o.finish_t - cho.finish_t) + ' min later finish'));
         else txt = 'Finishes ' + clock(o.finish_t);
-        if (o.deadlines_missed && o.deadlines_missed.length) txt += ' · misses ' + o.deadlines_missed.length + ' deadline' + (o.deadlines_missed.length > 1 ? 's' : '');
+        if (o.deadlines_missed && o.deadlines_missed.length) txt += ' · plan misses ' + plural(o.deadlines_missed.length, 'deadline');
         const col = tractorColor((s.fleet || [])[trIdx(o.tractor)] || null, Math.max(0, trIdx(o.tractor)));
         html += '<div style="margin:0 0 9px;opacity:' + (isC ? 1 : 0.5) + '"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:600">' + esc(trName(o.tractor)) + '</span><span style="text-align:right">' + txt + '</span></div><div style="height:8px;border-radius:4px;background:rgba(0,0,0,.07)"><div style="height:8px;border-radius:4px;width:' + width + '%;background:' + col + ';transition:width .6s cubic-bezier(.34,1.56,.64,1)"></div></div></div>';
       });
     }
     if (j.status !== 'done') {
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px"><p style="font-size:11px;color:#6e6e73;margin:0">Deadline ' + clock(j.deadline_t) + (w && w.method ? ' · ' + (w.method === 'counterfactual' ? 'counterfactual re-solve' : 'estimate') : '') + '</p>' +
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px"><p style="font-size:11px;color:#6e6e73;margin:0">Deadline ' + clock(j.deadline_t) + (w && w.method ? ' · ' + (w.method === 'counterfactual' ? 'compared by re-planning with each tractor' : 'estimated') : '') + '</p>' +
         '<div class="seg" data-seg>' + [1, 2, 3].map((p) => '<button data-p="' + p + '" class="' + (j.priority === p ? 'on' : '') + '">' + (p === 1 ? 'Low' : p === 2 ? 'Med' : 'High') + '</button>').join('') + '</div></div>';
     }
     // preserve busy state of segment buttons across re-render
@@ -87,7 +92,8 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
   }
 
   // ---------------- Mechanic / approval ----------------
-  const dismissed = new Set();
+  const dismissed = new Set(); // "Not now" / booked / approved: never auto-open again
+  const shown = new Set();     // auto-opened once already: never auto-open again (closed by another sheet, day end…)
   let mechPending = null, mechOpts = [], msel = 0, mechReq = 0;
   function renderMech() {
     const p = mechPending; if (!p) return;
@@ -141,7 +147,8 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
         const arr = r && r.arrival_t != null ? r.arrival_t : bookT + (m.eta_min || 45);
         const back = r ? (r.estimated_return_t ?? r.return_t ?? null) : null;
         island.moment({ text: 'Mechanic booked · arrives ' + clock(arr) + ' (est.)', dot: '#0A84FF', ms: 2600 });
-        toast(m.name + ' booked · estimated arrival ' + clock(arr) + (back != null ? ' · estimated back ' + clock(back) : ''));
+        toast(m.name + ' booked · estimated arrival ' + clock(arr) + (back != null ? ' · estimated back ' + clock(back) : ''), null,
+          onRepair ? { label: 'Mark repaired', onClick: (b) => onRepair(p.tractor, [b]) } : null);
         onBooked && onBooked(p.tractor, bookT, arr);
       });
       return;
@@ -165,7 +172,7 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
     addEl.innerHTML = '<div class="shead"><p>Add a tractor</p><button class="gbtn sm" data-x>Close</button></div>' +
       '<p class="sub">Implements</p><div class="chkrow">' + IMPLEMENTS.map((i) => '<label class="chk' + (addImpl.has(i) ? ' sel' : '') + '"><input type="checkbox" data-impl="' + i + '"' + (addImpl.has(i) ? ' checked' : '') + '>' + implName(i) + '</label>').join('') + '</div>' +
       '<div class="srow"><span style="width:78px">Starting fuel</span><input type="range" min="10" max="100" step="1" value="' + addFuel + '" data-fuel><b style="width:38px;text-align:right" data-fv>' + addFuel + '%</b></div>' +
-      (cap && cap.max != null ? '<p class="sub">Compute pool: ' + esc(cap.used ?? '?') + ' of ' + esc(cap.max) + ' slots in use' + (cap.warm ? ' · ' + esc(cap.warm) + ' warm' : '') + '</p>' : '') +
+      (cap && cap.max != null ? '<p class="sub">Fleet capacity: ' + esc(cap.used ?? '?') + ' of ' + esc(cap.max) + ' tractors' + (cap.warm ? ' · ' + esc(cap.warm) + ' ready to start fast' : '') + '</p>' : '') +
       '<div style="display:flex;gap:8px;margin-top:6px"><button class="abtn" data-add' + (addImpl.size ? '' : ' disabled') + '>Add tractor</button><button class="gbtn" data-x>Cancel</button></div>';
   }
   addEl.addEventListener('click', (e) => {
@@ -197,9 +204,15 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
   return {
     openWhy,
     openAdd() { closeAll(addEl); whyJob = null; renderAdd(); addEl.classList.add('on'); },
-    reset() { dismissed.clear(); closeAll(null); whyJob = null; mechPending = null; },
-    /** Close whatever sheet is open (keeps "Not now" dismissals). */
-    close() { closeAll(null); whyJob = null; mechPending = null; },
+    reset() { mechPending = null; closeAll(null); dismissed.clear(); shown.clear(); whyJob = null; },
+    /** Close whatever sheet is open (keeps "Not now" dismissals; an auto-opened mechanic sheet won't re-pop). */
+    close() { closeAll(null); whyJob = null; },
+    /** Open the pending mechanic booking for a tractor on purpose (chip button). False if nothing is pending. */
+    openMechanicFor(trId) {
+      const p = (st().pending || []).find((x) => x && x.kind === 'mechanic' && x.tractor === trId);
+      if (!p) return false;
+      dismissed.delete(p.id); shown.add(p.id); openPending(p); return true;
+    },
     /** The open sheet element, or null. */
     openEl() { return all.find((e) => e.classList.contains('on')) || null; },
     sync(state, allowPending = true) {
@@ -208,10 +221,13 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
         const sig = j ? j.priority + j.status + (j.tractor || '') + (j.unassigned_reason || '') : 'x';
         if (sig !== whyEl._sig) { whyEl._sig = sig; renderWhy(); }
       }
-      // pending items -> sheet (one at a time; never over an open add sheet)
-      const pend = (state.pending || []).filter((p) => p && !dismissed.has(p.id));
+      // pending items -> sheet: each pending item auto-opens at most once, one at a time, never over another
+      // open sheet, and never once the day is over (the end-of-day card owns the screen then).
+      const c = state.clock, dayOver = !!(c && (c.ended || (c.day_minutes && c.t >= c.day_minutes)));
       if (mechPending && !(state.pending || []).some((p) => p && p.id === mechPending.id)) { mechEl.classList.remove('on'); mechPending = null; }
-      if (allowPending && !mechPending && pend.length && !addEl.classList.contains('on')) openPending(pend[0]);
+      if (dayOver && mechPending) { shown.add(mechPending.id); mechEl.classList.remove('on'); mechPending = null; }
+      const pend = (state.pending || []).filter((p) => p && !dismissed.has(p.id) && !shown.has(p.id));
+      if (allowPending && !dayOver && !mechPending && pend.length && !all.some((e) => e.classList.contains('on'))) { shown.add(pend[0].id); openPending(pend[0]); }
     },
   };
 }

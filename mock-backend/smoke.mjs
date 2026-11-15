@@ -199,8 +199,42 @@ const lines = logR.text.trim().split('\n');
 ok(logR.status === 200 && (logR.headers.get('content-type') || '').startsWith('text/plain') && lines.every((l) => { try { JSON.parse(l); return true; } catch { return false; } }), `GET /api/log -> text/plain JSON Lines (${lines.length} lines)`);
 const appr = await http('POST', '/api/approve', { id: 'P999', decision: 'approve' });
 ok(appr.status === 404 && appr.json.error.code === 'NOT_FOUND', 'POST /api/approve unknown id -> 404');
-const unsup = await http('POST', '/api/tractors/T1/manual', { on: true });
-ok(unsup.status === 501 && unsup.json.error.code === 'NOT_IMPLEMENTED', 'POST /api/tractors/T1/manual -> 501 (unsupported by mock)');
+
+section('Tractor Control Panel endpoints (§5 rows 13-16, §13.2)');
+{
+  const fleetNow = (await http('GET', '/api/fleet')).json;
+  const DOWN = ['broken', 'awaiting_mechanic', 'repair_scheduled', 'repairing', 'removing', 'starting', 'offline'];
+  const tid = (fleetNow.find((t) => !DOWN.includes(t.status) && t.implements.includes('mower')) || fleetNow.find((t) => !DOWN.includes(t.status))).id;
+  const gc = await http('GET', `/api/tractors/${tid}/controls`);
+  ok(gc.status === 200 && keys(gc.json) === keys(EX('rest.get_controls.json')) && gc.json.controls.every((c) => keys(c).startsWith(keys(EX('rest.get_controls.json').controls[0]).slice(0, 4)) || 'id' in c), `GET /api/tractors/${tid}/controls -> {controls, values}`, gc.json && keys(gc.json));
+  const exKeys = Object.keys(EX('rest.get_controls.json').controls[0]);
+  ok(gc.json.controls.every((c) => exKeys.every((k) => k in c)), 'every Control has the §5 keys');
+  const nm = await http('POST', `/api/tractors/${tid}/control`, { control: 'steer', value: 5 });
+  ok(nm.status === 409 && nm.json.error.code === 'NEEDS_MANUAL', 'steer before manual -> 409 NEEDS_MANUAL', nm.json);
+  const pv = await http('POST', `/api/tractors/${tid}/preview`, { control: 'max_speed', value: 6 });
+  ok(pv.status === 200 && keys(pv.json) === keys(EX('rest.post_preview.json')) && pv.json.allowed === true, 'POST preview -> Preview shape', pv.json && keys(pv.json));
+  const gw = await http('POST', `/api/tractors/${tid}/control`, { control: 'name', value: 'X' }, { 'X-Mock-Fail': 'GATEWAY_UNAVAILABLE' });
+  ok(gw.status === 503 && gw.json.error.code === 'GATEWAY_UNAVAILABLE', 'forced GATEWAY_UNAVAILABLE -> 503');
+  const to = await http('POST', `/api/tractors/${tid}/preview`, { control: 'max_speed', value: 6 }, { 'X-Mock-Fail': 'TIMEOUT' });
+  ok(to.status === 503 && to.json.error.code === 'TIMEOUT', 'forced preview TIMEOUT -> 503');
+  const ms = await http('POST', `/api/tractors/${tid}/control`, { control: 'max_speed', value: 9 }, { 'Idempotency-Key': randomUUID() });
+  ok(ms.status === 202 && ms.json.source === 'control' && ms.json.status === 'queued', 'replans:true control -> 202 Operation', ms.json);
+  const msEnd = await A.until(opTerminal(ms.json.id), 5000, 'control op terminal');
+  ok(msEnd && msEnd.data.status === 'succeeded', 'control op succeeded');
+  const on = await http('POST', `/api/tractors/${tid}/manual`, { on: true }, { 'Idempotency-Key': randomUUID() });
+  ok(on.status === 202 && on.json.source === 'manual', 'POST manual on -> 202 Operation', on.json);
+  await A.until(opTerminal(on.json.id), 5000, 'manual op terminal');
+  ok((await http('GET', '/api/fleet')).json.find((t) => t.id === tid).manual === true, 'tractor.manual true');
+  const st = await http('POST', `/api/tractors/${tid}/control`, { control: 'steer', value: 12 });
+  ok(st.status === 200 && st.json.ok === true && st.json.value === 12 && st.json.explanation === null, 'steer in manual -> 200 {ok,value,explanation}', st.json);
+  const bad = await http('POST', `/api/tractors/${tid}/control`, { control: 'steer', value: 400 });
+  ok(bad.status === 400 && bad.json.error.code === 'INVALID_INPUT', 'out of range -> 400 INVALID_INPUT');
+  const off = await http('POST', `/api/tractors/${tid}/manual`, { on: false }, { 'Idempotency-Key': randomUUID() });
+  await A.until(opTerminal(off.json.id), 5000, 'hand back op');
+  ok((await http('GET', '/api/fleet')).json.find((t) => t.id === tid).manual === false, 'hand back -> manual false');
+  const nf3 = await http('GET', '/api/tractors/T999/controls');
+  ok(nf3.status === 404 && nf3.json.error.code === 'NOT_FOUND', 'unknown tractor -> 404');
+}
 const oa = await http('GET', '/openapi.json');
 ok(oa.status === 200 && Array.isArray(oa.json.routes) && oa.json.routes.length >= 20, `GET /openapi.json lists ${oa.json && oa.json.routes.length} routes`);
 const badJson = await fetch(API + '/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{nope' });
@@ -255,6 +289,31 @@ try { await live.request('POST', '/events', { type: 'heat_alert' }, { idempotenc
 catch (e) { ok(e.status === 409 && e.code === 'CONFLICT', 'live.request key reuse with other body rejects 409 CONFLICT'); }
 const rs = await live.resync();
 ok(rs && rs.clock && store.get().jobs.length > 0, 'live.resync() (GET /state) applied');
+
+section('live wording: feed and explanation agree, no mock wording, real clock, overtime (user-testing round)');
+{
+  const { logLine, replanChanges, planHealth } = await import('../dashboard/src/lib/derive.js');
+  const { clockText } = await import('../dashboard/src/data/text.js');
+  const s = store.get();
+  const strip = (h) => String(h || '').replace(/<[^>]+>/g, '');
+  const lines = (s.log || []).map((e) => strip(logLine(e, s))).filter(Boolean);
+  const texts = [...lines, ...(s.explanations || []).map((x) => x.text)];
+  ok(lines.some((l) => /added to the fleet/.test(l)), 'feed: "Tractor N added to the fleet" (no host)', lines.filter((l) => /added/.test(l)));
+  ok(!texts.some((t) => /\bmock\b|simulat/i.test(t)), 'no mock/simulation wording in live feed or explanations', texts.filter((t) => /mock|simulat/i.test(t)));
+  ok(!texts.some((t) => /\b0 jobs (moved|changed)\b|\b1 jobs\b|\bP[123]\b/.test(t)), 'no "0 jobs moved", "1 jobs", or P1 wording');
+  const heatLog = (s.log || []).find((e) => e.kind === 'replan' && e.trigger === 'heat_alert');
+  const heatX = heatLog && (s.explanations || []).find((x) => x.id === heatLog.explanation_id);
+  if (heatLog && heatX) {
+    const ids = replanChanges(heatLog), missing = ids.filter((id) => !heatX.text.includes(s.jobs.find((j) => j.id === id).label));
+    ok(missing.length === 0, `heat alert: feed counts ${ids.length} changed jobs and the explanation names each`, { missing, text: heatX.text });
+  } else ok(!!heatLog, 'heat alert replan in log');
+  ok(clockText(1134) === '12:54 AM (+1 day)', 'clock text past midnight');
+  const h = planHealth(s);
+  const maxEnd = Math.max(0, ...((s.plan && s.plan.entries) || []).filter((e) => (e.kind === 'work' || e.kind === 'travel') && !(e.job && s.jobs.find((j) => j.id === e.job)?.status === 'done')).map((e) => e.end_t));
+  ok(h.overtimeMin === Math.max(0, Math.round(maxEnd - (s.clock.day_minutes || 720))), `planHealth overtime matches plan entries (${h.overtimeMin} min)`);
+  const x0 = (s.explanations || [])[0];
+  if (x0 && x0.facts && x0.facts.context && x0.facts.context.overtime_min > 0 && x0.trigger !== 'end_of_day') ok(/past sunset/.test(x0.text), 'latest explanation mentions overtime');
+}
 live.close();
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'}: ${checks - failures}/${checks} checks`);

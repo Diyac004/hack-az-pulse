@@ -14,7 +14,7 @@
 //     cell cost 1, off-road 3.5, blocked cells impassable; tractors move 0.5
 //     cells per farm minute (x FleetEntry.speed). A job is entered at
 //     (block.x, block.y - 0.5) and swept in 3 rows (sweepPos) ending at
-//     (block.x + 3, block.y + 1.5). speed_mph in poses is nominal (8 travel,
+//     (block.x + 3, block.y - 0.5 + 2h/3). speed_mph in poses is nominal (8 travel,
 //     4.5 work), not derived from the compressed grid.
 //  4. heat_alert has no target blocks in EventInput: the mock treats blocks G
 //     and H as heat-exposed (unstarted spray jobs there go to priority 3).
@@ -52,6 +52,8 @@ export const TICK_MS = 100;
 export const FARM_MIN_PER_REAL_S = 1.2;
 /** Valid pace override (farm min per real second) or null. */
 export const parsePace = (v) => { const n = Number(v); return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n > 0 && n <= 120 ? n : null; };
+import { clockText, plural, verb, listText, durText, priorityWord } from './text.js';
+import { createControlHost, stepManual, leadText as controlLeadText } from './mockControls.js';
 const GW = 20, GH = 14;
 const RX = [0, 5, 10, 15], RY = [0, 6, 13];
 const DEPOT = { x: 1, y: 6 };
@@ -65,12 +67,14 @@ const IMPL_VERB = { sprayer: 'spraying', mower: 'mowing', hedger: 'hedging', bin
 const TOOL_WIDTH = { sprayer: 6, mower: 4.5, hedger: 3, bin_trailer: 2.5 };
 const HEAT_BLOCKS = ['G', 'H'];
 const POOL_MAX = 24;
-const SCHEDULABLE = new Set(['ready', 'idle', 'traveling', 'working', 'waiting_weather']);
+const SCHEDULABLE = new Set(['ready', 'idle', 'traveling', 'working', 'waiting_weather', 'refueling']); // refueling: operator-ordered depot stop, still plannable
 
 const BLOCKS = [
   ['A', 1, 2, 'Navel', 0.4], ['B', 6, 2, 'Valencia', 0.5], ['C', 11, 2, 'Navel', 0.72], ['D', 16, 2, 'Lemon', 0.3],
-  ['E', 1, 9, 'Valencia', 0.55], ['F', 6, 9, 'Grapefruit', 0.6], ['G', 11, 9, 'Navel', 0.45], ['H', 16, 9, 'Mandarin', 0.35],
-].map(([id, x, y, variety, ripeness]) => ({ id, x, y, w: 4, h: 3, variety, ripeness }));
+  // E–H sit between road rows 6 and 13: rows 8..11 (h 4) leave one empty row on each side, like A–D (rows 2..4
+  // between roads 0 and 6), so both tiers are centred between their roads.
+  ['E', 1, 8, 'Valencia', 0.55, 4], ['F', 6, 8, 'Grapefruit', 0.6, 4], ['G', 11, 8, 'Navel', 0.45, 4], ['H', 16, 8, 'Mandarin', 0.35, 4],
+].map(([id, x, y, variety, ripeness, h = 3]) => ({ id, x, y, w: 4, h, variety, ripeness }));
 const BLOCK = Object.fromEntries(BLOCKS.map((b) => [b.id, b]));
 
 // id, label, block, implement, duration, priority, deadline (from the UI mock)
@@ -132,12 +136,8 @@ const r1 =(v) => (v == null ? null : Math.round(v * 10) / 10);
 const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 const apiError = (code, message, details = {}) => ({ code, message, details });
-export function fmtClock(m) {
-  const h = 6 + Math.floor(m / 60), mm = Math.floor(m % 60), hh = ((h + 11) % 12) + 1;
-  return hh + ':' + String(mm).padStart(2, '0') + (h >= 12 ? ' PM' : ' AM');
-}
-const plural = (n, one, many = one + 's') => n + ' ' + (n === 1 ? one : many);
-const listText = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+/** Farm time -> clock text; past midnight says "(+1 day)" (see text.js). */
+export const fmtClock = clockText;
 const idNum = (id) => parseInt(String(id).replace(/\D/g, ''), 10) || 0;
 /** Seeded PRNG (mulberry32). */
 function rng(seed) {
@@ -187,9 +187,10 @@ function gridPath(sx, sy, tx, ty, blocked) {
 function routeTo(x, y, tg, blocked) { return [...gridPath(x, y, tg[0], tg[1], blocked), [tg[0], tg[1]]]; }
 function polyLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
 const travelMinutes = (len, speed) => (len * 2) / (speed || 1);
+/** 3 boustrophedon rows, pitched block.h / 3 from the block's top edge (pitch 1 for the 3-row blocks). */
 function sweepPos(blockId, prog) {
   const b = BLOCK[blockId]; const s = prog * 3, row = Math.min(2, Math.floor(s)), f = Math.min(1, s - row);
-  return [b.x + (row % 2 ? 3 - f * 3 : f * 3), b.y - 0.5 + row];
+  return [b.x + (row % 2 ? 3 - f * 3 : f * 3), b.y - 0.5 + row * (b.h / 3)];
 }
 const entryPoint = (j) => (j.progress > 0 ? sweepPos(j.block, j.progress) : [BLOCK[j.block].x, BLOCK[j.block].y - 0.5]);
 const endPoint = (j) => sweepPos(j.block, 1);
@@ -211,6 +212,10 @@ const remainingMin = (j) => j.duration_min * (1 - j.progress);
  */
 function tractorSchedule(tr, byId, queue, now, blocked, includeCurrent = true, wx = null) {
   const entries = []; let c = now, x = tr.x, y = tr.y;
+  if (tr.hold && tr.hold.until > now) { // operator: implement swap / refuel at the depot first
+    entries.push({ tractor: tr.id, job: null, kind: tr.hold.kind === 'swap' ? 'swap_implement' : 'refuel', start_t: now, end_t: tr.hold.until, route: [] });
+    c = tr.hold.until; x = DEPOT.x; y = DEPOT.y; includeCurrent = false;
+  }
   // work [c, ...]: spray work is split across the block's allowed windows with `wait` entries in the gaps
   const work = (j, start, firstStart) => {
     const R = remainingMin(j);
@@ -284,7 +289,7 @@ export function planAssign({ tractors, jobs, blocked, t, wx = null }) {
   const waitsNow = (j) => !!(wx && j.implement === 'sprayer' && !wx.opensSoon(j.block, t));
   const order = (a, b) => (waitsNow(a) ? 1 : 0) - (waitsNow(b) ? 1 : 0) || jobCmp(a, b);
   const assign = new Map(sched.map((tr) => [tr.id, []]));
-  const unassigned = new Map();
+  const unassigned = new Map(), why = new Map();
   let rejected = 0;
   for (const j of jobs.filter((j) => unfinished(j) && !frozen.has(j.id)).sort(order)) {
     const noWin = wx && j.implement === 'sprayer' ? wx.noWindowReason(j) : null;
@@ -292,13 +297,15 @@ export function planAssign({ tractors, jobs, blocked, t, wx = null }) {
     let best = null;
     for (const tr of tractors) {
       if (!tr.implements.includes(j.implement) || !schedulable(tr) || (j.pinned_to && j.pinned_to !== tr.id)) { rejected++; continue; }
+      if (tr.banned_types && tr.banned_types.includes(j.type)) { rejected++; why.set(j.id, `${tr.name || tr.id} is set to never take ${j.type === 'haul_bins' ? 'bin hauling' : j.type + 'ing'} work.`); continue; }
       const tail = tails.get(tr.id);
       const tt = travelMinutes(polyLen([[tail.x, tail.y], ...routeTo(tail.x, tail.y, entryPoint(j), blocked).slice(1)]), tr.speed);
       let fin = tail.end_t + tt + remainingMin(j);
       if (wx && j.implement === 'sprayer') { const segs = wx.split(j.block, tail.end_t + tt, remainingMin(j)); fin = segs[segs.length - 1][1]; }
+      if (tr.off_duty_t != null && fin > tr.off_duty_t + 1e-9) { rejected++; why.set(j.id, `${tr.name || tr.id} goes off duty at ${clockText(tr.off_duty_t)}, before this job could finish.`); continue; }
       if (!best || fin < best.fin - 1e-9 || (Math.abs(fin - best.fin) < 1e-9 && tt < best.tt)) best = { tr, fin, tt };
     }
-    if (!best) { unassigned.set(j.id, unassignedReason(j, tractors)); continue; }
+    if (!best) { unassigned.set(j.id, why.get(j.id) || unassignedReason(j, tractors)); continue; }
     assign.get(best.tr.id).push(j.id);
     const [ex, ey] = endPoint(j);
     tails.set(best.tr.id, { ...tails.get(best.tr.id), end_t: best.fin, x: ex, y: ey });
@@ -440,6 +447,7 @@ export function createMockSource(opts = {}) {
   const ops = []; const queue = []; const idem = new Map();
   const ctr = { X: 0, P: 0, O: 0 };
   let failNext = false;
+  let controls = null; // Tractor Control Panel host (mockControls), created after the API below
   let tracked = { jobs: new Map(), fleet: '', poses: new Map() };
   let jobDoneFlag = false;
 
@@ -461,7 +469,7 @@ export function createMockSource(opts = {}) {
     return {
       id: tr.id, name: tr.name, color: tr.color, implements: tr.implements.slice(), status: tr.status, manual: tr.manual,
       fuel_pct: r1(tr.fuel),
-      pose: { x: r2(tr.x), y: r2(tr.y), lat: g.lat, lon: g.lon, heading_deg: hd, speed_mph: tr.status === 'traveling' ? 8 : tr.status === 'working' ? 4.5 : 0 },
+      pose: { x: r2(tr.x), y: r2(tr.y), lat: g.lat, lon: g.lon, heading_deg: hd, speed_mph: tr.manual ? r1(tr.mspeed || 0) : tr.status === 'traveling' ? r1(8 * (tr.speed || 1)) : tr.status === 'working' ? 4.5 : 0 },
       tool: { lat: tg.lat, lon: tg.lon, heading_deg: hd, width_m: TOOL_WIDTH[impl] ?? 3 },
       current_job: tr.current_job, queue: tr.queue.slice(), available_from_t: r1(tr.available_from_t), host: 'mock', agopenweb: null,
     };
@@ -525,7 +533,7 @@ export function createMockSource(opts = {}) {
     }
     if (changed.length || always) emit('jobs', { jobs: changed });
   }
-  function fleetSig() { return JSON.stringify(w.tractors.map((tr) => [tr.id, tr.status, tr.queue, tr.current_job, r1(tr.available_from_t), tr.implements, tr.manual])); }
+  function fleetSig() { return JSON.stringify(w.tractors.map((tr) => [tr.id, tr.status, tr.queue, tr.current_job, r1(tr.available_from_t), tr.implements, tr.manual, tr.name, tr.color])); }
   function flushFleet() { const s = fleetSig(); if (s !== tracked.fleet) { tracked.fleet = s; emit('fleet', { tractors: w.tractors.map(tractorOut) }); } }
   function flushPoses() {
     const changed = [];
@@ -554,6 +562,7 @@ export function createMockSource(opts = {}) {
       acc: { travel: 0, idle: 0, productive: 0, violations: 0, replanMs: null, rejected: null },
     };
     for (const e of SEED_TRACTORS) w.tractors.push(newTractor(e, w.created++));
+    if (controls) controls.reset();
     for (const j of queue.splice(0)) setOp(j.op, { status: 'superseded', message: 'Superseded by a new run.' });
   }
   const jobById = (id) => w.jobs.find((j) => j.id === id);
@@ -684,10 +693,15 @@ export function createMockSource(opts = {}) {
       facts.context.weather = { ...ctx.cur, prev_wind_mph: ctx.prev.wind_mph, until_t: r1(ctx.until), spray_min_wind_mph: R.min_wind_mph, spray_max_wind_mph: R.max_wind_mph, max_temp_f: R.max_temp_f,
         blocked_now: Object.fromEntries(Object.entries(ctx.blockedNow).filter(([, v]) => v).map(([b, v]) => [b, v.rule])) };
     }
-    const expl = { id: 'X' + ++ctr.X, t: r2(w.t), trigger, text: explainText(trigger, ctx, facts, late), facts, plan_version: version };
+    facts.context.day_end_t = DAY_MIN;
+    facts.context.overtime_min = Math.max(0, Math.round(newStats.makespan - DAY_MIN));
+    facts.context.retimed = retimed;
+    let text = explainText(trigger, ctx, facts, late);
+    if (facts.context.overtime_min > 0 && !ctx.saidOvertime) text += overtimeText(newStats.makespan);
+    const expl = { id: 'X' + ++ctr.X, t: r2(w.t), trigger, text, facts, plan_version: version };
     w.explanations.push(expl);
     if (trigger === 'initial_plan') addLog({ kind: 'plan', plan_version: version, solver: 'greedy', solve_ms: ms, assigned: w.jobs.filter((j) => j.tractor && unfinished(j)).length });
-    else addLog({ kind: 'replan', trigger, plan_version: version, replan_ms: ms, changes: moved, safety: v ? 'fail' : 'pass', explanation_id: expl.id });
+    else addLog({ kind: 'replan', trigger, plan_version: version, replan_ms: ms, changes: moved, retimed, safety: v ? 'fail' : 'pass', explanation_id: expl.id });
     emit('plan', w.plan);
     emit('explanation', expl);
     flushJobs({ force: true, always: true });
@@ -695,17 +709,71 @@ export function createMockSource(opts = {}) {
   }
 
   // ---------------- explanation text (numbers only from facts / plan)
+  // Rule: every number and every changed job in an explanation comes from the same facts the replan log carries
+  // (facts.moved == log.changes, facts.context.retimed == log.retimed), so the activity feed and the explanation
+  // always agree, and every job counted is named.
   const nameOf = (id) => trById(id)?.name ?? id;
+  const labelOf = (id) => jobById(id)?.label ?? id;
   let lateCtxUnassigned = 0;
   function lateText(late, suffix) {
     if (!late.length) return lateCtxUnassigned ? ' Every assigned job still meets its deadline.' : ' All deadlines are still met.';
     const j = late[0];
-    return ` ${j.label} will now miss its ${fmtClock(j.deadline_t)} deadline by about ${Math.round(j.end_t - j.deadline_t)} min.${suffix || ''}`;
+    let s = ` ${j.label} will now miss its ${fmtClock(j.deadline_t)} deadline by about ${durText(j.end_t - j.deadline_t)}.`;
+    const more = late.slice(1);
+    if (more.length) s += ` ${plural(more.length, 'more job')} ${verb(more.length, 'is', 'are')} projected late (${listText(more.map((x) => x.label))}).`;
+    return s + (suffix || '');
+  }
+  function overtimeText(endT) {
+    return ` Work now runs ${durText(endT - DAY_MIN)} past sunset (${fmtClock(DAY_MIN)}), until ${fmtClock(endT)}.`;
+  }
+  /** " (wind 11 mph exceeds the 10 mph spray limit, then 112°F is above the 100°F product limit)": every distinct
+   *  reason spraying is blocked during [a, b], sampled every 10 min. */
+  function pauseWhy(block, a, b) {
+    const seen = new Map();
+    for (let t = a; t < b; t += 10) { const r = sprayBlock(w.wx, block, t); if (r && !seen.has(r.rule)) seen.set(r.rule, r.text.charAt(0).toLowerCase() + r.text.slice(1)); }
+    return seen.size ? ' (' + [...seen.values()].join(', then ') + ')' : '';
+  }
+  /** Work segments of a job in the current plan: [[start, end], ...] sorted. */
+  function workSegs(jobId) {
+    return (w.plan?.entries || []).filter((e) => e.kind === 'work' && e.job === jobId).map((e) => [e.start_t, e.end_t]).sort((a, b) => a[0] - b[0]);
+  }
+  /** "runs 12:05 PM to 4:40 PM, paused 1:00 PM to 2:00 PM (wind 11 mph exceeds the 10 mph spray limit)". */
+  function runText(j) {
+    const seg = workSegs(j.id);
+    if (!seg.length) return null;
+    if (seg[0][0] >= DAY_MIN - 1e-9) return `has no ${j.implement === 'sprayer' ? 'spray window' : 'time'} left today, so the plan pushes it past sunset (${fmtClock(seg[0][0])} to ${fmtClock(seg[seg.length - 1][1])})`;
+    let s = `runs ${fmtClock(seg[0][0])} to ${fmtClock(seg[seg.length - 1][1])}`;
+    const gaps = [];
+    for (let i = 1; i < seg.length; i++) if (seg[i][0] - seg[i - 1][1] >= 1) gaps.push([seg[i - 1][1], seg[i][0]]);
+    if (gaps.length) {
+      const g = gaps[0];
+      s += `, paused ${fmtClock(g[0])} to ${fmtClock(g[1])}${j.implement === 'sprayer' ? pauseWhy(j.block, g[0], g[1]) : ''}`;
+      if (gaps.length > 1) s += ` and ${plural(gaps.length - 1, 'more time')}`;
+    }
+    return s;
+  }
+  /**
+   * Names every changed job not already described: "Also changed: Spray D moves to Tractor 4; Spray G and Spray H
+   * start earlier." `skip` = job ids the trigger text already named. Empty string when nothing is left.
+   */
+  function changesText(facts, skip = [], lead = 'Also changed') {
+    const sk = new Set(skip);
+    const mv = facts.moved.filter((m) => !sk.has(m.job));
+    const rt = (facts.context.retimed || []).filter((r) => !sk.has(r.job));
+    if (!mv.length && !rt.length) return '';
+    const parts = [];
+    const byTo = new Map(); for (const m of mv) { const k = m.to; byTo.set(k, [...(byTo.get(k) || []), labelOf(m.job)]); }
+    for (const [to, labels] of byTo) parts.push(`${listText(labels)} ${verb(labels.length, 'moves', 'move')} to ${nameOf(to)}`);
+    const earlier = rt.filter((r) => r.new_start_t < r.old_start_t).map((r) => labelOf(r.job));
+    const later = rt.filter((r) => r.new_start_t >= r.old_start_t).map((r) => labelOf(r.job));
+    if (earlier.length) parts.push(`${listText(earlier)} ${verb(earlier.length, 'starts', 'start')} earlier`);
+    if (later.length) parts.push(`${listText(later)} ${verb(later.length, 'starts', 'start')} later`);
+    return ` ${lead}: ${parts.join('; ')}.`;
   }
   function explainText(trigger, ctx, facts, late) {
     lateCtxUnassigned = facts.unassigned.length;
     const mv = facts.moved;
-    const movedLabels = (list) => list.map((m) => jobById(m.job).label);
+    const movedLabels = (list) => list.map((m) => labelOf(m.job));
     switch (trigger) {
       case 'initial_plan': {
         const first = w.jobs.filter((j) => j.tractor).sort((a, b) => b.priority - a.priority || a.deadline_t - b.deadline_t)[0];
@@ -723,35 +791,46 @@ export function createMockSource(opts = {}) {
           if (m) {
             const to = trById(m.to);
             const others = w.tractors.filter((t) => t.id !== ctx.tractor && t.implements.includes(cj.implement));
-            s = `${tn} broke down ${pct}% of the way through ${IMPL_VERB[cj.implement]} Block ${cj.block}. ${to.name} ${others.length === 1 ? 'has the only other ' : 'has a '}${IMPL_NAME[cj.implement]} and ${Math.round(to.fuel)}% fuel, so it finishes the remaining ${100 - pct}% starting at ${fmtClock(cj.start_t)}.`;
-          } else s = `${tn} broke down ${pct}% of the way through ${IMPL_VERB[cj.implement]} Block ${cj.block}. ${jobById(cj.id).unassigned_reason ?? ''} It waits until a tractor is available.`;
+            s = `${tn} broke down ${pct}% of the way through ${cj.label} (Block ${cj.block}). ${to.name} ${others.length === 1 ? 'has the only other ' : 'has a '}${IMPL_NAME[cj.implement]} and ${Math.round(to.fuel)}% fuel, so it finishes the remaining ${100 - pct}% starting at ${fmtClock(cj.start_t)}.`;
+          } else s = `${tn} broke down ${pct}% of the way through ${cj.label} (Block ${cj.block}). ${jobById(cj.id).unassigned_reason ?? ''} It waits until a tractor is available.`;
         } else s = `${tn} broke down between jobs.`;
         const rest = mv.filter((m) => m.job !== ctx.job && m.from === ctx.tractor);
-        if (rest.length) s += ` ${plural(rest.length, 'more job')} (${listText(movedLabels(rest))}) ${rest.length === 1 ? 'moves' : 'move'} to ${listText([...new Set(rest.map((m) => nameOf(m.to)))])} until ${tn} is repaired.`;
+        if (rest.length) s += ` ${plural(rest.length, 'more job')} (${listText(movedLabels(rest))}) ${verb(rest.length, 'moves', 'move')} to ${listText([...new Set(rest.map((m) => nameOf(m.to)))])} until ${tn} is repaired.`;
+        s += changesText(facts, [ctx.job, ...rest.map((m) => m.job)].filter(Boolean));
         const stuck = facts.unassigned.length; if (stuck) s += ` ${plural(stuck, 'job')} cannot be reassigned: ${facts.unassigned[0].reason}`;
         return s + lateText(late, ' Booking a mechanic can recover it.');
       }
       case 'block_route': {
         const c = ctx.facts || {};
         const s = c.rerouted ? `Farm road blocked ahead of ${nameOf(c.rerouted)}. The Navigation Agent rerouted it around the barrier, ${c.extra_min > 0 ? `adding about ${c.extra_min} min of travel` : 'with no extra travel time'}.` : 'Farm road blocked. No tractor was using it, and all future routes now avoid it.';
-        return s + (late.length ? ` ${late[0].label} is now at risk of missing its deadline.` : ' No deadlines affected.');
+        return s + changesText(facts, [], 'Changed') + (late.length ? lateText(late) : ' No deadlines affected.');
       }
-      case 'unblock_route': return `Farm road reopened (${plural(ctx.facts.cells.length, 'cell')}). Routes recomputed; ${plural(mv.length, 'job')} moved.` + lateText(late);
+      case 'unblock_route': return `Farm road reopened (${plural(ctx.facts.cells.length, 'cell')}). Routes recomputed.` + (changesText(facts, [], 'Changed') || ' No job had to change.') + lateText(late);
       case 'heat_alert': {
-        const c = ctx.facts;
-        return `Heat alert from the Agronomy Agent: ${c.temp_f}°F expected by ${fmtClock(c.at_t)}. Kaolin spraying for Blocks ${listText(HEAT_BLOCKS)} moves up to high priority and ahead in the queue, so the trees are coated before peak heat. ` +
-          (c.raised.length ? `${plural(c.raised.length, 'job')} reordered.` : 'Those jobs were already underway or done.');
+        // Say what the plan actually does for each raised job, not what we hoped: finish time vs the heat peak.
+        const c = ctx.facts, peak = fmtClock(c.at_t);
+        let s = `Heat alert from the Agronomy Agent: ${c.temp_f}°F expected by ${peak}. Kaolin spraying for Blocks ${listText(HEAT_BLOCKS)} moves up to high priority and ahead in the queue, to coat the trees before the heat where the weather allows.`;
+        if (!c.raised.length) s += ' Those jobs were already underway or done, so the plan keeps them as they are.';
+        for (const id of c.raised) {
+          const j = jobById(id), seg = workSegs(id), run = runText(j);
+          if (!j.tractor || !seg.length) { s += ` ${j.label} is not assigned: ${j.unassigned_reason || 'no compatible tractor'}.`; continue; }
+          const end = seg[seg.length - 1][1];
+          s += end <= c.at_t + 1e-9
+            ? ` ${j.label} on ${nameOf(j.tractor)} ${run}, done before the ${peak} peak.`
+            : ` ${j.label} on ${nameOf(j.tractor)} cannot finish before the peak: it ${run}.`;
+        }
+        return s + changesText(facts, [], 'Changed') + lateText(late);
       }
       case 'priority_change': {
         const c = ctx.facts; const j = jobById(c.job);
         let s = `${j.label}: `;
         const parts = [];
-        if (c.old_priority !== c.new_priority) parts.push(`priority ${c.old_priority} → ${c.new_priority}`);
+        if (c.old_priority !== c.new_priority) parts.push(`priority ${priorityWord(c.old_priority)} → ${priorityWord(c.new_priority)}`);
         if (c.old_deadline_t !== c.new_deadline_t) parts.push(`deadline ${fmtClock(c.old_deadline_t)} → ${fmtClock(c.new_deadline_t)}`);
         if (c.old_pinned_to !== c.new_pinned_to) parts.push(c.new_pinned_to ? `pinned to ${nameOf(c.new_pinned_to)}` : 'unpinned');
         s += (parts.join(', ') || 'no change') + '.';
         s += j.tractor ? ` It now starts at ${fmtClock(j.start_t)} on ${nameOf(j.tractor)}.` : ` It is unassigned: ${j.unassigned_reason}`;
-        if (mv.length) s += ` ${plural(mv.length, 'job')} moved between tractors.`;
+        s += changesText(facts, [j.id]);
         return s + lateText(late);
       }
       case 'tractor_added': {
@@ -760,24 +839,38 @@ export function createMockSource(opts = {}) {
         if (taken.length) {
           const from = [...new Set(taken.map((m) => m.from).filter(Boolean).map(nameOf))];
           s += ` It takes ${listText(movedLabels(taken))}${from.length ? ' from ' + listText(from) : ''}, because it can finish ${taken.length === 1 ? 'that job' : 'them'} sooner.`;
-          const d = Math.round(facts.context.makespan_old_t - facts.context.makespan_new_t);
-          if (d > 0) s += ` All work now finishes by ${fmtClock(facts.context.makespan_new_t)}, ${d} min earlier than before (${fmtClock(facts.context.makespan_old_t)}).`;
-          else if (d < 0) s += ` The day's last job now ends at ${fmtClock(facts.context.makespan_new_t)}, ${-d} min later than before, but the moved jobs finish sooner.`;
-          else s += ` The day's last job still ends at ${fmtClock(facts.context.makespan_new_t)}.`;
+          // compare raw farm minutes (never clock strings): both may be past sunset or past midnight
+          const oldT = facts.context.makespan_old_t, newT = facts.context.makespan_new_t, d = Math.round(oldT - newT);
+          if (d > 0) s += ` All work now finishes by ${fmtClock(newT)}, ${durText(d)} earlier than the previous ${fmtClock(oldT)} finish.`;
+          else if (d < 0) s += ` The day's last job now ends at ${fmtClock(newT)}, ${durText(-d)} later than before, but the moved jobs finish sooner.`;
+          else s += ` The day's last job still ends at ${fmtClock(newT)}.`;
+          if (newT > DAY_MIN + 0.5) { s += ` That is still ${durText(newT - DAY_MIN)} past sunset (${fmtClock(DAY_MIN)}).`; ctx.saidOvertime = true; }
         } else s += ' No unstarted compatible work finishes sooner with it, so it stays on standby.';
-        return s + lateText(late);
+        return s + changesText(facts, taken.map((m) => m.job)) + lateText(late);
       }
       case 'tractor_removed': {
         const back = mv.filter((m) => m.from === ctx.tractor);
-        return `${nameOf(ctx.tractor)} is leaving the fleet. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${back.length === 1 ? 'is' : 'are'} handed to ${listText([...new Set(back.map((m) => nameOf(m.to)))])}, keeping progress.` : 'It had no remaining work.') +
-          (facts.unassigned.length ? ` ${plural(facts.unassigned.length, 'job')} wait: ${facts.unassigned[0].reason}` : '') + lateText(late);
+        return `${nameOf(ctx.tractor)} is leaving the fleet. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${verb(back.length, 'is', 'are')} handed to ${listText([...new Set(back.map((m) => nameOf(m.to)))])}, keeping progress.` : 'It had no remaining work.') +
+          changesText(facts, back.map((m) => m.job)) +
+          (facts.unassigned.length ? ` ${plural(facts.unassigned.length, 'job')} ${verb(facts.unassigned.length, 'waits', 'wait')}: ${facts.unassigned[0].reason}` : '') + lateText(late);
       }
       case 'tractor_repaired': {
         const tn = nameOf(ctx.tractor); const back = mv.filter((m) => m.to === ctx.tractor);
-        return `${tn} repaired at ${fmtClock(w.t)}. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${back.length === 1 ? 'moves' : 'move'} back to it, so work runs in parallel again.` : `No remaining work finishes sooner on ${tn}, so it stays on standby.`) + lateText(late);
+        return `${tn} repaired at ${fmtClock(w.t)}. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${verb(back.length, 'moves', 'move')} back to it, so work runs in parallel again.` : `No remaining work finishes sooner on ${tn}, so it stays on standby.`) +
+          changesText(facts, back.map((m) => m.job)) + lateText(late);
       }
       case 'weather_change': return weatherText(ctx, facts, late);
-      default: return `Plan updated (${trigger}). ${plural(mv.length, 'job')} moved.` + lateText(late);
+      case 'operator_action': {
+        if (ctx.manual !== undefined) {
+          const tn = nameOf(ctx.tractor), back = mv.filter((m) => m.from === ctx.tractor), to = mv.filter((m) => m.to === ctx.tractor);
+          const s = ctx.manual
+            ? `${tn} is under manual control and out of AI planning. ` + (back.length ? `${plural(back.length, 'job')} (${listText(movedLabels(back))}) ${verb(back.length, 'moves', 'move')} to ${listText([...new Set(back.map((m) => nameOf(m.to)))])}, keeping progress.` : facts.unassigned.length ? 'None of its work can move to another tractor right now.' : 'It had no remaining work to hand over.')
+            : `${tn} is back under AI control and re-planned from where it stands. ` + (to.length ? `It picks up ${listText(movedLabels(to))}.` : 'No job finishes sooner on it, so it stays on standby.');
+          return s + changesText(facts, [...back, ...to].map((m) => m.job)) + (facts.unassigned.length ? ` ${plural(facts.unassigned.length, 'job')} ${verb(facts.unassigned.length, 'waits', 'wait')}: ${facts.unassigned[0].reason}` : '') + lateText(late);
+        }
+        return ctx.lead + (changesText(facts, [], 'Changed') || ' No other job had to change.') + (facts.unassigned.length ? ` ${plural(facts.unassigned.length, 'job')} ${verb(facts.unassigned.length, 'waits', 'wait')}: ${facts.unassigned[0].reason}` : '') + lateText(late);
+      }
+      default: return `Plan updated (${String(trigger).replace(/_/g, ' ')}).` + (changesText(facts, [], 'Changed') || ' No job had to change.') + lateText(late);
     }
   }
 
@@ -794,22 +887,24 @@ export function createMockSource(opts = {}) {
     else if (sens) s = `Wind is now ${c.wind_mph} mph from the ${compassName(c.wind_from_deg)}, blowing toward the ${ctx.blockedNow[sens[0]].what} by Block ${sens[0]}. Spraying there is off; other blocks stay inside the ${R.min_wind_mph} to ${R.max_wind_mph} mph range.`;
     else s = `Wind eased to ${c.wind_mph} mph from the ${compassName(c.wind_from_deg)} at ${at}, inside the ${R.min_wind_mph} to ${R.max_wind_mph} mph spray range.${blocked.length ? '' : ' Spraying is allowed on every block.'}`;
     const paused = facts.context.paused || [];
+    const named = [];
     for (const p of paused) {
       const tr = nameOf(p.tractor), j = jobById(p.job);
       const nj = p.switched_to ? jobById(p.switched_to) : null;
       const pct = Math.min(99, Math.round(p.progress * 100));
+      named.push(p.job); if (nj) named.push(nj.id);
       s += ` ${tr} ${p.was === 'working' ? `paused spraying Block ${p.block} at ${pct}%` : p.was === 'waiting_weather' ? `stopped waiting at Block ${p.block}` : `stopped heading to spray Block ${p.block}`}`;
       s += nj ? ` and switched to ${IMPL_VERB[nj.implement]} ${nj.implement === 'bin_trailer' ? 'bins ' : ''}in Block ${nj.block}.` : ' and waits for the wind.';
       if (p.resume_t != null && j.tractor) s += ` Spraying Block ${p.block} resumes at ${fmtClock(p.resume_t)}${j.tractor !== p.tractor ? ' on ' + nameOf(j.tractor) : ''}${j.end_t != null && j.end_t <= j.deadline_t + 1e-9 ? `, still before its ${fmtClock(j.deadline_t)} deadline` : ''}.`;
       else if (j.unassigned_reason) s += ' ' + j.unassigned_reason;
     }
     const resumed = w.tractors.filter((tr) => tr.status === 'waiting_weather' && tr.current_job && jobWeatherOk(w.wx, jobById(tr.current_job), w.t));
-    for (const tr of resumed) { const j = jobById(tr.current_job); s += ` ${tr.name} resumes spraying Block ${j.block}${j.progress > 0 ? ` at ${Math.min(99, Math.round(j.progress * 100))}%` : ''}.`; }
+    for (const tr of resumed) { const j = jobById(tr.current_job); named.push(j.id); s += ` ${tr.name} resumes spraying Block ${j.block}${j.progress > 0 ? ` at ${Math.min(99, Math.round(j.progress * 100))}%` : ''}.`; }
     const back = facts.moved.filter((m) => jobById(m.job).implement === 'sprayer' && m.progress_kept > 0 && !paused.some((p) => p.job === m.job));
-    for (const m of back) { const j = jobById(m.job); s += ` ${j.label} (${Math.round(m.progress_kept * 100)}% done) moves to ${nameOf(m.to)}, restarting at ${fmtClock(j.start_t)}.`; }
-    if (!paused.length && !resumed.length && !back.length) {
-      s += facts.moved.length || w.plan?.diff?.retimed?.length ? ' Spray jobs were re-timed around the new conditions.' : ' No spraying was underway, so nothing had to stop.';
-    }
+    for (const m of back) { const j = jobById(m.job); named.push(j.id); s += ` ${j.label} (${Math.round(m.progress_kept * 100)}% done) moves to ${nameOf(m.to)}, restarting at ${fmtClock(j.start_t)}.`; }
+    const rest = changesText(facts, named, paused.length || resumed.length || back.length ? 'Also changed' : 'Re-timed around the new conditions');
+    if (rest) s += rest;
+    else if (!paused.length && !resumed.length && !back.length) s += ' No spraying was underway, so nothing had to stop.';
     return s + lateText(late);
   }
 
@@ -859,6 +954,8 @@ export function createMockSource(opts = {}) {
     w.t = Math.min(DAY_MIN, w.t + dt);
     const open = w.jobs.filter(unfinished);
     for (const tr of w.tractors) {
+      if (tr.manual && SCHEDULABLE.has(tr.status)) { driveManual(tr, dt); continue; }
+      if (tr.hold && schedulable(tr) && stepHold(tr, dt)) continue;
       if (!schedulable(tr)) continue;
       if (!tr.current_job) {
         if (tr.queue.length) {
@@ -906,6 +1003,45 @@ export function createMockSource(opts = {}) {
     }
   }
 
+  /** Move along a cell path at the tractor's travel speed; returns true on arrival. */
+  function followPath(tr, P, dt) {
+    let d = dt * 0.5 * tr.speed;
+    while (d > 0 && P.pi < P.path.length) {
+      const [cx, cy] = P.path[P.pi], dx = cx - tr.x, dy = cy - tr.y, L = Math.hypot(dx, dy);
+      if (L < 1e-6) { P.pi++; continue; }
+      tr.hd = headingDeg(dx, dy);
+      if (L <= d) { tr.x = cx; tr.y = cy; P.pi++; d -= L; } else { tr.x += (dx / L) * d; tr.y += (dy / L) * d; d = 0; }
+    }
+    return P.pi >= P.path.length;
+  }
+  /** Operator-ordered depot visit (implement swap / refuel). Returns true while the tractor is still held. */
+  function stepHold(tr, dt) {
+    const h = tr.hold;
+    if (w.t >= h.until - 1e-9) {
+      if (h.kind === 'refuel') tr.fuel = 100;
+      addLog({ kind: h.kind === 'refuel' ? 'refueled' : 'implement_swapped', tractor: tr.id, implements: tr.implements.slice() });
+      tr.hold = null; tr.status = 'idle'; tr.path = []; tr.pi = 0;
+      return false;
+    }
+    if (h.pi < h.path.length) { tr.status = 'traveling'; w.acc.travel += dt; tr.fuel = Math.max(5, tr.fuel - dt * 0.05); followPath(tr, h, dt); }
+    else tr.status = h.kind === 'refuel' ? 'refueling' : 'idle';
+    return true;
+  }
+  /** Manual mode: drive-to route (our Navigation), else the simulator's speed/steer/direction. */
+  function driveManual(tr, dt) {
+    const cs = controls && controls.state(tr.id);
+    if (tr.mroute) {
+      tr.status = 'traveling'; tr.mspeed = 8 * tr.speed; tr.fuel = Math.max(5, tr.fuel - dt * 0.05);
+      if (followPath(tr, tr.mroute, dt)) { tr.mroute = null; tr.status = 'idle'; tr.mspeed = 0; if (cs) cs.drive_to = null; addLog({ kind: 'manual_arrived', tractor: tr.id, x: r2(tr.x), y: r2(tr.y) }); }
+      return;
+    }
+    if (cs && cs.speed_mph > 0) {
+      const p = stepManual({ x: tr.x, y: tr.y, heading_deg: tr.hd }, cs, dt, { width: GW, height: GH });
+      tr.x = p.x; tr.y = p.y; tr.hd = p.heading_deg; tr.mspeed = p.speed_mph; tr.status = 'traveling';
+      tr.fuel = Math.max(5, tr.fuel - dt * 0.05);
+    } else { tr.mspeed = 0; tr.status = 'idle'; }
+  }
+
   function startWork(tr, j) {
     tr.status = 'working'; j.status = 'working'; j.weather_blocked = false;
     if (j._s == null) { j._s = w.t; addLog({ kind: 'job_started', job: j.id, tractor: tr.id }); }
@@ -922,7 +1058,7 @@ export function createMockSource(opts = {}) {
     }
     const m = metricsOut().ours; const left = w.jobs.filter(unfinished);
     const text = `Day complete. ${m.completed} of ${m.jobs_total} jobs finished, ${m.on_time} on time, with ${plural(m.violations, 'constraint violation')}.` +
-      (left.length ? ` ${plural(left.length, 'job')} (${listText(left.map((j) => j.label))}) carry over to tomorrow.` : '');
+      (left.length ? ` ${plural(left.length, 'job')} (${listText(left.map((j) => j.label))}) ${verb(left.length, 'carries', 'carry')} over to tomorrow.` : '');
     const expl = { id: 'X' + ++ctr.X, t: r2(w.t), trigger: 'end_of_day', text, facts: { event: null, moved: [], deadlines_missed: [], travel_delta_min: 0, idle_delta_min: 0, unassigned: [], context: { completed: m.completed, on_time: m.on_time, unfinished: left.map((j) => j.id) } }, plan_version: w.planVersion };
     w.explanations.push(expl);
     emit('explanation', expl);
@@ -1135,7 +1271,7 @@ export function createMockSource(opts = {}) {
           }, meta);
         }
         default:
-          throw apiError('INVALID_INPUT', `The mock does not support event type "${ev.type}". Use POST /fleet for tractors.`, { field: 'type' });
+          throw apiError('INVALID_INPUT', `Event type "${ev.type}" is not supported. Use POST /fleet to add or remove tractors.`, { field: 'type' });
       }
     },
     async patchJob(id, patch, o = {}) {
@@ -1238,6 +1374,105 @@ export function createMockSource(opts = {}) {
       if (!op) throw apiError('NOT_FOUND', `Operation ${id} does not exist.`, { id });
       return clone(op);
     },
+  };
+
+  // ---------------- Tractor Control Panel (PROJECT.md Change 8; ARCHITECTURE.md §5 rows 13-16, §13.2)
+  const travelEst = (a, b, speed) => travelMinutes(polyLen([[a[0], a[1]], ...routeTo(a[0], a[1], b, w.blocked).slice(1)]), speed);
+  function releaseHeld(tr) {
+    if (tr.current_job) { const j = jobById(tr.current_job); if (j && unfinished(j)) j.status = j.progress > 0 ? 'paused' : 'pending'; } // j.tractor kept: the re-plan diff compares against it
+    tr.current_job = null; tr.queue = []; tr.path = []; tr.pi = 0; if (SCHEDULABLE.has(tr.status)) tr.status = 'idle';
+  }
+  function startHold(tr, kind, min) {
+    const path = routeTo(tr.x, tr.y, [DEPOT.x, DEPOT.y], w.blocked);
+    tr.hold = { kind, until: w.t + travelEst([tr.x, tr.y], [DEPOT.x, DEPOT.y], tr.speed) + min, path, pi: 1 };
+  }
+  const geoPt = (p) => (p.lat != null && p.lon != null ? p : { ...p, ...toGeo(p.x, p.y) });
+  function carryEffect(tr, change) {
+    const e = change.effect;
+    switch (e.kind) {
+      case 'tractor':
+        if (e.patch.implements) { tr.implements = e.patch.implements.slice(); releaseHeld(tr); startHold(tr, 'swap', e.depot_min); }
+        else if (e.patch.speed) tr.speed = e.patch.speed;
+        else Object.assign(tr, e.patch);
+        break;
+      case 'refuel': releaseHeld(tr); startHold(tr, 'refuel', e.depot_min); break;
+      case 'off_duty': tr.off_duty_t = e.t; break;
+      case 'ban': {
+        tr.banned_types = e.type ? [e.type] : null;
+        const cj = tr.current_job && jobById(tr.current_job); if (cj && e.type === cj.type) releaseHeld(tr);
+        break;
+      }
+      case 'pin':
+        for (const id of e.unpin) { const j = jobById(id); if (j) j.pinned_to = null; }
+        if (e.job) {
+          const j = jobById(e.job); j.pinned_to = tr.id;
+          const holder = w.tractors.find((o) => o.current_job === j.id && o.id !== tr.id); if (holder) releaseHeld(holder);
+        }
+        break;
+      case 'drive': if (e.stop) { tr.mroute = null; tr.mspeed = 0; } break;
+      case 'drive_to': tr.mroute = { path: routeTo(tr.x, tr.y, [e.point.x, e.point.y], w.blocked), pi: 1 }; break;
+      case 'teleport': tr.x = e.point.x; tr.y = e.point.y; tr.mroute = null; tr.mspeed = 0; break;
+      case 'ab': {
+        const pts = e.points && e.points.map(geoPt);
+        addLog({ kind: 'agopenweb', tractor: tr.id, detail: { ab: pts ? [pts[0].lat, pts[0].lon, pts[1].lat, pts[1].lon] : null, line: e.line } });
+        break;
+      }
+      default: break;
+    }
+  }
+  const logAction = (tr, control, old, nw, replans) => addLog({ kind: 'operator_action', tractor: tr.id, control, old: old ?? null, new: nw ?? null, replan: !!replans });
+  controls = createControlHost({
+    world: () => ({
+      // + planner-only fields (not on the wire): speed, availability, bans, depot hold, remaining route
+      fleet: w.tractors.map((tr) => ({ ...tractorOut(tr), speed: tr.speed, off_duty_t: tr.off_duty_t ?? null, banned_types: tr.banned_types || null,
+        hold: tr.hold ? { kind: tr.hold.kind, until: tr.hold.until } : null, path: tr.status === 'traveling' && tr.path ? tr.path.slice(tr.pi) : [] })),
+      jobs: w.jobs.map(jobOut), scenario: scenarioOut(), weather: weatherOut(w.wx, w.t), t: w.t, plan_version: w.planVersion,
+    }),
+    busy: () => queue.length > 0,
+    travel: travelEst,
+    wx: () => wxP(),
+    // the real scheduler on contract-shaped jobs (preview == apply: same planner, routes and spray windows)
+    schedule: (tr, queue, jobs, t) => tractorSchedule(tr, new Map(jobs.map((j) => [j.id, { ...j, progress: j.progress || 0 }])), queue, t, w.blocked, true, wxP()),
+    carry(id, change, control) {
+      const tr = trById(id); carryEffect(tr, change);
+      if (control.type !== 'slider' || change.old !== change.new) logAction(tr, control.id, change.old, change.new, false);
+      flushFleet(); flushPoses();
+    },
+    startReplan(id, change, control, restore) {
+      const tr0 = trById(id);
+      return enqueue('replan', 'control', `${control.label} change for ${tr0.name} received. Replanning unfinished work.`, () => {
+        const tr = trById(id);
+        if (!tr) { restore(); throw apiError('NOT_FOUND', `Tractor ${id} left the fleet before the change could apply.`, { tractor: id }); }
+        carryEffect(tr, change);
+        logAction(tr, control.id, change.old, change.new, true);
+        const lead = controlLeadText(tr, control.id, change.new, { jobs: w.jobs });
+        const r = replan('operator_action', { tractor: id, lead, event: { type: 'operator_action', tractor: id, control: control.id, value: change.new } });
+        afterReplan();
+        return planResult(r, `${control.label} updated for ${tr.name}; plan v${r.version} applied.`);
+      }, { supersede: () => false });
+    },
+    setManual(id, on, key) {
+      const tr0 = trById(id);
+      return enqueue('replan', 'manual', on ? `${tr0.name}: taking manual control. Replanning without it.` : `${tr0.name}: handing back to the AI. Replanning.`, () => {
+        const tr = trById(id);
+        if (!tr) throw apiError('NOT_FOUND', `Tractor ${id} left the fleet.`, { tractor: id });
+        const was = tr.manual;
+        tr.manual = on; tr.mroute = null; tr.mspeed = 0; tr.path = []; tr.pi = 0;
+        if (!on && SCHEDULABLE.has(tr.status)) tr.status = 'idle';
+        logAction(tr, 'manual', was, on, true);
+        const r = replan('operator_action', { tractor: id, manual: on, event: { type: 'operator_action', tractor: id, control: 'manual', value: on } });
+        afterReplan();
+        return planResult(r, on ? `${tr.name} is under manual control; plan v${r.version} applied.` : `${tr.name} is back with the AI; plan v${r.version} applied.`);
+      }, { key, sig: sigOf('manual:' + id, { on }) });
+    },
+  });
+  // §5 rows 13-16 (mock): the panel branches on Operation vs plain body, like the live client does on HTTP status.
+  api.getControls = async (id) => controls.getControls(id);
+  api.control = async (id, body) => controls.control(id, body).body;
+  api.preview = async (id, body) => controls.preview(id, body);
+  api.manual = async (id, on, o = {}) => {
+    const again = replay({ key: o.idempotencyKey, sig: sigOf('manual:' + id, { on: !!on }) }); if (again) return again;
+    return controls.manual(id, { on }, o).body;
   };
 
   /** Counterfactual: re-run planner on a copy with `jobId` pinned to `trId`. */

@@ -226,7 +226,7 @@ export function createTractors(world, farm, fx) {
         if (ud.spin.visible) ud.spin.rotation.z = -now / 250;
         if (info.ring === 'broken') {
           ring.material.color.copy(C_RED); ring.scale.setScalar(1 + 0.25 * pulse); ring.material.opacity = 0.5 + 0.5 * pulse;
-          if (doSmoke && (rec.status === 'broken' || rec.status === 'awaiting_mechanic')) fx.smoke(exhaustWorld(g)); // fx fixes puff height at 0.9; stack top is ~0.74 world
+          if (doSmoke && (rec.status === 'broken' || rec.status === 'awaiting_mechanic')) { const e = exhaustWorld(g); fx.smoke(e, e.y); } // puffs start at the stack top
         } else if (info.ring === 'repair') {
           ring.material.color.copy(C_ORANGE); ring.scale.setScalar(1 + 0.15 * pulse); ring.material.opacity = 0.85;
         } else if (info.ring === 'fade') {

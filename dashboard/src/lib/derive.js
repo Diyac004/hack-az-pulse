@@ -1,5 +1,5 @@
 // Pure derivations from data-layer State. No DOM, no three.js, safe to import in Node.
-import { clock, esc, tractorColor, priColor, PALETTE } from './format.js';
+import { clock, esc, tractorColor, priColor, PALETTE, plural, listText, priorityWord } from './format.js';
 
 // Fallbacks used ONLY when the scenario lacks a field (logged once by main.js).
 export const FALLBACK = {
@@ -9,8 +9,8 @@ export const FALLBACK = {
   blocks: [
     { id: 'A', x: 1, y: 2, w: 4, h: 3, ripeness: 0.4 }, { id: 'B', x: 6, y: 2, w: 4, h: 3, ripeness: 0.5 },
     { id: 'C', x: 11, y: 2, w: 4, h: 3, ripeness: 0.9 }, { id: 'D', x: 16, y: 2, w: 4, h: 3, ripeness: 0.4 },
-    { id: 'E', x: 1, y: 9, w: 4, h: 3, ripeness: 0.3 }, { id: 'F', x: 6, y: 9, w: 4, h: 3, ripeness: 0.5 },
-    { id: 'G', x: 11, y: 9, w: 4, h: 3, ripeness: 0.4 }, { id: 'H', x: 16, y: 9, w: 4, h: 3, ripeness: 0.3 },
+    { id: 'E', x: 1, y: 8, w: 4, h: 4, ripeness: 0.3 }, { id: 'F', x: 6, y: 8, w: 4, h: 4, ripeness: 0.5 },
+    { id: 'G', x: 11, y: 8, w: 4, h: 4, ripeness: 0.4 }, { id: 'H', x: 16, y: 8, w: 4, h: 4, ripeness: 0.3 },
   ],
 };
 
@@ -81,7 +81,7 @@ export function timelineLayout(state) {
   const fleet = (state && state.fleet) || [];
   const jobs = (state && state.jobs) || [];
   const entries = (state && state.plan && Array.isArray(state.plan.entries)) ? state.plan.entries : [];
-  const lanes = fleet.map((tr, i) => ({ id: tr.id, name: tr.id, color: tractorColor(tr, i), status: tr.status }));
+  const lanes = fleet.map((tr, i) => ({ id: tr.id, name: tr.id, color: tractorColor(tr, i), status: tr.status, manual: !!tr.manual }));
   const laneIdx = Object.fromEntries(lanes.map((l, i) => [l.id, i]));
   // Merge work entries per job: first start .. last end (handles split work entries).
   const work = {};
@@ -192,19 +192,34 @@ const jlabel = (state, id) => {
 };
 const B = (s) => '<b style="font-weight:500">' + esc(s) + '</b>';
 
+/** Job ids a replan log entry changed: reassigned (`changes`, §7) plus re-timed (`retimed`, when the backend
+ *  sends it). The explanation names the same jobs, so feed and explanation always agree. */
+export function replanChanges(e) {
+  const ids = [];
+  for (const c of [].concat(Array.isArray(e && e.changes) ? e.changes : [], Array.isArray(e && e.retimed) ? e.retimed : [])) {
+    const id = c && (c.job || (typeof c === 'string' ? c : null));
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 /** One activity-feed line (HTML) for an event-log entry, or null to skip. */
 export function logLine(e, state) {
   if (!e || !e.kind) return null;
   switch (e.kind) {
     case 'plan': return B('Plan v' + (e.plan_version ?? '?')) + (e.assigned != null ? ': ' + e.assigned + ' jobs assigned' : '') + (e.solver ? ' (' + esc(e.solver) + ')' : '');
-    case 'replan': return B('Replan') + (e.trigger ? ' after ' + esc(String(e.trigger).replace(/_/g, ' ')) : '') + (Array.isArray(e.changes) ? ', ' + e.changes.length + ' job' + (e.changes.length === 1 ? '' : 's') + ' moved' : '') + (e.safety === 'pass' ? '. Safety check passed.' : e.safety ? '. Safety: ' + esc(e.safety) : '');
+    case 'replan': {
+      const ch = replanChanges(e);
+      const what = ch.length ? ': ' + plural(ch.length, 'job') + ' changed (' + esc(listText(ch.map((id) => jlabel(state, id)))) + ')' : '';
+      return B('Replan') + (e.trigger ? ' after ' + esc(String(e.trigger).replace(/_/g, ' ')) : '') + what + (e.safety === 'pass' ? '. Safety check passed.' : e.safety ? '. Safety: ' + esc(e.safety) : '.');
+    }
     case 'event': {
       const ty = e.type;
       if (ty === 'breakdown') return B(tname(state, e.tractor) + ' broke down') + (e.issue ? ' (' + esc(e.issue) + ')' : '');
-      if (ty === 'block_route') return B('Road blocked') + (Array.isArray(e.cells) ? ' at ' + e.cells.length + ' cell' + (e.cells.length === 1 ? '' : 's') : '');
+      if (ty === 'block_route') return B('Road blocked') + (Array.isArray(e.cells) ? ' at ' + plural(e.cells.length, 'cell') : '');
       if (ty === 'unblock_route') return B('Road reopened');
       if (ty === 'heat_alert') return B('Heat alert') + (e.temp_f != null ? ': ' + e.temp_f + '°F' : '') + (e.at_t != null ? ' by ' + clock(e.at_t) : '');
-      if (ty === 'priority_change') return B('Priority changed') + ' on ' + esc(jlabel(state, e.job)) + (e.priority != null ? ' to P' + e.priority : '');
+      if (ty === 'priority_change') return B('Priority changed') + ' on ' + esc(jlabel(state, e.job)) + (e.priority != null ? ' to ' + priorityWord(e.priority).toLowerCase() : '');
       if (ty === 'tractor_repaired') return B(tname(state, e.tractor) + ' marked repaired');
       if (ty === 'weather_change') return B('Wind ' + (e.wind_mph ?? '?') + ' mph') + (e.wind_from_deg != null ? ' from the ' + compassName(e.wind_from_deg) : '') + (e.wind_mph > 10 ? ', above the spray limit' : '');
       return B('Event') + ': ' + esc(String(ty || '').replace(/_/g, ' '));
@@ -213,7 +228,7 @@ export function logLine(e, state) {
     case 'job_done': return B(jlabel(state, e.job)) + ' done by ' + esc(tname(state, e.tractor)) + (e.on_time === true ? ', on time' : e.on_time === false ? ', late' : '');
     case 'job_dropped': return B(jlabel(state, e.job)) + ' dropped';
     case 'operator_action': return B('Operator') + ' changed ' + esc(e.control || 'a setting') + ' on ' + esc(tname(state, e.tractor));
-    case 'tractor_added': return B(tname(state, e.tractor) + ' added') + (e.host ? ' on ' + esc(e.host) : '');
+    case 'tractor_added': return B(tname(state, e.tractor) + ' added to the fleet'); // host names are infrastructure detail
     case 'tractor_ready': return B(tname(state, e.tractor) + ' ready');
     case 'tractor_removed': return B((e.tractor || 'Tractor') + ' removed');
     case 'mechanic_search': return 'Searching mechanics for ' + esc(tname(state, e.tractor));
@@ -242,8 +257,8 @@ export function islandMoment(e, state) {
     return null;
   }
   if (e.kind === 'replan') {
-    const k = Array.isArray(e.changes) ? e.changes.length : null;
-    return { text: 'New plan' + (k ? ' · ' + k + ' job' + (k === 1 ? '' : 's') + ' moved' : ' · order updated'), dot: '#30D158', ms: 2200 };
+    const k = replanChanges(e).length;
+    return { text: 'New plan' + (k ? ' · ' + plural(k, 'job') + ' changed' : ' · order updated'), dot: '#30D158', ms: 2200 };
   }
   if (e.kind === 'tractor_added') return { text: n(e.tractor) + ' joining the fleet…', dot: '#0A84FF', ms: 2200 };
   if (e.kind === 'tractor_ready') return { text: n(e.tractor) + ' ready · picking up work', dot: '#30D158', ms: 2200 };
@@ -357,4 +372,64 @@ export function sensitiveState(state) {
     const said = !!(reason && /toward/i.test(reason) && reason.toLowerCase().includes(String(a.what || '').toLowerCase()));
     return { ...a, toward: toward || said, active: (toward || said) && (busy.has(a.block) || said), sprayer: busy.has(a.block) };
   });
+}
+
+// ---------- plan health: overtime + late work (client-side, from plan entries and jobs) ----------
+/**
+ * What the plan badge must not hide. `overtimeMin`: how far planned work (entries.end_t) runs past
+ * clock.day_minutes; `late`: unfinished jobs planned to end after their deadline; `afterDay`: unfinished jobs
+ * planned to end after the day. Nothing is reported once the day has ended (the keynote covers carry-over).
+ */
+export function planHealth(state) {
+  const D = (state && state.clock && state.clock.day_minutes) || 720;
+  const out = { day: D, overtimeMin: 0, endT: null, late: [], afterDay: [], lateBy: {} };
+  if (!state || (state.clock && state.clock.ended)) return out;
+  const jobs = state.jobs || [], open = new Map(jobs.filter((j) => j && j.status !== 'done' && j.status !== 'dropped').map((j) => [j.id, j]));
+  const entries = (state.plan && Array.isArray(state.plan.entries)) ? state.plan.entries : [];
+  const end = new Map();
+  let maxEnd = null;
+  for (const e of entries) {
+    if (!e || e.end_t == null || !isFinite(e.end_t)) continue;
+    if (e.job && !open.has(e.job)) continue; // finished work
+    if (e.kind === 'work' && e.job) end.set(e.job, Math.max(end.get(e.job) ?? -Infinity, e.end_t));
+    if (e.kind === 'work' || e.kind === 'travel') maxEnd = maxEnd == null ? e.end_t : Math.max(maxEnd, e.end_t);
+  }
+  for (const j of open.values()) {
+    const fin = end.has(j.id) ? end.get(j.id) : j.end_t;
+    if (fin == null || !isFinite(fin)) continue;
+    if (j.deadline_t != null && fin > j.deadline_t + 0.5) { out.late.push(j.id); out.lateBy[j.id] = Math.round(fin - j.deadline_t); }
+    if (fin > D + 0.5) out.afterDay.push(j.id);
+  }
+  if (maxEnd != null && maxEnd > D + 0.5) { out.overtimeMin = Math.round(maxEnd - D); out.endT = maxEnd; }
+  return out;
+}
+
+// ---------- why sheet: explain ties and near-ties from the why data ----------
+/**
+ * Plain reason the chosen tractor beat option `o` when their finish times are within a minute, or when `o`
+ * finishes sooner (the planner optimises the whole day, not one job). Uses only data present: the option's
+ * travel/idle/deadline deltas (vs the current plan), fuel and distance from the fleet. Null if `o` is clearly worse.
+ */
+export function whyTieBreak(o, cho, state, job) {
+  if (!o || !cho || o.finish_t == null || cho.finish_t == null) return null;
+  const diff = o.finish_t - cho.finish_t;
+  if (diff >= 1) return null;
+  const fleet = (state && state.fleet) || [];
+  const tn = (id) => { const t = fleet.find((x) => x.id === id); return t ? (t.name || t.id) : id; };
+  const lead = diff <= -1 ? 'Finishes ' + Math.round(-diff) + ' min sooner, but ' : 'Same finish time, but ';
+  const reasons = [];
+  if (o.travel_delta_min > 0) reasons.push('adds ' + Math.round(o.travel_delta_min) + ' min of driving to the day');
+  if (o.idle_delta_min > 0) reasons.push('adds ' + Math.round(o.idle_delta_min) + ' min of idle time');
+  const dm = (x) => (Array.isArray(x.deadlines_missed) ? x.deadlines_missed.length : 0);
+  if (dm(o) > dm(cho)) reasons.push('misses ' + plural(dm(o) - dm(cho), 'more deadline'));
+  if (reasons.length) return lead + reasons.join(' and ');
+  const a = fleet.find((x) => x.id === cho.tractor), b = fleet.find((x) => x.id === o.tractor);
+  if (a && b && a.fuel_pct != null && b.fuel_pct != null && a.fuel_pct - b.fuel_pct >= 5) return lead + tn(cho.tractor) + ' has more fuel (' + Math.round(a.fuel_pct) + '% vs ' + Math.round(b.fuel_pct) + '%)';
+  const blk = job && state && state.scenario && Array.isArray(state.scenario.blocks) ? state.scenario.blocks.find((x) => x.id === job.block) : null;
+  if (blk && a && b && a.pose && b.pose) {
+    const cx = blk.x + (blk.w - 1) / 2, cy = blk.y + (blk.h - 1) / 2;
+    const da = Math.hypot(a.pose.x - cx, a.pose.y - cy), db = Math.hypot(b.pose.x - cx, b.pose.y - cy);
+    if (db - da >= 1) return lead + tn(cho.tractor) + ' is already closer to Block ' + job.block;
+  }
+  return diff <= -1 ? 'Finishes ' + Math.round(-diff) + ' min sooner; the planner kept the current assignment' : 'Tie on every measure; the plan keeps the current assignment';
 }

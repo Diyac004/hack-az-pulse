@@ -1,10 +1,13 @@
 // Side panel: typed explanation, ours-vs-baseline scorecard, activity feed.
-import { clock, esc } from '../lib/format.js';
+import { clock, esc, plural } from '../lib/format.js';
 import { logLine } from '../lib/derive.js';
 
 const n = (v) => (v == null || !isFinite(v) ? null : +v);
-const fmtMin = (v) => (v == null ? '—' : Math.round(v) + ' min');
-const fmtN = (v) => (v == null ? '—' : String(Math.round(v)));
+export const NOT_MEASURED = 'not measured';
+const fmtMin = (v) => (v == null ? NOT_MEASURED : Math.round(v) + ' min');
+const fmtN = (v) => (v == null ? NOT_MEASURED : String(Math.round(v)));
+
+const lateOf = (m) => (m && n(m.completed) != null && n(m.on_time) != null ? Math.max(0, n(m.completed) - n(m.on_time)) : null);
 
 /** Rows shown in scorecard + keynote. Extra §13.4 rows only when non-null on either side. */
 export function scoreRows(metrics) {
@@ -14,6 +17,8 @@ export function scoreRows(metrics) {
   const rows = [
     { k: 'completed', label: 'Jobs completed', a: n(o.completed), b: bv('completed'), f: fmtN, sub: o.jobs_total != null ? '/' + o.jobs_total : '', better: 'hi' },
     { k: 'on_time', label: 'On time', a: n(o.on_time), b: bv('on_time'), f: fmtN, better: 'hi' },
+    // lateness is not a constraint violation, so it gets its own row (otherwise "0 violations" reads as "all fine")
+    { k: 'late', label: 'Finished late', a: lateOf(o), b: hasBase && b ? lateOf(b) : null, f: fmtN, better: 'lo' },
     { k: 'travel_min', label: 'Travel', a: n(o.travel_min), b: bv('travel_min'), f: fmtMin, unit: 'min', better: 'lo' },
     { k: 'idle_min', label: 'Idle', a: n(o.idle_min), b: bv('idle_min'), f: fmtMin, unit: 'min', better: 'lo' },
   ];
@@ -21,13 +26,13 @@ export function scoreRows(metrics) {
     ['weighted_on_time', 'Weighted on time', fmtN, 'hi'],
     ['productive_min', 'Productive', fmtMin, 'hi'],
     ['original_deadline_on_time', 'On time (original deadlines)', fmtN, 'hi'],
-    ['replan_ms_last', 'Last re-plan', (v) => (v == null ? '—' : Math.round(v) + ' ms'), 'lo'],
-    ['rejected_candidates', 'Rejected candidates', fmtN, null],
+    ['replan_ms_last', 'Last re-plan', (v) => (v == null ? NOT_MEASURED : Math.round(v) + ' ms'), 'lo', true],
+    ['rejected_candidates', 'Plans rejected by safety check', fmtN, null, true],
   ];
-  for (const [k, label, f, better] of extra) {
+  for (const [k, label, f, better, detail] of extra) {
     const a = n(o[k]), bb = bv(k);
     if (a == null && bb == null) continue;
-    rows.push({ k, label, a, b: bb, f, better, unit: f === fmtMin ? 'min' : k === 'replan_ms_last' ? 'ms' : '' });
+    rows.push({ k, label, a, b: bb, f, better, detail: !!detail, unit: f === fmtMin ? 'min' : k === 'replan_ms_last' ? 'ms' : '' });
   }
   return { rows, hasBase, violations: n(o.violations) || 0 };
 }
@@ -35,8 +40,8 @@ export function scoreRows(metrics) {
 export function baselineLabel(metrics) {
   const src = metrics && metrics.baseline_source;
   if (!metrics || !metrics.baseline || !src) return 'Baseline not run yet.';
-  if (src === 'live') return 'Baseline: live FCFS run on the same scenario and events.';
-  if (src === 'simulated') return 'Baseline: simulated FCFS (fast Python twin), not a live run.';
+  if (src === 'live') return 'Baseline: first-come-first-served, run live on the same day & events.';
+  if (src === 'simulated') return 'Baseline: first-come-first-served on the same day & events (simulated, not a live run).';
   return 'Baseline: ' + src + '.';
 }
 
@@ -44,7 +49,8 @@ export function createPanel() {
   const exp = document.getElementById('exp');
   const score = document.getElementById('score'), viol = document.getElementById('viol'), basesrc = document.getElementById('basesrc');
   const feed = document.getElementById('feed');
-  let typer = null, lastExp = null, scoreSig = '', feedSig = '';
+  let typer = null, lastExp = null, scoreSig = '', feedSig = '', showDetails = false;
+  score.addEventListener('click', (e) => { if (e.target.closest('[data-det]')) { showDetails = !showDetails; scoreSig = ''; } });
 
   return {
     explain(text, animate = true) {
@@ -66,13 +72,17 @@ export function createPanel() {
     },
     sync(state) {
       const m = state.metrics;
-      const sig = JSON.stringify(m || null);
+      const sig = JSON.stringify(m || null) + showDetails;
       if (sig !== scoreSig) {
         scoreSig = sig;
         const { rows, hasBase, violations } = scoreRows(m);
-        const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + r.f(r.a) + (r.sub || '') + '</span><span style="color:var(--faint)">' + (hasBase ? r.f(r.b) : '—') + '</span>';
-        score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + rows.map(row).join('');
-        viol.textContent = violations + ' violation' + (violations === 1 ? '' : 's');
+        const cell = (v, r) => (v == null ? '<span class="nm">' + NOT_MEASURED + '</span>' : r.f(v) + (r.sub || ''));
+        const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + cell(r.a, r) + '</span><span style="color:var(--faint)">' + (hasBase ? cell(r.b, { f: r.f }) : '<span class="nm">' + NOT_MEASURED + '</span>') + '</span>';
+        const main = rows.filter((r) => !r.detail), det = rows.filter((r) => r.detail);
+        score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + main.map(row).join('') +
+          (det.length ? '<button class="dtl" data-det>' + (showDetails ? 'Hide details' : 'Details') + '</button>' + (showDetails ? det.map(row).join('') : '') : '');
+        viol.textContent = plural(violations, 'violation');
+        viol.title = 'Broken constraints (safety, implements, fuel). Late jobs are counted separately.';
         viol.classList.toggle('bad', violations > 0);
         basesrc.textContent = baselineLabel(m);
       }

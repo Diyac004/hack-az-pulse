@@ -85,12 +85,12 @@
       "h": 1.1
     },
     "B": {
-      "title": "B. Autonomous fleet hub",
-      "meshes": 17,
-      "tris": 236,
-      "decals": 24,
-      "decalTris": 48,
-      "total": 284,
+      "title": "B. Fleet hub",
+      "meshes": 18,
+      "tris": 264,
+      "decals": 29,
+      "decalTris": 58,
+      "total": 322,
       "w": 3.2,
       "d": 1.5,
       "h": 1.3
@@ -112,5 +112,411 @@
     -721.9,
     1533.9,
     1102
-  ]
+  ],
+  "orchard": {
+    "current": {
+      "label": "Current",
+      "perBlock": 12,
+      "n": 96,
+      "perTree": 44,
+      "parts": [
+        {
+          "part": "Canopy",
+          "geo": "Icosahedron(0.34, 0)",
+          "tris": 20,
+          "per": 1
+        },
+        {
+          "part": "Trunk",
+          "geo": "Cylinder 6",
+          "tris": 24,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Sphere(8, 6)",
+        "tris": 80,
+        "few": 1,
+        "heavy": 2
+      },
+      "trees": 4224,
+      "statics": 0,
+      "fruitN": 36,
+      "fruitTris": 2880,
+      "fruitMax": 384,
+      "fruitMaxTris": 30720,
+      "total": 7104,
+      "worst": 34944,
+      "draws": 3,
+      "shadowDraws": 2,
+      "ground": "flat colour + emissive"
+    },
+    "A": {
+      "label": "A · Refined citrus",
+      "perBlock": 18,
+      "n": 144,
+      "perTree": 90,
+      "parts": [
+        {
+          "part": "Canopy lobes",
+          "geo": "Icosahedron(1, 0) ×3 (one InstancedMesh, 3 instances per tree)",
+          "tris": 20,
+          "per": 3
+        },
+        {
+          "part": "Trunk",
+          "geo": "Cylinder 5",
+          "tris": 20,
+          "per": 1
+        },
+        {
+          "part": "Contact AO",
+          "geo": "Circle 10",
+          "tris": 10,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Octahedron",
+        "tris": 8,
+        "few": 3,
+        "heavy": 9
+      },
+      "trees": 12960,
+      "statics": 1152,
+      "fruitN": 324,
+      "fruitTris": 2592,
+      "fruitMax": 1296,
+      "fruitMaxTris": 10368,
+      "total": 16704,
+      "worst": 24480,
+      "draws": 5,
+      "shadowDraws": 2,
+      "ground": "one shared CanvasTexture (stripes, berms, wet strip, drip line, tracks) + emissive"
+    },
+    "B": {
+      "label": "B · Orchard rows",
+      "perBlock": 12,
+      "n": 96,
+      "perTree": 110,
+      "parts": [
+        {
+          "part": "Hedge segment",
+          "geo": "8-sided prism (Extrude)",
+          "tris": 28,
+          "per": 1
+        },
+        {
+          "part": "Top lobes",
+          "geo": "Icosahedron(1, 0) ×2",
+          "tris": 20,
+          "per": 2
+        },
+        {
+          "part": "Trunks",
+          "geo": "Cylinder 5 ×2 (optional, mostly hidden)",
+          "tris": 20,
+          "per": 2
+        },
+        {
+          "part": "Contact AO",
+          "geo": "Plane",
+          "tris": 2,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Octahedron",
+        "tris": 8,
+        "few": 2,
+        "heavy": 6
+      },
+      "trees": 10560,
+      "statics": 1152,
+      "fruitN": 144,
+      "fruitTris": 1152,
+      "fruitMax": 576,
+      "fruitMaxTris": 4608,
+      "total": 12864,
+      "worst": 16320,
+      "draws": 6,
+      "shadowDraws": 3,
+      "ground": "one shared CanvasTexture (stripes, tilled berms, tram lines)"
+    },
+    "C": {
+      "label": "C · Soft minimal",
+      "perBlock": 12,
+      "n": 96,
+      "perTree": 116,
+      "parts": [
+        {
+          "part": "Canopy blob",
+          "geo": "Icosahedron(1, 1)",
+          "tris": 80,
+          "per": 1
+        },
+        {
+          "part": "Trunk stub",
+          "geo": "Cylinder 5",
+          "tris": 20,
+          "per": 1
+        },
+        {
+          "part": "Contact AO",
+          "geo": "Circle 16",
+          "tris": 16,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Octahedron",
+        "tris": 8,
+        "few": 0,
+        "heavy": 2
+      },
+      "trees": 11136,
+      "statics": 0,
+      "fruitN": 24,
+      "fruitTris": 192,
+      "fruitMax": 192,
+      "fruitMaxTris": 1536,
+      "total": 11328,
+      "worst": 12672,
+      "draws": 4,
+      "shadowDraws": 2,
+      "ground": "flat colour + faint lane stripes"
+    },
+    "AB": {
+      "label": "A + B touches",
+      "perBlock": 18,
+      "n": 144,
+      "perTree": 90,
+      "parts": [
+        {
+          "part": "Canopy lobes",
+          "geo": "Icosahedron(1, 0) ×3",
+          "tris": 20,
+          "per": 3
+        },
+        {
+          "part": "Trunk",
+          "geo": "Cylinder 5",
+          "tris": 20,
+          "per": 1
+        },
+        {
+          "part": "Contact AO",
+          "geo": "Circle 10",
+          "tris": 10,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Octahedron",
+        "tris": 8,
+        "few": 3,
+        "heavy": 9
+      },
+      "trees": 12960,
+      "statics": 2304,
+      "fruitN": 324,
+      "fruitTris": 2592,
+      "fruitMax": 1296,
+      "fruitMaxTris": 10368,
+      "total": 17856,
+      "worst": 25632,
+      "draws": 5,
+      "shadowDraws": 2,
+      "ground": "one shared CanvasTexture (stripes, berms, wet strip, drip line, tram lines) + emissive"
+    },
+    "A12": {
+      "label": "A at 12 per block",
+      "perBlock": 12,
+      "n": 96,
+      "perTree": 90,
+      "parts": [
+        {
+          "part": "Canopy lobes",
+          "geo": "Icosahedron(1, 0) ×3 (one InstancedMesh, 3 instances per tree)",
+          "tris": 20,
+          "per": 3
+        },
+        {
+          "part": "Trunk",
+          "geo": "Cylinder 5",
+          "tris": 20,
+          "per": 1
+        },
+        {
+          "part": "Contact AO",
+          "geo": "Circle 10",
+          "tris": 10,
+          "per": 1
+        }
+      ],
+      "fruit": {
+        "geo": "Octahedron",
+        "tris": 8,
+        "few": 3,
+        "heavy": 9
+      },
+      "trees": 8640,
+      "statics": 1152,
+      "fruitN": 216,
+      "fruitTris": 1728,
+      "fruitMax": 864,
+      "fruitMaxTris": 6912,
+      "total": 11520,
+      "worst": 16704,
+      "draws": 5,
+      "shadowDraws": 2,
+      "ground": "one shared CanvasTexture (stripes, berms, wet strip, drip line, tracks) + emissive"
+    }
+  },
+  "orchardFrames": {
+    "block": [
+      -2167.4,
+      -1167.7,
+      3771.4,
+      1966.9
+    ],
+    "map": [
+      -1304,
+      -1744,
+      2768,
+      2648
+    ],
+    "tile": [
+      -1177.8,
+      -697.8,
+      2355.7,
+      1311.9
+    ]
+  },
+  "hubInfo": {
+    "a": {
+      "label": "Depth squashed",
+      "sw": 0.85,
+      "sz": 0.6,
+      "hx": 1.8625,
+      "hz": 5.072,
+      "ay": 2,
+      "rear": 5.762,
+      "padFront": 5.54,
+      "canopyFront": 5.48,
+      "roadEdge": 5.6,
+      "overhang": 0.16199999999999992,
+      "canopyH": 0.748,
+      "stripDepth": 1.02
+    },
+    "b": {
+      "label": "Uniform 0.66",
+      "sw": 0.66,
+      "sz": 0.66,
+      "hx": 1.62,
+      "hz": 5.07,
+      "ay": 2,
+      "rear": 5.7288,
+      "padFront": 5.5848,
+      "canopyFront": 5.518800000000001,
+      "roadEdge": 5.6,
+      "overhang": 0.12880000000000003,
+      "canopyH": 0.5808,
+      "stripDepth": 1.02
+    },
+    "c": {
+      "label": "Full 0.85, block A one row north",
+      "sw": 0.85,
+      "sz": 0.85,
+      "hx": 1.8625,
+      "hz": 4.565,
+      "ay": 1,
+      "rear": 5.125,
+      "padFront": 5.228000000000001,
+      "canopyFront": 5.143000000000001,
+      "roadEdge": 5.6,
+      "overhang": 0,
+      "canopyH": 0.748,
+      "stripDepth": 2.02
+    }
+  },
+  "decideFrames": {
+    "hub": [
+      -529.3,
+      -1781.8,
+      5427.8,
+      2846.5
+    ],
+    "farm": [
+      -529.3,
+      -3271.1,
+      9835.3,
+      5148.5
+    ]
+  },
+  "layoutInfo": {
+    "a": {
+      "name": "Original",
+      "sub": "E–H at y 9, 3 rows",
+      "gapA": 2,
+      "gapB": 1,
+      "hub": {
+        "x": 2.0100000000000002,
+        "y": 7.44,
+        "ry": 3.141592653589793,
+        "sw": 1,
+        "sz": 1,
+        "side": "south",
+        "depth": 2.0199999999999996,
+        "dn": 1.0199999999999996,
+        "ds": 2.0199999999999996,
+        "strip": [
+          6.4,
+          8.42
+        ]
+      }
+    },
+    "b": {
+      "name": "Current",
+      "sub": "E–H at y 8, 4 rows",
+      "gapA": 1,
+      "gapB": 1,
+      "hub": {
+        "x": 1.8624999999999998,
+        "y": 5.072,
+        "ry": 0,
+        "sw": 0.85,
+        "sz": 0.5999999999999998,
+        "side": "north",
+        "depth": 1.0199999999999996,
+        "dn": 1.0199999999999996,
+        "ds": 1.0199999999999996,
+        "strip": [
+          4.58,
+          5.6
+        ]
+      }
+    },
+    "c": {
+      "name": "Alternative",
+      "sub": "E–H at y 8.5, 3 rows",
+      "gapA": 1.5,
+      "gapB": 1.5,
+      "hub": {
+        "x": 1.9066666666666663,
+        "y": 7.188,
+        "ry": 3.141592653589793,
+        "sw": 0.933333333333333,
+        "sz": 0.933333333333333,
+        "side": "south",
+        "depth": 1.5199999999999996,
+        "dn": 1.0199999999999996,
+        "ds": 1.5199999999999996,
+        "strip": [
+          6.4,
+          7.92
+        ]
+      }
+    }
+  }
 }

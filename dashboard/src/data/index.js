@@ -72,6 +72,13 @@ function liveAdapter() {
       scaleTest: ({ tractors = 5, jobs = 20 } = {}) => req('POST', '/scale-test', { tractors, jobs }),
       getLog: () => req('GET', '/log'),
       getOperation: (id) => req('GET', '/operations/' + enc(id)),
+      // Tractor Control Panel (§5 rows 13-16). control: 200 {ok,value,explanation} for replans:false, 202 Operation
+      // for replans:true (§13.2); the caller tells them apart by the body shape. Not auto-retried: a repeated
+      // speed_up / nudge must not be sent twice; replanning controls still carry an Idempotency-Key.
+      getControls: (id) => req('GET', '/tractors/' + enc(id) + '/controls'),
+      control: (id, body, o) => req('POST', '/tractors/' + enc(id) + '/control', body, key(o)),
+      preview: (id, body) => req('POST', '/tractors/' + enc(id) + '/preview', body),
+      manual: (id, on, o) => mutate('POST', '/tractors/' + enc(id) + '/manual', { on: !!on }, o),
     },
   };
 }
@@ -136,4 +143,12 @@ export const api = {
   scaleTest: call('scaleTest'),
   getLog: call('getLog'),
   getOperation: call('getOperation'),
+  /** GET /tractors/{id}/controls -> { controls: Control[], values } */
+  getControls: call('getControls'),
+  /** POST /tractors/{id}/control {control, value} -> {ok,value,explanation} (replans:false) or Operation (replans:true) */
+  control: call('control'),
+  /** POST /tractors/{id}/preview {control, value} -> Preview (applies nothing; may reject TIMEOUT) */
+  preview: call('preview'),
+  /** POST /tractors/{id}/manual {on} -> Operation */
+  manual: call('manual'),
 };

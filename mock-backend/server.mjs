@@ -55,7 +55,7 @@ function log(...a) { if (!QUIET) console.log(`[mock-backend ${new Date().toISOSt
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Mock-Fail',
   'Access-Control-Max-Age': '600',
 };
 
@@ -68,6 +68,15 @@ const STATUS_BY_CODE = {
 
 class HttpError extends Error {
   constructor(status, code, message, details = {}) { super(message); Object.assign(this, { status, code, details }); }
+}
+const isOperation = (x) => !!x && typeof x === 'object' && typeof x.id === 'string' && typeof x.status === 'string' && 'kind' in x;
+const FAIL_TEXT = {
+  GATEWAY_UNAVAILABLE: "Can't reach this tractor's AgOpenWeb container right now.",
+  TIMEOUT: 'The re-plan preview took longer than 2 seconds.',
+};
+function failIf(code) {
+  if (!code) return;
+  throw new HttpError(STATUS_BY_CODE[code] || 500, code, FAIL_TEXT[code] || 'Forced failure (X-Mock-Fail).', { forced: true });
 }
 const notImplemented = (what) => new HttpError(501, 'NOT_IMPLEMENTED', `${what} is not supported by the simulated backend.`, { simulated: true });
 
@@ -119,10 +128,21 @@ const ROUTES = [
   ['POST', '/api/fleet', async ({ body }) => accepted(await sim.api.addTractor(requireObject(body))), '202 {tractor} status starting'],
   ['DELETE', '/api/fleet/:id', async ({ params }) => ok(await sim.api.removeTractor(params.id)), '{ok:true}'],
   ['GET', '/api/hosts', () => ok(snapshot().capacity), 'Capacity'],
-  ['GET', '/api/tractors/:id/controls', () => { throw notImplemented('Tractor controls'); }, '501'],
-  ['POST', '/api/tractors/:id/control', () => { throw notImplemented('Tractor controls'); }, '501'],
-  ['POST', '/api/tractors/:id/preview', () => { throw notImplemented('Control preview'); }, '501'],
-  ['POST', '/api/tractors/:id/manual', () => { throw notImplemented('Manual mode'); }, '501'],
+  // Tractor Control Panel (§5 rows 13-16, §13.2). Debug: header `X-Mock-Fail: <CODE>` makes any of these four
+  // fail with that error code (e.g. GATEWAY_UNAVAILABLE, TIMEOUT) so the dashboard's error copy can be checked.
+  ['GET', '/api/tractors/:id/controls', async ({ params, fail }) => { failIf(fail); return ok(await sim.api.getControls(params.id)); }, '{controls, values}'],
+  ['POST', '/api/tractors/:id/control', async ({ params, body, fail }) => {
+    failIf(fail);
+    const r = await sim.api.control(params.id, requireObject(body));
+    return isOperation(r) ? accepted(r) : ok(r); // replans:true -> 202 Operation, else 200 {ok,value,explanation}
+  }, '200 {ok,value,explanation} | 202 Operation | 409'],
+  ['POST', '/api/tractors/:id/preview', async ({ params, body, fail }) => { failIf(fail); return ok(await sim.api.preview(params.id, requireObject(body))); }, 'Preview'],
+  ['POST', '/api/tractors/:id/manual', async ({ params, body, key, fail }) => {
+    failIf(fail);
+    const b = requireObject(body);
+    if (typeof b.on !== 'boolean') throw new HttpError(400, 'INVALID_INPUT', 'Body must be {"on": true} or {"on": false}.', { field: 'on' });
+    return accepted(await sim.api.manual(params.id, b.on, { idempotencyKey: key }));
+  }, '202 Operation'],
   ['GET', '/api/why/:id', async ({ params }) => ok(await sim.api.why(params.id)), 'Why'],
   ['GET', '/api/mechanics', async ({ query }) => {
     const t = query.get('tractor');
@@ -176,7 +196,8 @@ const server = http.createServer(async (req, res) => {
     const params = Object.fromEntries(hit.r.names.map((n, i) => [n, decodeURIComponent(hit.m[i + 1])]));
     const body = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await readJson(req) : undefined;
     const key = req.headers['idempotency-key'] || undefined;
-    const out = await hit.r.handler({ params, query: url.searchParams, body, key });
+    const fail = req.headers['x-mock-fail'] ? String(req.headers['x-mock-fail']).toUpperCase() : undefined;
+    const out = await hit.r.handler({ params, query: url.searchParams, body, key, fail });
     reply(res, out.status, out.body, out.contentType);
     if (req.method !== 'GET') log(req.method, path, '->', out.status, out.body && out.body.id ? `${out.body.id} ${out.body.status}` : '');
   } catch (e) {

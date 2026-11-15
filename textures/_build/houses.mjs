@@ -8,6 +8,7 @@ export function makeHouses({ hexa, box, beam, cyl, M, mix }) {
     wall: '#ECEAE5', wallDark: '#D9D6CF', concrete: '#D6D2C9', roof: '#4A4D52', seam: '#6F747B',
     solar: '#1F3550', solarLine: '#4A6A8C', soffit: '#F2F2F7', door: '#9A9AA0', slat: '#000000',
     shedWall: '#E9E4DA', shedRoof: '#C2463A', container: '#C7C7CC', tank: '#E5E5EA', go: '#30D158',
+    pump: '#E5E5EA', fuel: '#FF9F0A', service: '#8E8E93', chest: '#C2463A',
   };
   const pad = (x0, x1, z0, z1, decals = []) => box(x0, x1, 0, 0.02, z0, z1, H.concrete, { name: 'pad', bias: -50, decals });
   // gable prism along x: eave at y0 between z0..z1, ridge at y1 over zr
@@ -76,27 +77,42 @@ export function makeHouses({ hexa, box, beam, cyl, M, mix }) {
     ],
   };
 
-  // B: autonomous fleet hub - solar canopy over two charging bays + small control building with comms mast
-  const bay = (x) => [
-    box(x - 0.07, x + 0.07, 0.02, 0.44, -0.62, -0.52, '#E5E5EA', { name: 'charger', decals: [
-      { face: 'front', uv: [[0.18, 0.55], [0.82, 0.55], [0.82, 0.85], [0.18, 0.85]], fill: M.glass },
-      { face: 'front', uv: [[0.35, 0.4], [0.65, 0.4], [0.65, 0.46], [0.35, 0.46]], fill: H.go },
+  // B: fleet hub - solar canopy over a REFUEL bay (pump + hose, amber stripe) and a SERVICE bay (tool chest + reel,
+  // grey stripe) + small control building with comms mast. Matches the 3D build in dashboard/src/scene/depotHub.js
+  // (tractor A is diesel, so no EV chargers).
+  const refuel = (x) => [
+    box(x - 0.07, x + 0.07, 0.02, 0.44, -0.62, -0.52, H.pump, { name: 'pump', decals: [
+      { face: 'front', uv: [[0.18, 0.58], [0.82, 0.58], [0.82, 0.85], [0.18, 0.85]], fill: M.glass },
+      { face: 'front', uv: [[0, 0.9], [1, 0.9], [1, 1], [0, 1]], fill: H.fuel },
+      { face: 'front', uv: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.46], [0.3, 0.46]], fill: M.grille },
     ] }),
-    beam([x + 0.05, 0.3, -0.52], [x + 0.12, 0.03, -0.38], 0.02, 0.02, M.grille, { name: 'cable' }),
+    beam([x + 0.05, 0.3, -0.52], [x + 0.12, 0.03, -0.38], 0.02, 0.02, M.grille, { name: 'hose' }),
+  ];
+  const service = (x) => [
+    box(x - 0.09, x + 0.09, 0.02, 0.3, -0.64, -0.52, H.chest, { name: 'toolchest', decals: [
+      { face: 'front', uv: [[0.08, 0.3], [0.92, 0.3], [0.92, 0.34], [0.08, 0.34]], fill: '#000', op: 0.35 },
+      { face: 'front', uv: [[0.08, 0.6], [0.92, 0.6], [0.92, 0.64], [0.08, 0.64]], fill: '#000', op: 0.35 },
+    ] }),
+    box(x + 0.14, x + 0.18, 0.02, 0.46, -0.62, -0.58, M.metal, { name: 'reelpost' }),
+    cyl('y', [x + 0.16, 0.38, -0.55], 0.045, 0.04, 8, H.service, { name: 'reel' }),
   ];
   const post = (x, z) => box(x - 0.025, x + 0.025, 0.02, 0.82, z - 0.025, z + 0.025, M.chassis, { name: 'post' });
   const lineU = (x) => { const u = (x + 1.65) / 3.2; return { face: 'top', uv: [[u - 0.004, 0.08], [u + 0.004, 0.08], [u + 0.004, 0.9], [u - 0.004, 0.9]], fill: '#fff', op: 0.85 }; };
   houses.B = {
-    title: 'B. Autonomous fleet hub',
+    title: 'B. Fleet hub',
     parts: [
       pad(-1.65, 1.55, -0.72, 0.78, [lineU(-1.48), lineU(-0.4), lineU(0.68),
-        { face: 'top', uv: [[0.06, 0.82], [0.36, 0.82], [0.36, 0.9], [0.06, 0.9]], fill: '#0A84FF', op: 0.55 },
-        { face: 'top', uv: [[0.4, 0.82], [0.7, 0.82], [0.7, 0.9], [0.4, 0.9]], fill: '#0A84FF', op: 0.55 },
+        { face: 'top', uv: [[0.06, 0.82], [0.36, 0.82], [0.36, 0.9], [0.06, 0.9]], fill: H.fuel, op: 0.6 },
+        { face: 'top', uv: [[0.4, 0.82], [0.7, 0.82], [0.7, 0.9], [0.4, 0.9]], fill: H.service, op: 0.6 },
+        { face: 'top', uv: [[0.07, 0.02], [0.375, 0.02], [0.375, 0.09], [0.07, 0.09]], fill: H.fuel, op: 0.9 },
+        { face: 'top', uv: [[0.41, 0.02], [0.71, 0.02], [0.71, 0.09], [0.41, 0.09]], fill: H.service, op: 0.9 },
       ]),
       ...[-1.48, -0.4, 0.68].flatMap((x) => [post(x, -0.62), post(x, 0.6)]),
       box(-1.58, 0.78, 0.82, 0.88, -0.7, 0.68, H.roof, { name: 'canopy', mats: { front: 'body', bottom: H.soffit },
-        decals: panels('top', 0.04, 0.96, 0.08, 0.92, 6, 3) }),
-      ...bay(-0.94), ...bay(0.14),
+        decals: [...panels('top', 0.04, 0.96, 0.08, 0.92, 6, 3),
+          { face: 'front', uv: [[0.17, 0.12], [0.37, 0.12], [0.37, 0.88], [0.17, 0.88]], fill: H.fuel },
+          { face: 'front', uv: [[0.63, 0.12], [0.83, 0.12], [0.83, 0.88], [0.63, 0.88]], fill: '#E5E5EA' }] }),
+      ...refuel(-0.94), ...service(0.14),
       // control building
       box(0.86, 1.48, 0.02, 0.62, -0.5, 0.42, H.wall, { name: 'control', decals: [
         ...glass('front', 0.08, 0.92, 0.48, 0.86),

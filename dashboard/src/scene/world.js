@@ -5,8 +5,30 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { HorizontalTiltShiftShader } from 'three/examples/jsm/shaders/HorizontalTiltShiftShader.js';
-import { VerticalTiltShiftShader } from 'three/examples/jsm/shaders/VerticalTiltShiftShader.js';
+
+// Banded tilt-shift: sharp across the whole island (|uv.y - focus| < band), ramping to at most `px` CSS pixels
+// of blur at the very top/bottom of the canvas (sky / far background). Separable: one pass per axis.
+// The stock Horizontal/VerticalTiltShiftShader blurs linearly from a single focus LINE, so the top row of
+// blocks and their labels were already ~2-3 px soft; this keeps the miniature feel only at the frame edges.
+const TiltBandShader = {
+  uniforms: { tDiffuse: { value: null }, step: { value: new THREE.Vector2() }, focus: { value: 0.5 }, band: { value: 0.36 }, ramp: { value: 0.16 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 step; uniform float focus, band, ramp; varying vec2 vUv;
+    void main(){
+      float k = smoothstep(band, band + ramp, abs(vUv.y - focus));
+      if (k < 0.002) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+      vec2 s = step * k;
+      vec4 c = texture2D(tDiffuse, vUv) * 0.2270270270;
+      c += (texture2D(tDiffuse, vUv + s * 1.3846153846) + texture2D(tDiffuse, vUv - s * 1.3846153846)) * 0.3162162162;
+      c += (texture2D(tDiffuse, vUv + s * 3.2307692308) + texture2D(tDiffuse, vUv - s * 3.2307692308)) * 0.0702702703;
+      gl_FragColor = c;
+    }`,
+};
+// Max edge blur in CSS px (so it reads the same at any DPR), growing gently with the canvas height.
+const tiltPx = (h) => Math.min(1.6, Math.max(0.7, h / 700));
+// Overlay layer: screen-space sprites (block labels, downwind tags: any Sprite with depthTest off) are drawn
+// AFTER post-processing straight to the antialiased canvas, so they are never blurred or bloomed.
+const OVERLAY = 1;
 
 export const lm = (c) => new THREE.MeshLambertMaterial({ color: c });
 
@@ -43,14 +65,30 @@ export function createWorld(stage) {
   setShadow();
 
   let comp = null, hPass = null, vPass = null, fx = true;
+  const setTilt = () => {
+    const px = tiltPx(SH);
+    if (hPass) hPass.uniforms.step.value.set(px / 3.23 / SW, 0); // outer tap lands at ~px CSS pixels
+    if (vPass) vPass.uniforms.step.value.set(0, px / 3.23 / SH);
+  };
   try {
-    comp = new EffectComposer(R); comp.setPixelRatio(Math.min(devicePixelRatio, 2)); comp.setSize(SW, SH);
+    // MSAA for the scene pass on WebGL2 (the default composer target has none, so Effects-on lost antialiasing)
+    const dpr = Math.min(devicePixelRatio, 2);
+    const rt = R.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget
+      ? new THREE.WebGLMultisampleRenderTarget(SW * dpr, SH * dpr, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat })
+      : undefined;
+    if (rt) rt.samples = 4;
+    comp = new EffectComposer(R, rt); comp.setPixelRatio(dpr); comp.setSize(SW, SH);
     comp.addPass(new RenderPass(S, cam));
-    comp.addPass(new UnrealBloomPass(new THREE.Vector2(SW, SH), 0.38, 0.45, 0.95));
-    hPass = new ShaderPass(HorizontalTiltShiftShader); hPass.uniforms.h.value = 1.8 / SW; hPass.uniforms.r.value = 0.5;
-    vPass = new ShaderPass(VerticalTiltShiftShader); vPass.uniforms.v.value = 1.8 / SH; vPass.uniforms.r.value = 0.5;
-    comp.addPass(hPass); comp.addPass(vPass);
+    // only true highlights glow (lamps, beacons, sunlit fruit); low strength + small radius = no haze over the farm
+    comp.addPass(new UnrealBloomPass(new THREE.Vector2(SW, SH), 0.22, 0.25, 0.97));
+    hPass = new ShaderPass(TiltBandShader); vPass = new ShaderPass(TiltBandShader);
+    comp.addPass(hPass); comp.addPass(vPass); setTilt();
   } catch (e) { comp = null; }
+
+  // keep overlay sprites on their own layer; rescanned a few times a second (labels are created lazily)
+  hemi.layers.enable(OVERLAY); sun.layers.enable(OVERLAY); // same light state in both passes (no per-frame program re-key)
+  let scanN = 0;
+  const toOverlay = (o) => { if (o.isSprite && o.material && o.material.depthTest === false && o.layers.mask !== 1 << OVERLAY) o.layers.set(OVERLAY); };
 
   let camGoal = null;
   // follow mode: camera target tracks fn() -> {x, z} (or null), keeping the current view angle; closes in to FOLLOW_DIST.
@@ -82,7 +120,7 @@ export function createWorld(stage) {
     resize() {
       SW = stage.clientWidth; SH = stage.clientHeight; if (!SW || !SH) return;
       R.setSize(SW, SH); cam.aspect = SW / SH; cam.updateProjectionMatrix(); k = Math.max(1, 1.45 / (SW / SH)); setHome();
-      if (comp) { comp.setSize(SW, SH); if (hPass) hPass.uniforms.h.value = 1.8 / SW; if (vPass) vPass.uniforms.v.value = 1.8 / SH; }
+      if (comp) { comp.setSize(SW, SH); setTilt(); }
     },
     render(now) {
       if (followFn) {
@@ -103,7 +141,15 @@ export function createWorld(stage) {
         else camGoal = null;
       }
       ctl.update();
-      if (fx && comp) comp.render(); else R.render(S, cam);
+      if (scanN-- <= 0) { scanN = 15; S.traverse(toOverlay); }
+      if (fx && comp) {
+        cam.layers.set(0); comp.render();
+        // overlay pass: no clear, no background, no shadow-map re-render (it would use the overlay-only layer)
+        const bg = S.background, au = R.autoClear, su = R.shadowMap.autoUpdate;
+        S.background = null; R.autoClear = false; R.shadowMap.autoUpdate = false; cam.layers.set(OVERLAY);
+        R.render(S, cam);
+        S.background = bg; R.autoClear = au; R.shadowMap.autoUpdate = su; cam.layers.set(0);
+      } else { cam.layers.enable(OVERLAY); R.render(S, cam); cam.layers.set(0); }
       if (PERF) {
         const c = R.info.render.calls; pf.frames++; pf.calls += c; pf.tris += R.info.render.triangles; if (c > pf.maxCalls) pf.maxCalls = c;
         R.info.reset();

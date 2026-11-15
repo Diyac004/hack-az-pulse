@@ -2,7 +2,7 @@
 import './style.css';
 import { start, store, api, sourceInfo } from './data/index.js';
 import { makeGrid, missingScenarioFields, blockedCells, islandMoment, timelineLayout } from './lib/derive.js';
-import { clock, isDown } from './lib/format.js';
+import { clock, isDown, plural } from './lib/format.js';
 import { createWorld } from './scene/world.js';
 import { createFarm } from './scene/farm.js';
 import { createFx } from './scene/fx.js';
@@ -21,6 +21,8 @@ import { createControls } from './ui/controls.js';
 import { createLiveFeed } from './scene/livefeed.js';
 import { createViewToggle } from './ui/viewToggle.js';
 import { createWeather } from './ui/weather.js';
+import { createControlPanel } from './ui/controlPanel.js';
+import { createMapPick } from './scene/mapPick.js';
 
 const stage = document.getElementById('stage');
 const world = createWorld(stage);
@@ -39,7 +41,14 @@ const keynote = createKeynote();
 // Wraps world.focus/home/overview so they pan the map while it shows.
 // Only the toggle may change the view ('user'); the choice survives page reloads (see lib/viewState.js).
 const viewToggle = createViewToggle(stage, (v) => live.setView(v, 'user'));
-const live = createLiveFeed({ stage, world, store, sourceInfo, toggle: viewToggle, dioramaTractors: tractors });
+/** One "Mark repaired" path for the chip button, the readout card and the booking toast; spinner per Operation. */
+const markRepaired = (id, els) => ops.track(api.postEvent({ type: 'tractor_repaired', tractor: id }), { els: els || [] });
+// Tractor Control Panel (M9b): opened from the readout card, a chip's controls button, or a timeline lane label.
+let cockpit = null;
+const openControls = (id) => cockpit && cockpit.open(id);
+const live = createLiveFeed({ stage, world, store, sourceInfo, toggle: viewToggle, dioramaTractors: tractors, onRepair: markRepaired, onControls: openControls });
+const mapPick = createMapPick({ stage, world, getScenario: () => (store.get() || {}).scenario, view: () => live.pickView() });
+live.setPickGuard(() => mapPick.active);
 { const setHeat0 = farm.setHeat; farm.setHeat = (b) => { setHeat0(b); live.setHeat(b); }; }
 
 const blockWorld = (b) => {
@@ -53,10 +62,20 @@ const sheets = createSheets({
   store, api, ops, toast, island, focusBlock,
   dockPill: (id) => (dock ? dock.pillEl(id) : null),
   onBooked: (tr, bookT, arr) => { if (!vans.has(tr)) vans.dispatch(store.get(), tr, bookT, arr); },
+  onRepair: markRepaired,
 });
-dock = createDock({ onPill: (id) => sheets.openWhy(id) });
-const chips = createChips({ api, ops, onFocus: (id) => { const p = tractors.worldPos(id); if (p) world.focus(p, 2400); } });
+dock = createDock({ onPill: (id) => sheets.openWhy(id), onLane: openControls });
+// chip click: fly to the tractor and open its readout card
+const chips = createChips({ api, ops, onRepair: markRepaired, onControls: openControls, onFocus: (id) => { const p = tractors.worldPos(id); if (p) world.focus(p, 2400); live.select(id); } });
 const controls = createControls({ store, api, ops, toast, world, sheets });
+cockpit = createControlPanel({
+  stage, store, api, ops, toast, mapPick,
+  onOpen: (id) => { sheets.close(); stage.classList.add('cp-open'); const p = tractors.worldPos(id); if (p) world.focus(p, 2400); },
+  onClose: () => stage.classList.remove('cp-open'),
+});
+// Never readout card + cockpit at once: while the cockpit is open the card is hidden (style.css) and tapping a
+// tractor in 3D/Map switches the cockpit to it instead.
+stage.addEventListener('hf:readout', (e) => { if (cockpit.id && e.detail && e.detail.id && e.detail.id !== cockpit.id) cockpit.open(e.detail.id); });
 createWeather({ store, world, farm, tractors }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
 
 // ---------- source badge ----------
@@ -201,8 +220,15 @@ function onMessage(state, msg) {
     if (added.length && farm.grid) { const w = farm.grid.toWorld(added[0][0], added[0][1]); world.focus({ x: w.x, z: w.z }, 2200); }
   }
   if (type === 'scenario') ensureScenario(state);
+  // The timeline redraws on every plan/jobs message itself, not only from the animation loop: when the clock is
+  // paused, or the loop is throttled (background tab, slow frames), a re-plan must still show up at once.
+  if ((type === 'plan' || type === 'jobs' || type === 'fleet') && !timelineQueued) {
+    timelineQueued = true;
+    queueMicrotask(() => { timelineQueued = false; const s = store.get() || {}; dock.sync(s); dock.badge(s, ops.active(s)); chips.sync(s); });
+  }
   dirty = true;
 }
+let timelineQueued = false;
 
 // ---------- stage layout (sheets/toast/keynote avoid the dock and chips) ----------
 const dockEl = document.getElementById('dock'), chipsEl = document.getElementById('chips'), islandEl = document.getElementById('island');
@@ -237,6 +263,7 @@ function syncUI(state, now) {
   chips.sync(state);
   panel.sync(state);
   controls.sync(state);
+  cockpit.sync(state);
   labels.sync(state, L.unassigned.map((j) => j.id));
   vans.sync(state);
   sheets.sync(state, now > holdPendingUntil && !keynoteOpen());
@@ -247,7 +274,7 @@ function syncUI(state, now) {
     sheets.close(); syncLayout();
     keynote.show(state, stageBounds()); world.overview(4000);
     const done = (state.jobs || []).filter((j) => j.status === 'done').length;
-    island.moment({ text: 'Day complete · ' + done + ' job' + (done === 1 ? '' : 's') + ' done', dot: '#30D158', sticky: true });
+    island.moment({ text: 'Day complete · ' + plural(done, 'job') + ' done', dot: '#30D158', sticky: true });
   }
 }
 
@@ -282,4 +309,4 @@ Promise.resolve()
   .catch((err) => { console.warn('[dashboard] start failed:', (err && (err.code ? err.code + ' ' : '') + err.message) || err); toast('Could not load data: ' + ((err && err.message) || err), 'err'); });
 
 // Debug handle for the console (read-only use).
-window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout, live };
+window.__hf = { store, api, sourceInfo, world, ops, clock, timelineLayout, live, cockpit, mapPick };

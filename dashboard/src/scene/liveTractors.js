@@ -75,7 +75,7 @@ export function createLiveTractors(scene, hooks = {}) {
     scene.remove(rec.icon.root); scene.remove(rec.ab);
     Object.values(rec.icon.M).forEach((m) => m.dispose());
     releaseTractorTexture(rec.icon.color);
-    rec.abMat.dispose(); rec.abDotMat.dispose();
+    rec.abMat.dispose(); rec.abDotMat.dispose(); rec.abEdgeMat.dispose();
     rec.trail.dispose();
     map.delete(rec.id);
   }
@@ -87,18 +87,27 @@ export function createLiveTractors(scene, hooks = {}) {
 
   /** Guidance line: AgOpenWeb's own AB (log detail.ab) if the backend sent one, else derived from heading. */
   function updateAB(rec, tr, state, grid, geo) {
-    if (tr.status !== 'working') { rec.abSeg = null; rec.abHd = null; return; }
+    // AgOpenWeb's own AB line (newest log detail.ab for this tractor): shown in ANY status, so a line the operator
+    // just set from the Tractor Control Panel appears at once in both views. detail.ab = null clears it.
     const log = state.log || [];
     for (let i = 0; i < log.length && i < 200; i++) {
       const e = log[i];
-      if (e && e.kind === 'agopenweb' && e.tractor === tr.id && e.detail && Array.isArray(e.detail.ab) && e.detail.ab.length >= 4 && geo) {
+      if (e && e.kind === 'agopenweb' && e.tractor === tr.id && e.detail && 'ab' in e.detail) {
+        if (!Array.isArray(e.detail.ab)) break; // cleared: fall back to the derived guidance line
+        if (e.detail.ab.length < 4 || !geo) continue;
         const [la1, lo1, la2, lo2] = e.detail.ab.map(Number);
         if ([la1, lo1, la2, lo2].every(isFinite)) {
           const a = geo.toGrid(la1, lo1), b = geo.toGrid(la2, lo2);
-          setAB(rec, grid, a.x, a.y, b.x, b.y); rec.abSrc = 'agopenweb'; return;
+          // extend the A-B segment across the field like AgOpenWeb draws it (clip to the farm)
+          const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+          const t = clip(a.x, a.y, dx / L, dy / L, { x0: -0.5, x1: grid.w - 0.5, y0: -0.5, y1: grid.h - 0.5 });
+          if (t) setAB(rec, grid, a.x + (dx / L) * Math.max(t[0], -L * 0.25), a.y + (dy / L) * Math.max(t[0], -L * 0.25), a.x + (dx / L) * Math.min(t[1], L * 1.25), a.y + (dy / L) * Math.min(t[1], L * 1.25));
+          else setAB(rec, grid, a.x, a.y, b.x, b.y);
+          rec.abSrc = 'agopenweb'; return;
         }
       }
     }
+    if (tr.status !== 'working') { rec.abSeg = null; rec.abHd = null; return; }
     const hd = tr.pose && isFinite(tr.pose.heading_deg) ? +tr.pose.heading_deg : null;
     if (hd == null) return;
     const prev = rec.prevHd; rec.prevHd = hd;
@@ -145,10 +154,11 @@ export function createLiveTractors(scene, hooks = {}) {
           icon.root.position.set(wx, 0, wz);
           const ab = new THREE.Group();
           const abMat = mat(new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.45), 0.95), abDotMat = mat('#ffffff', 1);
-          const line = flat(shared().quad, abMat, 5), da = flat(shared().disc, abDotMat, 5), db = flat(shared().disc, abDotMat, 5);
-          ab.add(line, da, db); ab.visible = false; scene.add(ab);
+          const abEdgeMat = mat('#1c1c1e', 0.55); // dark edge under the line, like the implement bar's
+          const edge = flat(shared().quad, abEdgeMat, 4.9), line = flat(shared().quad, abMat, 5), da = flat(shared().disc, abDotMat, 5), db = flat(shared().disc, abDotMat, 5);
+          ab.add(edge, line, da, db); ab.visible = false; scene.add(ab);
           const trail = createTrail(color); scene.add(trail.mesh);
-          rec = { id: tr.id, icon, ab, abLine: null, abMat, abDotMat, abParts: { line, da, db }, trail, color, from: { x: wx, z: wz }, to: { x: wx, z: wz }, t0: now, dur: 200, lastUpd: now, hd: 0, born: initial ? 0 : now, lastRip: 0 };
+          rec = { id: tr.id, icon, ab, abLine: null, abMat, abDotMat, abEdgeMat, abParts: { edge, line, da, db }, trail, color, from: { x: wx, z: wz }, to: { x: wx, z: wz }, t0: now, dur: 200, lastUpd: now, hd: 0, born: initial ? 0 : now, lastRip: 0 };
           rec.icon.rotor.rotation.y = -((+(tr.pose && tr.pose.heading_deg) || 0) * Math.PI) / 180;
           map.set(tr.id, rec);
           if (hooks.onCreate) hooks.onCreate(rec);
@@ -208,11 +218,12 @@ export function createLiveTractors(scene, hooks = {}) {
         const seg = rec.abSeg;
         rec.ab.visible = !!seg;
         if (seg) {
-          const { line, da, db } = rec.abParts;
+          const { edge, line, da, db } = rec.abParts;
           const L = Math.hypot(seg.bx - seg.ax, seg.bz - seg.az), th = Math.max(0.03, 1.6 * wpp), dot = Math.max(0.06, 3.5 * wpp);
           line.position.set((seg.ax + seg.bx) / 2, 0, (seg.az + seg.bz) / 2);
           line.rotation.z = Math.atan2(-(seg.bz - seg.az), seg.bx - seg.ax); // flat mesh: rotation.z spins in the ground plane
           line.scale.set(L, th, 1);
+          edge.position.copy(line.position); edge.rotation.z = line.rotation.z; edge.scale.set(L, Math.max(th * 1.8, th + 2.4 * wpp), 1); // 0.09 : 0.05 as in 3D, at least ~1.2 px each side
           da.position.set(seg.ax, 0, seg.az); db.position.set(seg.bx, 0, seg.bz); da.scale.setScalar(dot); db.scale.setScalar(dot);
         }
       }

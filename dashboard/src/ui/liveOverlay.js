@@ -7,7 +7,7 @@ const CARD_W = 232;
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const compass = (d) => COMPASS[Math.round((((d % 360) + 360) % 360) / 45) % 8];
 
-export function createLiveOverlay(stage, { onFollow, onClose }) {
+export function createLiveOverlay(stage, { onFollow, onClose, onRepair, onControls = null }) {
   const ovl = document.createElement('div'); ovl.className = 'lf-ovl'; ovl.setAttribute('aria-hidden', 'true');
   stage.appendChild(ovl);
   const blocks = new Map(); // id -> el
@@ -22,19 +22,23 @@ export function createLiveOverlay(stage, { onFollow, onClose }) {
     '<div><dt>Fuel</dt><dd data-k="fuel"></dd></div><div><dt>Tool</dt><dd data-k="tool"></dd></div></dl>' +
     '<div class="job"><p><span data-k="job"></span><span data-k="pct"></span></p><div class="bar"><u></u></div></div>' +
     '<div class="aow"><i></i><span></span></div>' +
-    '<button type="button" class="fol" aria-pressed="false"></button>';
+    '<button type="button" class="mrep">Mark repaired</button>' +
+    '<div class="lf-acts"><button type="button" class="fol" aria-pressed="false"></button>' +
+    (onControls ? '<button type="button" class="ctl" title="Open the tractor control panel">Controls</button>' : '') + '</div>';
   stage.appendChild(card);
   const q = (s) => card.querySelector(s);
   const el = {
     dot: q('.hd i'), name: q('.hd b'), st: q('.hd .st'), x: q('.x'),
     spd: q('[data-k=spd]'), hd: q('[data-k=hd]'), fuel: q('[data-k=fuel]'), tool: q('[data-k=tool]'),
     job: q('[data-k=job]'), pct: q('[data-k=pct]'), bar: q('.bar u'), jobRow: q('.job'),
-    aow: q('.aow'), aowTxt: q('.aow span'), fol: q('.fol'),
+    aow: q('.aow'), aowTxt: q('.aow span'), fol: q('.fol'), mrep: q('.mrep'),
   };
   let cardId = null, following = false;
   const set = (node, v) => { if (node.textContent !== v) node.textContent = v; };
   el.x.addEventListener('click', () => onClose && onClose());
   el.fol.addEventListener('click', () => onFollow && onFollow(!following));
+  const ctlB = card.querySelector('.ctl'); if (ctlB) ctlB.addEventListener('click', () => { if (cardId) onControls(cardId); });
+  el.mrep.addEventListener('click', () => { if (cardId && onRepair && !el.mrep.classList.contains('busy')) onRepair(cardId, [el.mrep]); });
   card.addEventListener('pointerdown', (e) => e.stopPropagation());
 
   function blockEls(grid, scenario) {
@@ -116,11 +120,16 @@ export function createLiveOverlay(stage, { onFollow, onClose }) {
         const hb = a.heartbeat_age_ms != null ? ' · ' + Math.round(a.heartbeat_age_ms) + ' ms' : '';
         set(el.aowTxt, 'AgOpenWeb ' + (a.endpoint || '') + hb + ' · autosteer ' + (a.autosteer ? 'on' : 'off'));
         el.aow.title = el.aowTxt.textContent;
-      } else { el.aow.className = 'aow'; set(el.aowTxt, 'Simulated · no AgOpenWeb link'); el.aow.title = 'MockGateway tractor (agopenweb is null)'; }
+      } else { el.aow.className = 'aow'; set(el.aowTxt, 'No AgOpenWeb link'); el.aow.title = 'This tractor has no AgOpenWeb steering link'; }
       el.fol.setAttribute('aria-pressed', following ? 'true' : 'false');
       set(el.fol, following ? 'Following · drag to stop' : 'Follow');
+      el.mrep.style.display = isDown(tr.status) || tr.status === 'repairing' ? '' : 'none';
     },
-    openCard(id) { cardId = id; card.classList.add('on'); },
+    openCard(id) {
+      cardId = id; card.classList.add('on');
+      // the Tractor Control Panel listens: while it is open it takes over (and the card stays hidden, see style.css)
+      stage.dispatchEvent(new CustomEvent('hf:readout', { detail: { id } }));
+    },
     closeCard() { cardId = null; card.classList.remove('on'); },
     setFollowing(v) { following = !!v; el.fol.setAttribute('aria-pressed', following ? 'true' : 'false'); set(el.fol, following ? 'Following · drag to stop' : 'Follow'); },
     get cardId() { return cardId; },

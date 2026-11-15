@@ -6,6 +6,8 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { makeHouses, placePart } from './houses.mjs';
+import { makeOrchard } from './trees.mjs';
+import { LAYOUTS, GRID, layoutSvg } from './layout.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SC = 400; // svg units per scene unit
@@ -503,6 +505,186 @@ const sceneModel = (k) => {
 };
 const sFrame = union(hKeys.map((k) => render(sceneModel(k), 'iso').bounds));
 for (const k of hKeys) files[`house-${k}-scene.svg`] = singleModel(sceneModel(k), 'iso', sFrame);
+
+// ---------- orchard trees + block plots (trees.mjs), multi-object scenes ----------
+// render() casts ONE shadow hull per model, which would grey out a whole block, so scenes are drawn here in layers:
+// ground quads (list order) -> blurred contact AO -> one cast shadow per group -> overlays (AB line) ->
+// every group's parts sorted back to front -> post layers (Map view: coverage + AB above the aerial) -> map marks.
+const { trees, blockSpec, depotSpec, farmSpec, budgets: treeBudgets } = makeOrchard({ box, beam, cyl, M, mix, placePart, tractor: models.A, hub: houses.B });
+function drawPart(p, V) {
+  const pc = avg(p.faces.flatMap((f) => f.pts));
+  let out = '';
+  for (const face of p.faces) {
+    const fc = avg(face.pts);
+    let n = [0, 0, 0];
+    for (let i = 0; i < face.pts.length; i++) {
+      const a = face.pts[i], b = face.pts[(i + 1) % face.pts.length];
+      n = add(n, [(a[1] - b[1]) * (a[2] + b[2]), (a[2] - b[2]) * (a[0] + b[0]), (a[0] - b[0]) * (a[1] + b[1])]);
+    }
+    if (Math.hypot(...n) < 1e-12) continue;
+    n = norm(n);
+    if (p.faces.length > 1 && dot(n, sub(fc, pc)) < 0) n = mul(n, -1);
+    if (p.faces.length === 1 && n[1] < 0) n = mul(n, -1); // flat ground quads face up
+    if (dot(n, V.f) > -1e-4) continue;
+    const t = shadeIdx(n, V.L), pts = pts2(V.P, face.pts);
+    if (face.mat === 'body') { out += `<polygon class="b${t}" points="${pts}"/>`; continue; }
+    const c = p.name === 'ground' || p.name === 'disc' ? face.mat : TONE[t](face.mat);
+    out += face.op != null ? `<polygon points="${pts}" fill="${c}" opacity="${face.op}"/>` : `<polygon points="${pts}" fill="${c}" stroke="${c}"/>`;
+    for (const d of face.decals) out += `<polygon points="${pts2(V.P, d.pts)}" fill="${d.fill}" stroke="none"${d.op !== 1 ? ` opacity="${d.op}"` : ''}/>`;
+  }
+  return out;
+}
+function renderScene(spec, kind) {
+  const V = view(kind);
+  const bounds = { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 };
+  const grow = ([x, y]) => { bounds.x0 = Math.min(bounds.x0, x); bounds.x1 = Math.max(bounds.x1, x); bounds.y0 = Math.min(bounds.y0, y); bounds.y1 = Math.max(bounds.y1, y); };
+  const all = [...(spec.ground || []), ...spec.groups.flatMap((g) => g.parts)];
+  all.forEach((p) => p.faces.forEach((f) => f.pts.forEach((q) => grow(V.P(q)))));
+  let s = `<g id="ground">${(spec.ground || []).map((p) => drawPart(p, V)).join('')}</g>`;
+  if (spec.ao && spec.ao.length) s += `\n<g id="contact-ao" filter="url(#ao)">${spec.ao.map((p) => drawPart(p, V)).join('')}</g>`;
+  const Ls = norm([V.L[0] * 0.55, Math.abs(V.L[1]) + 0.6, V.L[2] * 0.55]);
+  s += '\n<g id="shadows" filter="url(#soft)">';
+  for (const g of spec.groups) {
+    if (!g.shadow) continue;
+    const gp = g.parts.flatMap((p) => p.faces.flatMap((f) => f.pts)).map((p) => V.P(sub(p, mul(Ls, p[1] / Ls[1]))));
+    s += `<polygon points="${hull(gp).map((q) => r1(q[0]) + ',' + r1(q[1])).join(' ')}" fill="#000" opacity=".2"/>`;
+  }
+  s += '</g>';
+  if (spec.overlays) s += `\n<g id="guidance">${spec.overlays.map((p) => drawPart(p, V)).join('')}</g>`;
+  const draw = (groups) => groups.flatMap((g) => g.parts.map((p) => ({ p, g, d: dot(avg(p.faces.flatMap((f) => f.pts)), V.f) - p.bias })))
+    .sort((a, b) => b.d - a.d)
+    .map(({ p, g }) => { const b = drawPart(p, V); return b ? `<g data-part="${p.name || 'part'}"${g.style ? ` style="${g.style}"` : ''}>${b}</g>` : ''; }).join('\n');
+  s += `\n<g id="objects" stroke-width=".8" stroke-linejoin="round">\n${draw(spec.groups.filter((g) => !g.late))}</g>`;
+  if (spec.post) s += `\n<g id="coverage-and-guidance">${spec.post.map((p) => drawPart(p, V)).join('')}</g>`;
+  const late = spec.groups.filter((g) => g.late);
+  if (late.length) s += `\n<g id="tractor-icon" stroke-width=".8" stroke-linejoin="round">${draw(late)}</g>`;
+  if (spec.outline) {
+    const { w, h, t } = spec.outline;
+    const rect = (a, b) => 'M' + [[-a, -b], [a, -b], [a, b], [-a, b]].map(([x, z]) => V.P([x, 0.08, z]).map(r1).join(' ')).join('L') + 'Z';
+    s += `\n<path d="${rect(w / 2, h / 2)}${rect(w / 2 - t, h / 2 - t)}" fill="#fff" fill-rule="evenodd" opacity=".85"/>`;
+  }
+  if (spec.mapIcon) {
+    const { x, z, color } = spec.mapIcon;
+    const circ = (r) => 'M' + Array.from({ length: 56 }, (_, i) => { const a = (i / 56) * Math.PI * 2; return V.P([x + Math.cos(a) * r, 0.1, z + Math.sin(a) * r]).map(r1).join(' '); }).join('L') + 'Z';
+    s += `\n<path d="${circ(0.53)}${circ(0.47)}" fill="${color}" fill-rule="evenodd" opacity=".9"/>`;
+  }
+  return { svg: s, bounds };
+}
+const SCENE_FILTERS = `${FILTERS}\n<filter id="ao" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>`;
+function sceneSvg(title, desc, r, box, pad = 24) {
+  const v = vb(box, pad);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${v.join(' ')}" width="${v[2]}" height="${v[3]}" role="img">
+<title>${title}</title>
+<desc>${desc}</desc>
+<defs>${STYLE(false)}
+${SCENE_FILTERS}</defs>
+${r.svg}
+</svg>
+`;
+}
+const tKeys = ['current', 'A', 'B', 'C'];
+const treeScene = (k) => ({ ao: trees[k].ao, groups: [{ parts: trees[k].parts, shadow: true }] });
+for (const kind of ['iso', 'side', 'top']) {
+  const rs = tKeys.map((k) => renderScene(treeScene(k), kind));
+  const fr = union(rs.map((r) => r.bounds));
+  tKeys.forEach((k, i) => { files[`trees-${k}-${kind}.svg`] = sceneSvg(`${trees[k].title}, ${kind} view`, 'Flat-shaded orthographic projection of the three.js part list (scene units, light from the top left).', rs[i], fr); });
+}
+const blockR = Object.fromEntries(tKeys.map((k) => [k, renderScene(blockSpec(k, { state: 'ripe' }), 'iso')]));
+const blockFrame = union(tKeys.map((k) => blockR[k].bounds));
+for (const k of tKeys) files[`plots-${k}-block.svg`] = sceneSvg(`${trees[k].title}: block sample`, 'One 4 x 3 block at scene scale (ripe state): soil frame, grass treatment, trees, tractor A working lane 2 with coverage painted behind it and its AB line, the Fleet hub across the road.', blockR[k], blockFrame);
+const mapR = Object.fromEntries(tKeys.map((k) => [k, renderScene(blockSpec(k, { state: 'ripe', kind: 'map' }), 'top')]));
+const mapFrame = union(tKeys.map((k) => mapR[k].bounds));
+for (const k of tKeys) files[`plots-${k}-map.svg`] = sceneSvg(`${trees[k].title}: Map view`, 'Top-down: the same block in the Map vocabulary (coverage at 0.62 and AB line above the canopy, white block outline, tractor icon with status ring).', mapR[k], mapFrame);
+const STATES = [['normal', 'Normal', '#30D158'], ['ripe', 'Ripe', '#FFD60A'], ['heat', 'Heat-stressed', '#FF375F']];
+const tileFrame = union(tKeys.flatMap((k) => STATES.map(([st, , c]) => renderScene(blockSpec(k, { state: st, color: c, kind: 'tile' }), 'iso').bounds)));
+for (const k of tKeys) {
+  const tv = vb(tileFrame, 16), gap = 60, lab = 90;
+  const W = 3 * tv[2] + 2 * gap, H = tv[3] + lab;
+  const body = STATES.map(([st, name, c], i) => {
+    const r = renderScene(blockSpec(k, { state: st, color: c, kind: 'tile' }), 'iso');
+    const svg = r.svg.replace(/id="[^"]+"/g, '');
+    return `<g transform="translate(${r1(i * (tv[2] + gap) - tv[0])} ${r1(-tv[1])})">${svg}</g>
+<text x="${r1(i * (tv[2] + gap) + tv[2] / 2)}" y="${r1(tv[3] + 66)}" text-anchor="middle" font-family="-apple-system,system-ui,sans-serif" font-size="56" font-weight="600" fill="#6E6E73">${name}</text>`;
+  }).join('\n');
+  files[`plots-${k}-states.svg`] = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r1(W)} ${r1(H)}" width="${r1(W)}" height="${r1(H)}" role="img">
+<title>${trees[k].title}: block states</title>
+<desc>Normal (green coverage), ripe (yellow coverage) and heat-stressed (pink coverage) block tints. Tints are Lambert base plus the emissive farm.js can set; coverage colours are the hardest fleet colours for each tint.</desc>
+<defs>${STYLE(false)}
+${SCENE_FILTERS}</defs>
+${body}
+</svg>
+`;
+}
+// ---------- decisions: A + B touches, AB-line edge, hub depth ----------
+files['plots-AB-block.svg'] = sceneSvg('A + B touches: block sample', 'Direction A with B’s twin tram lines and white-tagged row-end posts, ripe, tractor A working lane 2, Fleet hub across the road.', renderScene(blockSpec('AB', { state: 'ripe' }), 'iso'), blockFrame);
+files['plots-AB-map.svg'] = sceneSvg('A + B touches: Map view', 'Top-down, north up, Map vocabulary.', renderScene(blockSpec('AB', { state: 'ripe', kind: 'map' }), 'top'), mapFrame);
+/** grid sheet of scene renders sharing one frame; labels under each cell, optional row labels on the left */
+function sheet(cells, cols, title, desc, { rowLabels = null, pad = 16, gap = 60, left = 0 } = {}) {
+  const rs = cells.map((c) => renderScene(c.spec, c.kind));
+  const tv = vb(union(rs.map((r) => r.bounds)), pad);
+  const lab = Math.max(90, tv[2] * 0.055);
+  const rows = Math.ceil(cells.length / cols);
+  const W = left + cols * tv[2] + (cols - 1) * gap, Ht = rows * (tv[3] + lab) + (rows - 1) * gap * 0.5;
+  const T = (x, y, t, a = 'middle', fs = Math.max(56, Math.round(tv[2] * 0.03))) => `<text x="${r1(x)}" y="${r1(y)}" text-anchor="${a}" font-family="-apple-system,system-ui,sans-serif" font-size="${fs}" font-weight="600" fill="#6E6E73">${t}</text>`;
+  const body = rs.map((r, i) => {
+    const cx = left + (i % cols) * (tv[2] + gap), cy = Math.floor(i / cols) * (tv[3] + lab + gap * 0.5);
+    return `<g transform="translate(${r1(cx - tv[0])} ${r1(cy - tv[1])})">${r.svg.replace(/id="[^"]+"/g, '')}</g>\n${cells[i].label ? T(cx + tv[2] / 2, cy + tv[3] + Math.max(66, tv[2] * 0.04), cells[i].label) : ''}`;
+  }).join('\n') + (rowLabels ? rowLabels.map((t, j) => T(0, j * (tv[3] + lab + gap * 0.5) + tv[3] / 2, t, 'start', 52)).join('') : '');
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${r1(W)} ${r1(Ht)}" width="${r1(W)}" height="${r1(Ht)}" role="img">
+<title>${title}</title>
+<desc>${desc}</desc>
+<defs>${STYLE(false)}
+${SCENE_FILTERS}</defs>
+${body}
+</svg>
+`, cell: tv };
+}
+files['plots-AB-states.svg'] = sheet(STATES.map(([st, name, c]) => ({ spec: blockSpec('AB', { state: st, color: c, kind: 'tile' }), kind: 'iso', label: name })), 3,
+  'A + B touches: block states', 'Normal (green coverage), ripe (yellow) and heat-stressed (pink).').svg;
+const AB_CASES = [['ripe', '#FFD60A', 'Ripe + yellow'], ['normal', '#0A84FF', 'Normal + blue']];
+const abCells = (kind) => AB_CASES.flatMap(([st, c, n]) => [false, true].map((edge) => ({ spec: blockSpec('AB', { state: st, color: c, kind, abEdge: edge }), kind: kind === 'tile' ? 'iso' : 'top', label: `${n} · ${edge ? 'dark edge' : 'today'}` })));
+files['decide-abline-iso.svg'] = sheet(abCells('tile'), 2, 'AB line: today vs dark edge (3/4 view)', 'A + B block, tractor A on lane 2 with coverage painted behind it. Left: today’s 0.05 line (fleet colour + 45% white). Right: the same line over a 0.09-wide #1C1C1E underlay at 0.55.').svg;
+files['decide-abline-map.svg'] = sheet(abCells('maptile'), 2, 'AB line: today vs dark edge (Map view)', 'Top-down, north up, coverage at 0.62 above the canopy. Left: today. Right: with the dark edge.').svg;
+const hubOpts = ['a', 'b', 'c'];
+const hubR = Object.fromEntries(hubOpts.map((o) => [o, renderScene(depotSpec(o).spec, 'iso')]));
+const hubFrame = union(hubOpts.map((o) => hubR[o].bounds));
+const hubInfo = Object.fromEntries(hubOpts.map((o) => [o, depotSpec(o).info]));
+for (const o of hubOpts) files[`decide-hub-${o}.svg`] = sceneSvg(`Fleet hub depth, option ${o}: ${hubInfo[o].label}`, 'Depot strip of the mock scenario at scene scale: road rows 0 and 6, column roads 0/5/10, blocks A and B (A + B touches), the Fleet hub north of road 6 with tractor A nosed into the refuel bay.', hubR[o], hubFrame);
+files['decide-hub-top.svg'] = sheet(hubOpts.map((o) => ({ spec: depotSpec(o, { top: true }).spec, kind: 'top', label: `${o} · ${hubInfo[o].label}` })), 3, 'Fleet hub depth options, top-down', 'North up. Same strip as the 3/4 views.').svg;
+const layoutInfo = {};
+const farmR = {};
+for (const k of ['a', 'b', 'c']) {
+  const L = LAYOUTS[k], d = layoutSvg(L);
+  files[`decide-layout-${k}.svg`] = d.svg;
+  layoutInfo[k] = { name: L.name, sub: L.sub, gapA: d.gapA, gapB: d.gapB, hub: d.placement };
+  farmR[k] = renderScene(farmSpec(L.blocks, d.placement, GRID), 'iso');
+}
+const farmFrame = union(Object.values(farmR).map((r) => r.bounds));
+for (const k of ['a', 'b', 'c']) files[`decide-layout-${k}-iso.svg`] = sceneSvg(`Farm layout ${k}: ${LAYOUTS[k].name}, 3/4 view`, 'Whole farm from the default camera direction: roads, eight blocks with tree rows (one-lobe A trees for the thumbnail), the Fleet hub at the scale hubPlacement() picks.', farmR[k], farmFrame);
+const decideFrames = { hub: vb(hubFrame), farm: vb(farmFrame) };
+// orchard budget: 8 blocks, mocked ripeness (mockSource BLOCKS) and worst case (every block heavy)
+const RIPE = [0.4, 0.5, 0.72, 0.3, 0.55, 0.6, 0.45, 0.35];
+const level = (k, rp) => (k === 'current' ? (rp >= 0.6 ? Math.min(4, Math.round((rp - 0.45) * 8)) : 0) : rp >= 0.7 ? 'heavy' : rp >= 0.5 ? 'few' : 0);
+const orchardStats = {};
+for (const k of [...tKeys, 'AB']) {
+  const b = treeBudgets[k], n = b.perBlock * 8;
+  const perTree = b.parts.reduce((s, p) => s + p.tris * p.per, 0);
+  const fruitPerBlock = (rp) => { const l = level(k, rp); return k === 'current' ? l * b.perBlock : l ? b.fruit[l] * b.perBlock : 0; };
+  const fruitN = RIPE.reduce((s, rp) => s + fruitPerBlock(rp), 0);
+  const fruitMax = k === 'current' ? 4 * n : b.fruit.heavy * n;
+  const spec = blockSpec(k, { state: 'ripe' });
+  const statics = (k === 'A' || k === 'AB' ? spec.groups.flatMap((g) => g.parts).filter((p) => p.name === 'tuft').length * 4 * 8 : 0) + (b.statics || 0);
+  const trees = n * perTree;
+  orchardStats[k] = { label: b.label, perBlock: b.perBlock, n, perTree, parts: b.parts, fruit: b.fruit, trees, statics, fruitN, fruitTris: fruitN * b.fruit.tris, fruitMax, fruitMaxTris: fruitMax * b.fruit.tris,
+    total: trees + statics + fruitN * b.fruit.tris, worst: trees + statics + fruitMax * b.fruit.tris, draws: b.draws + (statics ? 1 : 0), shadowDraws: b.shadowDraws, ground: b.ground };
+}
+{ // like-for-like: A at the brief's 12 trees per block (4 x 3, one per cell, as farm.js lays them out)
+  const o = orchardStats.A, n = 96, b = treeBudgets.A;
+  const fruitN = RIPE.reduce((s, rp) => { const l = level('A', rp); return s + (l ? b.fruit[l] * 12 : 0); }, 0);
+  orchardStats.A12 = { ...o, label: 'A at 12 per block', perBlock: 12, n, trees: n * o.perTree, fruitN, fruitTris: fruitN * b.fruit.tris, fruitMax: 9 * n, fruitMaxTris: 9 * n * b.fruit.tris,
+    total: n * o.perTree + o.statics + fruitN * b.fruit.tris, worst: n * o.perTree + o.statics + 9 * n * b.fruit.tris };
+}
+const orchardFrames = { block: vb(blockFrame), map: vb(mapFrame), tile: vb(tileFrame, 16) };
 for (const [n, s] of Object.entries(files)) writeFileSync(join(OUT, n), s);
 const houseStats = {};
 for (const k of hKeys) {
@@ -535,8 +717,8 @@ for (const k of keys) {
 const isoFrame = vb(frames.iso);
 const pal = {};
 for (const k of ['A', 'B', 'C']) { const m = files[`tractor-palette-${k}.svg`].match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/); pal[k] = { w: +m[1], h: +m[2] }; }
-writeFileSync(join(OUT, '_build', 'stats.json'), JSON.stringify({ stats, isoFrame, pal, houses: houseStats, houseSceneFrame: sceneVb }, null, 2));
-writeFileSync(join(OUT, 'index.html'), (await import('./page.mjs')).page({ stats, isoFrame, pal, models, houseStats, sceneVb }));
+writeFileSync(join(OUT, '_build', 'stats.json'), JSON.stringify({ stats, isoFrame, pal, houses: houseStats, houseSceneFrame: sceneVb, orchard: orchardStats, orchardFrames, hubInfo, decideFrames, layoutInfo }, null, 2));
+writeFileSync(join(OUT, 'index.html'), (await import('./page.mjs')).page({ stats, isoFrame, pal, models, houseStats, sceneVb, orchardStats, orchardFrames, hubInfo, decideFrames, layoutInfo }));
 console.log(Object.keys(files).join('\n'));
 console.log(JSON.stringify(stats));
 console.log(JSON.stringify(houseStats));

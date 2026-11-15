@@ -8,6 +8,7 @@ import * as THREE from 'three';
 
 const COVER_Y = 0.032;  // just above the block soil patches (y 0.02), well under the canopy
 const AB_Y = 0.07;
+const AB_EDGE = 0.09; // dark underlay width (line is 0.05)
 const UPLOAD_MS = 150;
 
 export function createSimOverlay(world, dio) {
@@ -37,14 +38,16 @@ export function createSimOverlay(world, dio) {
       rec.trail.addView(S, { y: 0.05, opacity: 0.85 });
       const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(rec.color).lerp(new THREE.Color('#ffffff'), 0.45), transparent: true, opacity: 0.95, depthWrite: false });
       const dotMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.95, depthWrite: false });
-      const ab = new THREE.Group(), line = flat(quad, mat, 3), da = flat(disc, dotMat, 3), db = flat(disc, dotMat, 3);
-      ab.add(line, da, db); ab.visible = false; ab.position.y = AB_Y; S.add(ab);
-      recs.set(rec.id, { ab, line, da, db, mat, dotMat, color: rec.color });
+      // dark edge under the line (Decision 2): keeps it readable over ripe grass and its own coverage colour
+      const edgeMat = new THREE.MeshBasicMaterial({ color: '#1C1C1E', transparent: true, opacity: 0.55, depthWrite: false });
+      const ab = new THREE.Group(), edge = flat(quad, edgeMat, 2), line = flat(quad, mat, 3), da = flat(disc, dotMat, 3), db = flat(disc, dotMat, 3);
+      ab.add(edge, line, da, db); ab.visible = false; ab.position.y = AB_Y; S.add(ab);
+      recs.set(rec.id, { ab, edge, line, da, db, mat, dotMat, edgeMat, color: rec.color });
     },
     /** liveTractors onRemove (the trail's 3D mesh is disposed by the trail itself). */
     detach(rec) {
       const r = recs.get(rec.id); if (!r) return;
-      S.remove(r.ab); r.mat.dispose(); r.dotMat.dispose(); recs.delete(rec.id);
+      S.remove(r.ab); r.mat.dispose(); r.dotMat.dispose(); r.edgeMat.dispose(); recs.delete(rec.id);
     },
     /** New scenario: coverage plane over the same grid as the Live feed (its own GPU texture, same CPU bytes). */
     setCoverage(cov, grid) {
@@ -80,6 +83,7 @@ export function createSimOverlay(world, dio) {
           r.line.position.set((seg.ax + seg.bx) / 2, 0, (seg.az + seg.bz) / 2);
           r.line.rotation.z = Math.atan2(-(seg.bz - seg.az), seg.bx - seg.ax);
           r.line.scale.set(L, 0.05, 1);
+          r.edge.position.copy(r.line.position); r.edge.rotation.z = r.line.rotation.z; r.edge.scale.set(L, AB_EDGE, 1);
           r.da.position.set(seg.ax, 0, seg.az); r.db.position.set(seg.bx, 0, seg.bz); r.da.scale.setScalar(0.08); r.db.scale.setScalar(0.08);
         }
       }

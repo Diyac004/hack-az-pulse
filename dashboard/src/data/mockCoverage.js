@@ -12,7 +12,7 @@
 //   `working` on that job advances it, in its own color. After a breakdown the job keeps its head, so the
 //   backup tractor continues exactly where the broken one stopped.
 // - Only implements that apply something paint (spray, mow, hedge); haul_bins does not.
-// - The mock sweeps a block in 3 boustrophedon rows (mockSource.sweepPos: rows at block.y - 0.5 + r, x from
+// - The mock sweeps a block in 3 boustrophedon rows (mockSource.sweepPos: rows at block.y - 0.5 + r*h/3, x from
 //   block.x to block.x + 3). Its tool is 6 m wide on 40 m cells, which would paint hairlines, so the mock swath
 //   is one row pitch (block.h / 3) and is laid over the block outline (row r = r-th third of the block). The
 //   tractor icon therefore runs along the top edge of the band it paints. Real coverage has no such fudge.
@@ -25,7 +25,7 @@ const ROWS = 3;
 
 /** Inverse of mockSource.sweepPos: pose (grid x, y) on block b -> progress 0..1, or null if off the sweep. */
 export function sweepProgress(b, x, y) {
-  const ry = y - (b.y - 0.5);
+  const ry = (y - (b.y - 0.5)) / ((b.h || 3) / ROWS); // rows are pitched block.h / 3 (mockSource.sweepPos)
   const row = Math.round(ry);
   if (row < 0 || row >= ROWS || Math.abs(ry - row) > 0.2) return null;
   const span = 3; // mockSource sweeps 3 cells regardless of block width

@@ -63,3 +63,13 @@
 @media (prefers-reduced-transparency:reduce){
   .lf-blk{background:rgba(20,20,22,.85);-webkit-backdrop-filter:none;backdrop-filter:none}
 }
+.lf-card .mrep{width:100%;border:none;border-radius:10px;padding:7px 10px;margin-bottom:6px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:#30D158;color:#fff;position:relative}
+.lf-card .mrep.busy{opacity:.7;pointer-events:none}
+.lf-card .mrep.busy::after{content:"";position:absolute;right:12px;top:9px;width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;animation:spin2 .8s linear infinite}
+/* readout card actions: Follow + Controls (opens the Tractor Control Panel) */
+.lf-card .lf-acts{display:flex;gap:6px}
+.lf-card .lf-acts .fol{flex:1;width:auto}
+.lf-card .ctl{border:none;border-radius:10px;padding:7px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background:rgba(0,0,0,.07);color:#1d1d1f;transition:background .2s,transform .1s}
+.lf-card .ctl:hover{background:rgba(0,0,0,.11)}
+.lf-card .ctl:active{transform:scale(.97)}
+.lf-card .ctl:focus-visible{outline:2px solid #0A84FF;outline-offset:2px}

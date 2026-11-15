@@ -10,12 +10,8 @@ export const priName = (p) => PRIORITY_NAME[p] || 'Low';
 export const IMPLEMENTS = ['sprayer', 'mower', 'hedger', 'bin_trailer'];
 export const implName = (i) => (i === 'bin_trailer' ? 'bin trailer' : String(i || '').replace(/_/g, ' '));
 
-/** Farm time (minutes since 6:00 AM) -> "9:05 AM" */
-export function clock(m) {
-  if (m == null || !isFinite(m)) return '--:--';
-  const h = 6 + Math.floor(m / 60), mm = Math.floor(((m % 60) + 60) % 60), hh = ((h + 11) % 12) + 1;
-  return hh + ':' + String(mm).padStart(2, '0') + ((h % 24) >= 12 ? ' PM' : ' AM');
-}
+/** Farm time (minutes since 6:00 AM) -> "9:05 AM"; past midnight -> "12:54 AM (+1 day)". */
+export { clockText as clock, plural, verb, listText, durText, priorityWord } from '../data/text.js';
 
 /** Short hour label for the timeline axis */
 export function hourLabel(m, first, last) {

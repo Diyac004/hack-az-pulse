@@ -2,9 +2,15 @@
 // world = grid.toWorld). Uses scenario.basemap.image_url (placed by its lat/lon bounds) when present;
 // otherwise paints a procedural aerial from the scenario grid (orchard rows per block, dirt roads, depot).
 import * as THREE from 'three';
+import { hubPlacement, HUB_PLAN } from './depotHub.js';
+
+// direction A + B's touches palette (textures/_build/trees.mjs P), aerial tones
+const A = { grass: '#7E9A4E', grassLight: '#8CA759', berm: '#8E7150', wet: '#6A5236', drip: 'rgba(28,28,30,.7)', tram: 'rgba(110,88,58,.85)',
+  leafDeep: '#2C5424', leaf: '#41712E', leafTip: '#7AA63F' };
+const mixHex = (h1, h2, t) => { const a = new THREE.Color(h1).lerp(new THREE.Color(h2), Math.max(0, Math.min(1, t))); return '#' + a.getHexString(); };
 
 const MARGIN = 5;      // cells of surrounding land drawn around the farm
-const PX = 40;         // canvas px per cell for the procedural aerial
+const PX = 48;         // canvas px per cell for the procedural aerial (48: room for the alleys' tram lines)
 export const LAND = '#A8916C';
 
 function rng(seed) {
@@ -43,22 +49,34 @@ function paintAerial(g) {
     c.fillRect(X(-0.5) + r() * g.w * PX, Y(-0.5) + r() * g.h * PX, 1 + r() * 2, 1 + r() * 2);
   }
 
-  // orchard blocks: inter-row ground + E-W canopy rows (same direction as the sweep)
+  // orchard blocks, direction A + B's touches at the aerial's own density (~5.5 canopy rows per cell, E-W like
+  // the sweep): mowed grass middles in alternating passes, bare berm + dark wet strip + drip line under each row,
+  // twin tram lines down every alley, NW-lit canopies with a lighter flush and an SE shadow (trees.mjs palette)
   for (const b of g.blocks) {
     const x0 = X(b.x - 0.5), y0 = Y(b.y - 0.5), w = b.w * PX, h = b.h * PX;
-    c.fillStyle = '#8A7F57'; c.fillRect(x0, y0, w, h);
+    c.fillStyle = A.grass; c.fillRect(x0, y0, w, h);
     const rows = Math.round(b.h * 5.5), per = Math.round(b.w * 7);
-    const dy = h / rows, dx = w / per, rad = Math.min(dy, dx) * 0.47;
+    const dy = h / rows, dx = w / per, rad = Math.min(dy * 0.31, dx * 0.47);
     const ripe = Math.max(0, Math.min(1, b.ripeness || 0));
+    for (let i = 0; i <= rows; i++) { // alleys (between rows, plus the two headlands)
+      const ay = y0 + i * dy;
+      c.fillStyle = A.grassLight; c.fillRect(x0, Math.max(y0, ay - dy * 0.22), w, Math.min(dy * 0.22, ay - y0)); // north pass lighter
+      if (i > 0 && i < rows) { c.fillStyle = A.tram; for (const d of [-0.13, 0.13]) c.fillRect(x0 + 2, ay + d * dy - 0.5, w - 4, 1); }
+    }
     for (let i = 0; i < rows; i++) {
       const cy = y0 + (i + 0.5) * dy;
+      c.fillStyle = A.berm; c.fillRect(x0 + 2, cy - dy * 0.28, w - 4, dy * 0.56);
+      c.fillStyle = A.wet; c.fillRect(x0 + 3, cy - dy * 0.1, w - 6, dy * 0.26);
+      c.fillStyle = A.drip; c.fillRect(x0 + 3, cy + dy * 0.2, w - 6, 0.8);
+      for (let k = 0; k < per; k++) { // SE shadows first so a canopy never sits under its neighbour's shadow
+        const cx = x0 + (k + 0.5) * dx;
+        c.fillStyle = 'rgba(26,26,14,.42)'; c.beginPath(); c.ellipse(cx + rad * 0.35, cy + rad * 0.4, rad * 1.05, rad * 0.95, 0, 0, 6.283); c.fill();
+      }
       for (let k = 0; k < per; k++) {
         if (r() < 0.025) continue; // a missing tree here and there
-        const cx = x0 + (k + 0.5) * dx + (r() - 0.5) * dx * 0.12, rr = rad * (0.82 + r() * 0.3);
-        c.fillStyle = 'rgba(38,40,22,.45)'; c.beginPath(); c.arc(cx + rr * 0.35, cy + rr * 0.4, rr, 0, 6.283); c.fill(); // shadow (sun NW)
-        const l = 26 + r() * 8;
-        c.fillStyle = `hsl(${95 - ripe * 10 + (r() - 0.5) * 8},${30 + r() * 8}%,${l}%)`; c.beginPath(); c.arc(cx, cy, rr, 0, 6.283); c.fill();
-        c.fillStyle = `hsla(${88 - ripe * 12},40%,${l + 12}%,.55)`; c.beginPath(); c.arc(cx - rr * 0.28, cy - rr * 0.3, rr * 0.45, 0, 6.283); c.fill();
+        const cx = x0 + (k + 0.5) * dx + (r() - 0.5) * dx * 0.1, rr = rad * (0.86 + r() * 0.24), l = r();
+        c.fillStyle = mixHex(A.leafDeep, A.leaf, 0.55 + l * 0.35 - ripe * 0.1); c.beginPath(); c.arc(cx, cy, rr, 0, 6.283); c.fill();
+        c.fillStyle = mixHex(A.leaf, A.leafTip, 0.55 + l * 0.2); c.globalAlpha = 0.8; c.beginPath(); c.arc(cx - rr * 0.3, cy - rr * 0.32, rr * 0.48, 0, 6.283); c.fill(); c.globalAlpha = 1;
       }
     }
   }
@@ -74,14 +92,25 @@ function paintAerial(g) {
   g.rows.forEach((y) => road(X(-0.5), Y(y) - PX / 2 + (PX - rw) / 2, g.w * PX, rw, true));
   g.cols.forEach((x) => road(X(x) - PX / 2 + (PX - rw) / 2, Y(-0.5), rw, g.h * PX, false));
 
-  // depot: gravel pad, shed roof (red, ridge), tanks
-  const d = g.depot, px = X(d.x + 0.6), py = Y(d.y + 0.9);
-  c.fillStyle = '#CDC3AE'; c.fillRect(px, py, 2.0 * PX, 1.7 * PX);
-  c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(px + 0.35 * PX + 5, py + 0.3 * PX + 6, 1.3 * PX, 0.8 * PX);
-  c.fillStyle = '#B4473B'; c.fillRect(px + 0.35 * PX, py + 0.3 * PX, 1.3 * PX, 0.8 * PX);
-  c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(px + 0.35 * PX, py + 0.69 * PX, 1.3 * PX, 2);
-  c.fillStyle = '#ECE9E2';
-  [[1.82, 0.4], [1.82, 0.85]].forEach(([ox, oy]) => { c.beginPath(); c.arc(px + ox * PX, py + oy * PX, 0.13 * PX, 0, 6.283); c.fill(); });
+  // depot: the Fleet hub's footprint at its real placement (depotHub.js hubPlacement + HUB_PLAN): concrete pad,
+  // solar canopy with the fleet-blue fascia, bay-entry stripes (amber refuel, grey service), control building, mast
+  const hp = hubPlacement(g), f = hp.ry ? -1 : 1;
+  const hub = (q, fill, dx = 0, dy = 0) => {
+    const ax = X(hp.x + q.x0 * hp.sw * f), bx = X(hp.x + q.x1 * hp.sw * f), ay = Y(hp.y + q.z0 * hp.sz * f), by = Y(hp.y + q.z1 * hp.sz * f);
+    c.fillStyle = fill; c.fillRect(Math.min(ax, bx) + dx, Math.min(ay, by) + dy, Math.abs(bx - ax), Math.abs(by - ay));
+  };
+  const HP = HUB_PLAN, HC = HP.colors, cn = HP.canopy, ct = HP.control;
+  hub(HP.pad, HC.concrete);
+  hub(cn, 'rgba(26,26,14,.35)', 0.12 * PX, 0.14 * PX); hub(ct, 'rgba(26,26,14,.35)', 0.1 * PX, 0.12 * PX);
+  for (const bay of HP.bays) hub({ x0: bay.x0, x1: bay.x1, z0: cn.z1 + 0.01, z1: HP.pad.z1 - 0.02 }, bay.fill);
+  hub(cn, HC.roof);
+  const cnw = cn.x1 - cn.x0, cd = cn.z1 - cn.z0;
+  hub({ x0: cn.x0 + cnw * 0.04, x1: cn.x0 + cnw * 0.96, z0: cn.z0 + cd * 0.08, z1: cn.z1 - cd * 0.08 }, HC.solar);
+  for (let i = 1; i < 6; i++) { const u = cn.x0 + cnw * (0.04 + (0.92 * i) / 6); hub({ x0: u - 0.006, x1: u + 0.006, z0: cn.z0 + cd * 0.08, z1: cn.z1 - cd * 0.08 }, HC.solarLine); }
+  for (let j = 1; j < 3; j++) { const z = cn.z0 + cd * (0.08 + (0.84 * j) / 3); hub({ x0: cn.x0 + cnw * 0.04, x1: cn.x0 + cnw * 0.96, z0: z - 0.01, z1: z + 0.01 }, HC.solarLine); }
+  hub({ x0: cn.x0, x1: cn.x1, z0: cn.z1 - 0.05, z1: cn.z1 }, HC.fascia);
+  hub(ct, HC.roof); hub({ x0: ct.x0, x1: ct.x1, z0: ct.z1 - 0.05, z1: ct.z1 }, HC.fascia); hub({ x0: ct.x1 - 0.05, x1: ct.x1, z0: ct.z0, z1: ct.z1 }, HC.fascia);
+  c.fillStyle = HC.light; c.beginPath(); c.arc(X(hp.x + HP.mast.x * hp.sw * f), Y(hp.y + HP.mast.z * hp.sz * f), HP.mast.r * hp.sw * PX, 0, 6.283); c.fill();
 
   // light desaturating wash so colored overlays pop
   c.fillStyle = 'rgba(236,230,214,.10)'; c.fillRect(0, 0, cw, ch);

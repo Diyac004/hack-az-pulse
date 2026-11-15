@@ -31,7 +31,8 @@ const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a
  * @param toggle            the view toggle (ui/viewToggle.js); kept in sync when the view is restored
  * @param dioramaTractors   scene/tractors.js instance: gives the 3D positions for the Simulated-view overlays
  */
-export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null, dioramaTractors = null }) {
+export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null, dioramaTractors = null, onRepair = null, onControls = null }) {
+  let pickGuard = () => false; // map_pick (scene/mapPick.js) running: taps are picks, not tractor selection
   let sessionStore = null; try { sessionStore = window.sessionStorage; } catch (e) { sessionStore = null; }
   const vs = createViewState({ storage: sessionStore, search: typeof location !== 'undefined' ? location.search : '' });
   let pendingRestore = vs.restore === 'live';
@@ -63,6 +64,8 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
   const overlay = createLiveOverlay(stage, {
     onFollow: (on) => setFollow(on ? overlay.cardId : null),
     onClose: () => select(null),
+    onRepair: (id, els) => onRepair && onRepair(id, els),
+    onControls: onControls ? (id) => onControls(id) : null,
   });
 
   // ---------- data
@@ -158,7 +161,8 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
       syncBarriers(state);
     }
     if (!grid) return;
-    if (type === 'poses' || type === 'fleet') {
+    // an `agopenweb` log line can carry a new AB line (Tractor Control Panel): re-sync so both views show it now
+    if (type === 'poses' || type === 'fleet' || (type === 'log' && msg.data && msg.data.kind === 'agopenweb')) {
       tractors.sync(state, grid, geo, false);
       for (const t of state.fleet || []) {
         const prev = prevStatus.get(t.id);
@@ -308,7 +312,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     el.classList.remove('drag');
     if (!down) return;
     const wasTap = !down.moved; down = null;
-    if (!wasTap || view !== 'live') return;
+    if (!wasTap || view !== 'live' || pickGuard()) return;
     const q = localXY(e);
     const id = tractors.pick(q.x, q.y, project);
     if (id) { select(id); if (followId && followId !== id) setFollow(id); } else select(null);
@@ -339,7 +343,7 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
   const onSimUp = (e) => {
     if (!sdown) return;
     const tap = !sdown.moved; sdown = null;
-    if (!tap || !simActive()) return;
+    if (!tap || !simActive() || pickGuard()) return;
     const q = localXY(e);
     const id = sim.pick(q.x, q.y, tractors.ids(), projectSim);
     if (id) { select(id); if (followId && followId !== id) setFollow(id); } else if (selectedId) select(null);
@@ -460,6 +464,16 @@ export function createLiveFeed({ stage, world, store, sourceInfo, toggle = null,
     get viewLog() { return vs.log.slice(); },
     setHeat(blocks) { heat = new Set(blocks || []); overlay.setHeat(heat); },
     select, follow: setFollow,
+    /** map_pick support: tractor taps stand down while fn() is true */
+    setPickGuard(fn) { pickGuard = typeof fn === 'function' ? fn : () => false; },
+    /** Map view projection for map_pick (null while the diorama, or the transition, is showing) */
+    pickView() {
+      if (p < 1) return null;
+      return {
+        screenToGround(px, py) { const v = new THREE.Vector3((px / SW) * 2 - 1, -(py / SH) * 2 + 1, 0).unproject(O); return { x: v.x, z: v.z }; },
+        groundToScreen(x, z) { const o = project(x, z, { x: 0, y: 0 }); return { x: o.x, y: o.y }; },
+      };
+    },
     _debug: { tractors, L, R },
     /** debug / leak checks */
     get info() { return { memory: { ...R.info.memory }, render: { ...R.info.render }, programs: R.info.programs.length, trails: Object.fromEntries(tractors.ids().map((id) => [id, tractors.get(id).trail.count])), realCoverage, painted: cov ? cov.painted : 0, coverageOutside: cov ? cov.outside : 0 }; },

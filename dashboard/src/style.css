@@ -163,3 +163,51 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 .tritem b{font-weight:600;color:#1d1d1f}
 .tritem .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
 .unr{font-size:12px;margin:0 0 10px;padding:8px 10px;border-radius:10px;background:rgba(255,69,58,.1);color:#B3261E}
+
+/* timeline: late work + work past the end of the day (never silently hidden) */
+.pill.late{outline:2px solid #FF453A;outline-offset:-2px;background-image:repeating-linear-gradient(135deg,rgba(255,69,58,.0) 0 6px,rgba(255,69,58,.35) 6px 9px)}
+.pill.clip{border-top-right-radius:0;border-bottom-right-radius:0}
+.ovf{position:absolute;right:3px;height:20px;line-height:20px;padding:0 8px;border-radius:10px;font-size:10px;font-weight:600;color:#fff;background:rgba(194,38,28,.92);box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;white-space:nowrap;z-index:3;transition:top .5s cubic-bezier(.34,1.56,.64,1)}
+#planbadge .wchip{font-weight:600;padding:1px 6px;border-radius:7px;margin-left:2px}
+#planbadge .wchip.ot{background:#B86E00;color:#fff}
+#planbadge .wchip.late{background:#C2261C;color:#fff}
+#score .nm{font-weight:400;font-size:11px;color:var(--faint)}
+#score .dtl{grid-column:1/-1;justify-self:start;background:none;border:0;padding:2px 0;font:inherit;font-size:11px;color:#0A84FF;cursor:pointer}
+/* down tractor chip: short status + a dedicated, always-visible Mark repaired button */
+.chip .cact{display:none;margin-top:3px}
+.chip.down .cact{display:block}
+.chip.down p:nth-child(2){display:none}
+.chip .mrb{font:inherit;font-size:10px;font-weight:600;line-height:1;padding:4px 9px;border-radius:9px;border:0;background:#0A84FF;color:#fff;cursor:pointer;white-space:nowrap;position:relative}
+.chip .mrb:hover{background:#0071E3}
+.chip .mrb.busy{opacity:.75;pointer-events:none;padding-right:22px}
+.chip .mrb.busy::after{content:"";position:absolute;right:6px;top:3px;width:8px;height:8px;border-radius:50%;border:1.5px solid rgba(255,255,255,.45);border-top-color:#fff;animation:spin2 .8s linear infinite}
+#chips{max-height:118px}
+#toast.act{pointer-events:auto}
+#toast .tact{margin-left:10px;font:inherit;font-size:12px;font-weight:600;padding:4px 10px;border-radius:9px;border:0;background:#0A84FF;color:#fff;cursor:pointer;position:relative}
+#toast .tact.busy{opacity:.7;pointer-events:none}
+.chip.down p:first-child{white-space:normal}
+
+/* Tractor Control Panel hooks: manual lane (hatched, out of AI planning), tappable lane labels, chip controls button */
+.lane.manual{background-image:repeating-linear-gradient(-45deg,rgba(255,159,10,.30) 0 5px,rgba(255,159,10,.06) 5px 10px) !important;box-shadow:inset 0 0 0 1px rgba(255,159,10,.45)}
+.lname.manual{color:#C77400 !important}
+.lname[role=button]{cursor:pointer;border-radius:6px}
+.lname[role=button]:hover{background:rgba(0,0,0,.06)}
+.lname[role=button]:focus-visible{outline:2px solid #0A84FF;outline-offset:1px}
+.chip .cpb{position:absolute;bottom:3px;right:4px;width:20px;height:20px;border:none;border-radius:7px;background:rgba(0,0,0,.05);padding:0;cursor:pointer;display:grid;place-items:center;opacity:.75;transition:opacity .2s,background .2s}
+.chip:hover .cpb,.chip .cpb:focus-visible{opacity:1}
+.chip .cpb:hover{background:rgba(0,0,0,.1)}
+.chip .cpb svg{width:12px;height:12px;stroke:#3a3a3c;stroke-width:1.5;stroke-linecap:round;fill:none}
+.chip .cpb svg circle{fill:#fff}
+.chip.manual{box-shadow:inset 0 0 0 1.5px rgba(255,159,10,.75)}
+.chip .mbdg{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:0 5px;border-radius:5px;background:#FF9F0A;color:#fff;margin-right:4px;line-height:14px;vertical-align:1px}
+.chip.down .cpb{display:none}
+
+/* Stage stacking order (low -> high): canvases 0 · chips, dock 2 · island, source badge, readout card 3 ·
+   bottom sheets 4 · Tractor Control Panel, keynote 5 · map-pick hint 6 · toast 7. */
+#toast{z-index:7}
+/* never the readout card on top of the open control panel: the panel replaces it */
+#stage.cp-open .lf-card{opacity:0 !important;visibility:hidden !important;pointer-events:none !important}
+/* chip text truncates before the controls button; MANUAL badge never shrinks */
+.chip.has-cpb .ctxt{padding-right:20px}
+.chip .mbdg{flex:none}
+.chip.has-cpb .cx{right:4px}
