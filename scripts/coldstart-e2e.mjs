@@ -227,9 +227,12 @@ if (WANT_CAPS) {
       let caps = null;
       if (typeof fn === 'function') {
         // The detector's signature is not fixed; try an api string first, then an options object.
-        for (const arg of [API, { api: API }, { apiBase: API }, { baseUrl: API }]) {
-          try { caps = await fn(arg); if (caps && typeof caps === 'object') break; } catch { /* try next */ }
-        }
+        // dashboard/src/data/capabilities.js: detectCapabilities({ root, request, state }) with liveSource.request
+        const { createLiveSource } = await import(pathToFileURL(join(REPO, 'dashboard', 'src', 'data', 'liveSource.js')).href);
+        const src = createLiveSource({ api: API, onMessage() {} });
+        const state = await src.request('GET', '/state');
+        caps = await fn({ root: API, request: src.request, state });
+        if (caps && caps.events) { caps = { ...caps, 'scale-test': caps.scaleTest, weather: caps.weatherEnforced === false && caps.events.heat_alert === false && caps.events.weather_change === false ? false : true }; }
       } else if (mod.capabilities && typeof mod.capabilities === 'object') caps = mod.capabilities;
       if (!caps) { note('SKIP: capabilities.js exports no recognised detector (detectCapabilities/detect/probeCapabilities/default); update scripts/coldstart-e2e.mjs'); }
       else {
