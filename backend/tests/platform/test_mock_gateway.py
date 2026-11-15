@@ -105,6 +105,22 @@ class Movement(unittest.TestCase):
         run(self.gw, 168);  self.assertAlmostEqual(self.gw.pose('T3').heading_deg, 270)  # west
         run(self.gw, 178);  self.assertAlmostEqual(self.gw.pose('T3').heading_deg, 180)  # south
 
+    def test_remaining_route_starts_at_anchor(self):
+        run(self.gw, 163)                          # halfway (15,4)->(15,5)
+        rest = self.gw.remaining_route('T3')
+        self.assertEqual(rest[0], self.gw.pose('T3').anchor)
+        self.assertEqual(rest[-1], (10, 8))
+        self.assertEqual(len(rest), 7)             # (15,5) .. (10,8)
+        run(self.gw, 181)
+        self.assertEqual(self.gw.remaining_route('T3'), ())
+
+    def test_wait_entries_are_skipped(self):
+        entries = [
+            {'tractor': 'T3', 'job': None, 'kind': 'wait', 'start_t': 160, 'end_t': 165, 'route': []},
+            {'tractor': 'T3', 'job': 'J1', 'kind': 'work', 'start_t': 165, 'end_t': 170, 'route': []},
+        ]
+        self.assertEqual(orders_from_plan(entries, 'T3'), [Work('J1', 5, 165)])
+
     def test_anchor_is_next_whole_cell(self):
         run(self.gw, 163)                          # 1.5 cells along
         p = self.gw.pose('T3')

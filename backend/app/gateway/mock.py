@@ -168,6 +168,13 @@ class MockGateway:
                     status=tr.status, cell=tr.cell, anchor=tr.anchor,
                     anchor_t=anchor_t, job=tr.job)
 
+    def remaining_route(self, tractor_id: str) -> tuple[Cell, ...]:
+        """Cells still to drive, starting at pose().anchor. Empty when not driving."""
+        tr = self._get(tractor_id)
+        if not tr.path:
+            return ()
+        return tuple(tr.path) if tr.mid_cell else (tr.cell, *tr.path)
+
     # ------------------------------------------------------------ time
 
     def advance(self, dt_min: float) -> list[Report]:
