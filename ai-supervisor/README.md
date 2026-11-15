@@ -20,6 +20,16 @@ Reviewers (one LLM call each, strict JSON schema, compact facts, never raw dumps
   `naip.jpg`; PNG because decoding it needs only `node:zlib`) and asks whether it is orchard. Non-orchard blocks ->
   `disable_block` (`POST /api/events {type:"block_disabled"}`). Cached per scenario.
 
+- **Wording** (4th job, PROJECT.md Change 6): each new explanation's template text + structured facts go to the
+  model, which may only reword it (strict JSON `{text}`, at most 3 sentences). `wording.mjs` checks the answer: every
+  number, time, job, tractor and block of the template unchanged, nothing new, same claims (late, missed, safety, ...);
+  otherwise it is discarded and the template stays. Never changes a plan. Newest first, cached by explanation id,
+  one call at a time. `GET /ai/wording/{explanation_id}`, and `AiState.wording[id]` over `/ai/ws`; the dashboard shows
+  the validated text in the Latest explanation card. `rules` (and the in-browser reviewer): no rewording.
+
+`AiState.activity` (`reviewing plan`, `checking implements`, `checking plots`, `wording explanation`) and
+`last_call` drive the "what the model is doing" line on the AI card and the AI indicator next to the Mock | Live switch.
+
 Runs on a new plan version, a fleet up/down/implement change or a spray-permission change: debounced, one at a time,
 at least `MIN_GAP_S` (20) apart, plus "Review now".
 

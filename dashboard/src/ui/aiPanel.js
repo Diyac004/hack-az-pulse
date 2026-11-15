@@ -13,22 +13,33 @@ const ago = (iso) => {
 const secs = (ms) => (ms == null ? '—' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 const signed = (n, unit = 'min') => (n == null ? null : `${n > 0 ? '+' : ''}${Math.round(n)} ${unit}`);
 
+const isRules = (ai) => !ai || ai.label === 'rules' || ai.provider === 'rules';
+/** Header chip text: which model does the AI work (or that no model is used). */
+export function aiWho(ai) {
+  if (!ai) return 'AI: starting…';
+  return isRules(ai) ? 'AI: rules (no model)' : `AI: ${ai.model} via ${ai.provider}`;
+}
+const lastCallText = (ai) => (ai && ai.last_call ? ` · last call ${secs(ai.last_call.latency_ms)}` : '');
+
 function statusLine(ai) {
   if (!ai) return { dot: 'off', text: 'Starting…' };
   const who = ai.label === 'rules' ? 'rules' : `${ai.model} via ${ai.provider}`;
   if (ai.status === 'offline') return { dot: 'off', text: ai.error || 'AI Supervisor offline' };
+  // what the model is doing right now (service: reviewing plan / checking plots / wording explanation)
+  const act = Array.isArray(ai.activity) ? ai.activity : [];
+  if (act.length) { const t = act.join(' · '); return { dot: 'run', text: `${t[0].toUpperCase()}${t.slice(1)}…${lastCallText(ai)}` }; }
   if (ai.status === 'reviewing') return { dot: 'run', text: `Reviewing with ${who}…` };
   if (ai.status === 'previewing') return { dot: 'run', text: 'Checking re-plans with the planner…' };
-  const last = ai.last_run_at ? `Last review ${ago(ai.last_run_at)} · ${secs(ai.latency_ms)}` : 'No review yet';
+  const last = (ai.last_run_at ? `Last review ${ago(ai.last_run_at)} · ${secs(ai.latency_ms)}` : 'No review yet') + lastCallText(ai);
   return { dot: ai.status === 'error' ? 'off' : 'ok', text: ai.status === 'error' ? `Review failed: ${ai.error}` : last };
 }
 
-export function createAiPanel({ stage, store, api, ops, toast, sheets = null, focusBlock = null }) {
+export function createAiPanel({ stage, store, api, ops, toast, sheets = null, focusBlock = null, modeEl = null, sourceInfo = null }) {
   // ---- side card (after the "Latest explanation" card)
   const side = document.querySelector('.side');
   const card = document.createElement('div');
   card.className = 'card aicard';
-  card.innerHTML = '<div class="aihead"><p class="lbl">AI Supervisor</p><span class="aimodel"></span></div><div class="aistat"></div><div class="aicounts"></div><ul class="aitop"></ul>' +
+  card.innerHTML = '<div class="aihead"><p class="lbl">AI Supervisor</p><span class="aimodel"></span></div><div class="aistat"></div><div class="aicounts"></div><ul class="aitop"></ul><p class="aihint" hidden></p>' +
     '<div class="aibtns"><button class="gbtn sm" data-review>Review now</button><button class="gbtn sm" data-open>Open</button></div>';
   const anchor = side && side.querySelector('.card');
   if (anchor && anchor.nextSibling) side.insertBefore(card, anchor.nextSibling); else if (side) side.appendChild(card);
@@ -91,6 +102,7 @@ export function createAiPanel({ stage, store, api, ops, toast, sheets = null, fo
     const canApprove = !f.advisory && ['open', 'failed', 'stale'].includes(f.status) && !(f.preview && f.preview.allowed === false);
     let h = `<div class="aif${busy ? ' applying' : ''}"><div class="aift"><span class="sev ${f.severity}">${f.severity}</span><span>${esc(f.title)}</span></div>`;
     h += `<p class="aiw">${esc(f.why)}</p>`;
+    h += `<p class="aiby">${isRules(ai()) ? 'Flagged by the rules reviewer (no model)' : `Proposed by ${esc((ai() || {}).model || 'the model')}`}</p>`;
     if (f.advisory) h += `<div class="aia adv">${esc(f.advisory_reason === 'Not supported by this backend' ? 'Not supported by this backend: shown as advice only.' : f.advisory_reason || 'Advice only.')}</div>`;
     else if (f.label) h += `<div class="aia">Proposed: <b>${esc(f.label)}</b>${f.request ? ` <span style="opacity:.7">(${esc(f.request.method)} /api${esc(f.request.path)})</span>` : ''}</div>`;
     h += previewHtml(f);
@@ -121,16 +133,20 @@ export function createAiPanel({ stage, store, api, ops, toast, sheets = null, fo
     const a = s.ai;
     const st = statusLine(a);
     const findings = (a && a.findings) || [];
-    const key = JSON.stringify([open, a && a.status, a && a.scope_note, a && a.last_run_at, a && a.error, findings.map((f) => [f.id, f.status, f.preview_status, f.error, f.updated_at, f.advisory]), a && a.history && a.history.length, Math.floor(Date.now() / 15000)]);
+    const key = JSON.stringify([open, a && a.status, a && a.scope_note, a && a.model, a && a.remote, a && (a.activity || []).join(), a && a.last_call && a.last_call.at, a && a.last_run_at, a && a.error, findings.map((f) => [f.id, f.status, f.preview_status, f.error, f.updated_at, f.advisory]), a && a.history && a.history.length, Math.floor(Date.now() / 15000)]);
     if (key === lastKey) return;
     lastKey = key;
     // card
     const model = card.querySelector('.aimodel');
-    model.textContent = a ? (a.label === 'rules' ? 'rules' : a.model) : '—';
-    model.className = 'aimodel' + (!a || a.label === 'rules' ? ' rules' : '');
+    model.textContent = aiWho(a);
+    model.className = 'aimodel' + (isRules(a) ? ' rules' : '');
     model.title = a ? (a.label === 'rules' ? 'Rule-based reviewer (no model). Start ai-supervisor and add ?ai= for the LLM.' : `${a.model} via ${a.provider} · backend ${a.backend}`) : '';
     card.querySelector('.aistat').innerHTML = `<span class="aidot ${st.dot}"></span><span>${esc(st.text)}</span>`;
     card.querySelector('.aistat').title = (a && a.scope_note) || '';
+    const hint = card.querySelector('.aihint');
+    const hintTxt = a && !a.remote ? 'Connect the AI service for model reviews: ?ai=http://localhost:8060' : a && a.remote && isRules(a) ? 'The AI service runs AI_PROVIDER=rules: start it with agy, openai or anthropic for model reviews.' : '';
+    hint.textContent = hintTxt; hint.hidden = !hintTxt;
+    indicator(a, st);
     const openF = findings.filter((f) => f.status !== 'dismissed');
     card.querySelector('.aicounts').innerHTML = GROUPS.map(([k, n]) => { const c = openF.filter((f) => f.reviewer === k).length; return `<span>${n} <b>${c}</b></span>`; }).join('');
     const top = openF.slice().sort((x, y) => ['high', 'medium', 'low'].indexOf(x.severity) - ['high', 'medium', 'low'].indexOf(y.severity)).slice(0, 3);
@@ -140,7 +156,7 @@ export function createAiPanel({ stage, store, api, ops, toast, sheets = null, fo
     const caps = (a && a.capabilities) || {};
     const capTxt = Object.entries({ 'job edits': caps.patch_job, controls: caps.controls, preview: caps.preview, 'block exclusion': caps.block_disabled }).filter(([, v]) => v === false).map(([k]) => k);
     let h = `<div class="shead"><p>AI Supervisor</p><span style="display:flex;gap:6px"><button class="gbtn sm" data-review>Review now</button><button class="gbtn sm" data-x>Close</button></span></div>`;
-    h += `<div class="aisub"><span class="aimodel${!a || a.label === 'rules' ? ' rules' : ''}">${esc(a ? (a.label === 'rules' ? 'rules (no model)' : `${a.model} via ${a.provider}`) : '—')}</span><span class="aistat" style="display:inline-flex"><span class="aidot ${st.dot}"></span>${esc(st.text)}</span></div>`;
+    h += `<div class="aisub"><span class="aimodel${isRules(a) ? ' rules' : ''}">${esc(aiWho(a))}</span><span class="aistat" style="display:inline-flex"><span class="aidot ${st.dot}"></span>${esc(st.text)}</span></div>`;
     if (a && a.scope_note) h += `<p class="aierr" style="margin-top:-4px">${esc(a.scope_note)}</p>`;
     h += `<p class="aiempty" style="margin-top:-4px">The AI only proposes. You approve; the optimizer re-plans and the Safety Agent validates every change.${capTxt.length ? ` This backend does not support ${esc(capTxt.join(', '))}: those findings are advice only.` : ''}</p>`;
     for (const [k, n] of GROUPS) {
@@ -157,6 +173,29 @@ export function createAiPanel({ stage, store, api, ops, toast, sheets = null, fo
       h += hist.slice(0, 12).map((x) => `<div class="aihist"><span class="k ${x.status}">${x.status}</span><b>${esc(x.label || x.title)}</b>${x.at ? ` <span style="color:#8e8e93">· ${esc(ago(x.at))}</span>` : ''}<p>${esc(x.outcome || '')}</p></div>`).join('');
     }
     sheet.innerHTML = h;
+  }
+
+  // ---- "AI" indicator next to the Mock | Live switch: provider/model + dot (green ready, pulsing busy, grey off).
+  // Attached lazily: the mode switch renders its own markup after this panel is created.
+  let ind = null, indKey = '';
+  function indicator(a, st) {
+    if (!modeEl) return;
+    const row = modeEl.querySelector('.msrow');
+    if (!row) return;
+    if (!ind || !row.contains(ind)) {
+      ind = document.createElement('button');
+      ind.type = 'button'; ind.className = 'aiind';
+      ind.addEventListener('click', (e) => { e.stopPropagation(); setOpen(!open); });
+      row.appendChild(ind); indKey = '';
+    }
+    const dot = !a || st.dot === 'off' ? 'off' : st.dot === 'run' ? 'run' : 'ok';
+    const name = !a ? '…' : isRules(a) ? 'rules' : a.model;
+    const k = dot + '|' + name + '|' + aiWho(a) + st.text;
+    if (k === indKey) return;
+    indKey = k;
+    ind.innerHTML = `<i class="${dot}"></i><b>AI</b><span>${esc(name)}</span>`;
+    ind.title = `${aiWho(a)} · ${st.text}. Click to open the AI Supervisor.`;
+    ind.setAttribute('aria-label', `${aiWho(a)}. Open the AI Supervisor`);
   }
 
   return {

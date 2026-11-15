@@ -91,7 +91,7 @@ capabilities.subscribe((c) => {
 stage.addEventListener('hf:readout', (e) => { if (cockpit.id && e.detail && e.detail.id && e.detail.id !== cockpit.id) cockpit.open(e.detail.id); });
 createWeather({ store, world, farm, tractors, caps: capabilities.get }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
 // AI Supervisor: side card + sheet (proposals the operator approves) and plot marks on the Map/3D view
-const aiPanel = createAiPanel({ stage, store, api, ops, toast, sheets, focusBlock });
+const aiPanel = createAiPanel({ stage, store, api, ops, toast, sheets, focusBlock, modeEl: document.getElementById('srcbadge'), sourceInfo });
 const aiMarks = createAiMapMarks({ stage, store, world, live });
 
 // ---------- source badge ----------
@@ -264,6 +264,7 @@ function syncUI(state, now) {
   dock.badge(state, ops.active(state));
   chips.sync(state);
   panel.sync(state);
+  { const x = (state.explanations || [])[0], w = x && state.ai && state.ai.wording && state.ai.wording[x.id]; if (w && w.status === 'ok') panel.setWording(x.id, w.text); }
   controls.sync(state);
   jobSheet.sync(state);
   cockpit.sync(state);

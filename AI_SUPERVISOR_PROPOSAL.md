@@ -35,7 +35,7 @@ An LLM reviewer beside any contract backend. It subscribes to `/ws`, and after a
 
 Capabilities use the dashboard's detection (`dashboard/src/data/capabilities.js`: `/openapi.json` paths or routes, the bridge profile, side-effect-free GET probes, optional `GET /api/capabilities`). `patch_job` <- `patchJob`, controls and preview <- `controls`, `disable_block` <- `events.block_disabled` (off for FastAPI and the bridge). An unsupported action is shown as advice ("Not supported by this backend"); a 501/405 at approval turns it into advice. Metrics are left out of the model's facts where `metricsMeasured` is false, and weather where `weatherEnforced` is false. A new farm day (snapshot whose clock went backwards) resets open findings and decisions.
 
-Endpoints: `GET /ai/state`, `POST /ai/review` (202), `POST /ai/findings/{id}/approve` (re-validate, re-preview, apply with an `Idempotency-Key`; 202 `{finding, operation}`, 409 stale/busy, 422 preview refused, 501 unsupported), `POST /ai/findings/{id}/dismiss`, WS `/ai/ws` (`{type:"ai_state", data: AiState}`).
+Endpoints: `GET /ai/state`, `GET /ai/wording/{explanation_id}` (LLM rewording of one explanation, validated against the template; added after the draft), `POST /ai/review` (202), `POST /ai/findings/{id}/approve` (re-validate, re-preview, apply with an `Idempotency-Key`; 202 `{finding, operation}`, 409 stale/busy, 422 preview refused, 501 unsupported), `POST /ai/findings/{id}/dismiss`, WS `/ai/ws` (`{type:"ai_state", data: AiState}`).
 
 ```json
 AiState  { "provider": "agy", "model": "claude-sonnet-5-5-low", "label": "...", "status": "idle|reviewing|previewing|error|offline",

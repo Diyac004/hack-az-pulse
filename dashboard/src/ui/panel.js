@@ -81,7 +81,7 @@ export function createPanel({ caps = () => ({}) } = {}) {
   const exp = document.getElementById('exp');
   const score = document.getElementById('score'), viol = document.getElementById('viol'), basesrc = document.getElementById('basesrc');
   const feed = document.getElementById('feed');
-  let typer = null, lastExp = null, scoreSig = '', feedSig = '', showDetails = false;
+  let typer = null, lastExp = null, worded = null, scoreSig = '', feedSig = '', showDetails = false;
   const hold = createBaselineHold();
   let held = { metrics: null, updating: false };
   score.addEventListener('click', (e) => { if (e.target.closest('[data-det]')) { showDetails = !showDetails; scoreSig = ''; } });
@@ -98,11 +98,19 @@ export function createPanel({ caps = () => ({}) } = {}) {
     seed(state) {
       const x = (state.explanations || [])[0];
       lastExp = x ? x.id : null;
-      this.explain(x ? x.text : 'Waiting for the first plan…', false);
+      this.explain(x ? (worded && worded.id === x.id ? worded.text : x.text) : 'Waiting for the first plan…', false);
     },
     onExplanation(x) {
       if (!x || x.id === lastExp) return;
       lastExp = x.id; this.explain(x.text, true);
+    },
+    /**
+     * AI Supervisor wording (ai-supervisor, validated: same numbers, jobs, tractors, times and claims as the
+     * template). Shown in place of the template for the current explanation; the plan is never affected.
+     */
+    setWording(id, text) {
+      if (!id || id !== lastExp || !text || (worded && worded.id === id && worded.text === text)) return;
+      worded = { id, text }; this.explain(text, false);
     },
     /** New run (POST /run snapshot, or a restarted backend): forget the held baseline. */
     resetBaseline() { hold.reset(); scoreSig = ''; },

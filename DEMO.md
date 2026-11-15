@@ -166,4 +166,6 @@ What to show:
 2. Plots: Blocks **A** and **E** are flagged "houses, not orchard", outlined on the map. Open the card, **Show Block A**, then **Approve** "Exclude Block A". Say: "The AI proposed it, I approved it, the planner re-planned and Safety checked it." Block A's jobs go back to Unassigned with the reason; the Latest explanation card says who decided.
 3. On the planner backend: show one plan finding, approve a **priority** change, and say plot findings stay advice there until the backend accepts the proposal.
 
+With a model (agy/openai/anthropic) the Latest explanation card shows the model's rewording of the planner's text, only when it kept every number, job, tractor, time and claim (else the template). The AI card header says "AI: <model> via <provider>" and what it is doing; the "AI" chip next to Mock | Live opens the panel; findings say "Proposed by <model>".
+
 If agy is slow or fails: drop `&ai=` (rules reviewer) or skip the beat. Never claim the rules reviewer is an LLM.

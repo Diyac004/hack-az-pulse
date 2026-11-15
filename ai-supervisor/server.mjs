@@ -6,6 +6,7 @@
 //
 // Endpoints (CORS open):
 //   GET  /ai/state                    AiState (status, provider/model, last run, latency, findings, history, capabilities)
+//   GET  /ai/wording/{explanation_id} LLM wording of one explanation {status: queued|working|ok|rejected|error|skipped, text, original, model}
 //   POST /ai/review                   run a review now (202 {queued:true}; results arrive on /ai/ws and /ai/state)
 //   POST /ai/findings/{id}/approve    re-validate, /preview for re-planning actions, apply with an Idempotency-Key
 //                                     -> 202 {finding, operation} | 409/422/501 {error}
@@ -27,6 +28,7 @@ import { rulesReview } from '../dashboard/src/data/aiRules.js';
 import { createLLM } from './llm.mjs';
 import { compactFacts, planPrompt, implementsPrompt, plotPrompt, plotFindings } from './reviewers.mjs';
 import { loadBasemap, cropPlots } from './crop.mjs';
+import { createWorder } from './wording.mjs';
 
 if (!globalThis.WebSocket) globalThis.WebSocket = WsWebSocket; // Node 18-21: liveSource needs a WebSocket global
 
@@ -61,6 +63,27 @@ async function probeCaps() {
   Object.assign(caps, n, { probed: true });
   log('capabilities:', JSON.stringify(caps));
 }
+
+// ---------------------------------------------------------------- what the model is doing (shown in the UI)
+const activity = new Set(); // 'reviewing plan' | 'checking implements' | 'checking plots' | 'wording explanation'
+let lastCall = null; // {what, at, latency_ms, ok}
+async function modelCall(what, fn) {
+  activity.add(what); pushState();
+  const t0 = Date.now();
+  try { const v = await fn(); lastCall = { what, at: new Date().toISOString(), latency_ms: Date.now() - t0, ok: true }; return v; }
+  catch (e) { lastCall = { what, at: new Date().toISOString(), latency_ms: Date.now() - t0, ok: false }; throw e; }
+  finally { activity.delete(what); pushState(); }
+}
+
+// ---------------------------------------------------------------- explanation wording (4th job; never changes a plan)
+// Each new explanation's template text + facts go to the model; the answer is validated (wording.mjs) and
+// discarded unless every number, time, job, tractor and claim is unchanged. rules: no rewording (template only).
+const worder = createWorder({
+  complete: llm.complete ? (req) => modelCall('wording explanation', () => llm.complete(req)) : null,
+  model: llm.model, provider: llm.provider,
+  names: () => { const s = state(); return [...(s.jobs || []).map((j) => j.label), ...(s.fleet || []).map((t) => t.name), ...((s.scenario && s.scenario.blocks) || []).map((b) => 'Block ' + b.id)]; },
+  onChange: () => pushState(), log,
+});
 
 // ---------------------------------------------------------------- core (findings lifecycle)
 const core = createAiCore({
@@ -118,8 +141,9 @@ async function reviewAll(trigger) {
     jobs.push(timed('implements', async () => ({ findings: r.implements, meta: { count: r.implements.length, summary: null } })));
     run.reviews.plots = { at: new Date().toISOString(), latency_ms: 0, error: null, count: 0, note: 'Plot review needs a vision model (AI_PROVIDER=agy|openai|anthropic).' };
   } else {
+    const what = { plan: 'reviewing plan', implements: 'checking implements' };
     const llmReview = (name, prompt, reviewer) => timed(name, async () => {
-      const out = await llm.complete(prompt);
+      const out = await modelCall(what[name], () => llm.complete(prompt));
       const findings = (out.findings || []).map((f) => ({ ...f, reviewer }));
       return { findings, meta: { count: findings.length, summary: out.summary || null } };
     });
@@ -133,7 +157,7 @@ async function reviewAll(trigger) {
       if (!plots) {
         basemap = basemap || loadBasemap(NAIP_PNG, NAIP_JSON);
         const crops = cropPlots(basemap, sc);
-        const out = await llm.complete({ ...plotPrompt(crops), images: crops.map((c) => ({ name: `${c.id}.png`, data: c.png, mime: 'image/png', label: c.kind === 'depot' ? 'Depot' : `Block ${c.id}` })) });
+        const out = await modelCall('checking plots', () => llm.complete({ ...plotPrompt(crops), images: crops.map((c) => ({ name: `${c.id}.png`, data: c.png, mime: 'image/png', label: c.kind === 'depot' ? 'Depot' : `Block ${c.id}` })) }));
         plots = out.plots || []; plotCache = { sig, plots };
       }
       const disabled = new Set((state().scenario?.disabled_blocks || []).map((d) => d.block));
@@ -163,10 +187,12 @@ let lastT = null;
 store.subscribe((s, msg) => {
   if (!msg) return;
   if (msg.type === 'operation' && msg.data) core.onOperation(msg.data);
+  if (msg.type === 'explanation' && msg.data) worder.enqueue(msg.data);
   if (msg.type === 'snapshot') {
+    const newest = (s.explanations || [])[0]; if (newest) worder.enqueue(newest);
     // a new farm day (clock went backwards: POST /run or a restarted backend) starts the review memory over
     const t = s.clock ? s.clock.t : 0;
-    if (!msg.resync && lastT != null && t + 0.5 < lastT) { core.reset(); log('new farm day: findings reset'); }
+    if (!msg.resync && lastT != null && t + 0.5 < lastT) { core.reset(); worder.reset(); log('new farm day: findings reset'); }
     lastT = t;
     if (!msg.resync) caps.probed = false;
     for (const op of s.operations || []) core.onOperation(op);
@@ -199,6 +225,8 @@ function aiState() {
     reviews: run.reviews,
     capabilities: { patch_job: caps.patch_job, controls: caps.controls, preview: caps.preview, block_disabled: caps.block_disabled, source: caps.source },
     findings: core.findings(), history: core.history(),
+    activity: [...activity], last_call: lastCall,
+    wording_enabled: !!llm.complete, wording: worder.all(),
   };
 }
 const wss = new WebSocketServer({ noServer: true });
@@ -229,6 +257,12 @@ const server = http.createServer(async (req, res) => {
       if (run.running) { run.pending = true; run.trigger = 'manual'; pushState(); return reply(res, 202, { queued: true, running: true }); }
       schedule('manual', 0);
       return reply(res, 202, { queued: true, running: false });
+    }
+    let w = /^\/ai\/wording\/([^/]+)$/.exec(p);
+    if (req.method === 'GET' && w) {
+      const e = worder.get(decodeURIComponent(w[1]));
+      if (!e) return reply(res, 404, errBody({ code: 'NOT_FOUND', message: llm.complete ? `No wording for explanation ${w[1]} (not seen, or evicted).` : 'Wording is off with AI_PROVIDER=rules: the template text is used.' }));
+      return reply(res, 200, e);
     }
     let m = /^\/ai\/findings\/([^/]+)\/(approve|dismiss)$/.exec(p);
     if (req.method === 'POST' && m) {
