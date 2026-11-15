@@ -64,3 +64,17 @@ Limitations for Anay:
 - The explanation diff currently reports changed ownership and new assignments; delta travel/idle claims are omitted until both plans are measured.
 
 Tests cover recovery, unchanged inputs, compatibility, fuel, deadline infeasibility, duplicate work, route validity, frozen-work preservation, unsupported options, deterministic plan entries and public Plan serialization. They do not establish real-world vehicle safety or end-to-end gateway correctness.
+
+## Follow-up brain improvements
+
+- Added bounded relocation and swap search after greedy insertion. Pass `improve=False` to benchmark the initial heuristic alone. FCFS never runs improvement. Search retains the valid incumbent and uses the same configured time budget; not a hard process timeout.
+- Added actual retiming/new-assignment plan diffs and retiming explanations. Frozen ongoing work is not presented as newly retimed merely because its remaining segment starts at snapshot.t.
+- Reject non-finite numeric model values (NaN/infinity) before planning.
+- Added repeatable real-brain/MockGateway integration test: execute a computed recovery plan, apply work/fuel reports in a test reducer, trigger a second breakdown, verify unresolved work, add a replacement, and finish without redoing completed units. This tests gateway compatibility without replacing Anay's production state service. It is not a server/WebSocket or full-day comparison test.
+- Added tests for field conflicts, return-to-depot reserve, relocation improvement and retiming facts.
+
+### Platform action: explicit wait entries
+
+The brain may emit `kind: "wait"` when field occupancy delays a job. Current `gateway.base.orders_from_plan()` rejects all non-travel/work kinds. Anay should support waits (either an explicit Wait order or omit wait orders while retaining the next order's not_before_t). If omitting, ensure idle/wait status, fuel and metrics semantics are documented. Do not make the brain remove occupancy checks or start work early. Refuel/swap remain unsupported and should continue to reject explicitly.
+
+No public frontend shape changes are introduced by these improvements. Updated `plan.diff.retimed` and `added` use the existing fields. Full performance comparisons still depend on the world service; isolated optimization success does not establish general superiority over FCFS.
