@@ -3,8 +3,8 @@
 # mock-backend smoke, agopenweb-bridge tests. Prints a PASS/FAIL table.
 #
 # Usage: scripts/verify.sh <commit-ish>      (run from anywhere inside the repo)
-# Env:   MAIN_CHECKOUT  checkout holding node_modules (default /Users/divyamkataria/hack-az-pulse)
-#        VERIFY_ROOT    where temp worktrees go (default: the scratchpad dir)
+# Env:   MAIN_CHECKOUT  checkout holding node_modules (default: the repo's primary checkout)
+#        VERIFY_ROOT    where temp worktrees go (default: $TMPDIR/hfa-verify)
 #        VERIFY_PORT    mock-backend port (default 8871)
 # Exit:  0 = all steps passed or skipped, 1 = any failure.
 set -u
@@ -12,8 +12,9 @@ set -u
 REF="${1:-}"
 [ -n "$REF" ] || { echo "usage: $0 <commit-ish>" >&2; exit 2; }
 
-MAIN="${MAIN_CHECKOUT:-/Users/divyamkataria/hack-az-pulse}"
-ROOT="${VERIFY_ROOT:-/private/tmp/claude-501/-Users-divyamkataria-hack-az-pulse/9bf25f93-9035-4ec5-a3c1-0d5f419db56d/scratchpad}"
+COMMON="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || { echo "not inside a git repo" >&2; exit 2; }
+MAIN="${MAIN_CHECKOUT:-$(dirname "$COMMON")}"   # the primary checkout (holds node_modules), from any worktree
+ROOT="${VERIFY_ROOT:-${TMPDIR:-/tmp}/hfa-verify}"
 PORT="${VERIFY_PORT:-8871}"
 
 SHA="$(git rev-parse --short "$REF^{commit}" 2>/dev/null)" || { echo "cannot resolve '$REF'" >&2; exit 2; }

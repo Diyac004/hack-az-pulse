@@ -32,7 +32,7 @@ node dashboard/src/data/mockControls.test.mjs
 
 # real backend, scored demo (from repo root; Python 3.11+; .venv/Scripts/python on Windows)
 python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt   # once
-cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000   # starts paused, plan v0; nothing moves until POST /api/run
+cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000   # plans at startup, paused at plan v1; Play starts the day (HFA_AUTORUN=0: plan v0, wait for POST /api/run)
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests/brain -v    # also tests/platform, tests/integration
 # dashboard: ?source=live&api=http://localhost:8000
 

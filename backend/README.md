@@ -45,7 +45,7 @@ cd backend
 
 ## Connect Divi's dashboard
 
-With this server running on port 8000 (Divi's dashboard and its README are on the `divi` branch):
+With this server running on port 8000 (Divi's dashboard is in `dashboard/` on `main`; see `CLAUDE.md` and `DEMO.md`):
 
 ```bash
 cd dashboard

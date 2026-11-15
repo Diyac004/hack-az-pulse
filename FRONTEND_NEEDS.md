@@ -61,7 +61,7 @@ python -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.
 cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Open `http://localhost:5173/?source=live&api=http://localhost:8000`. It starts paused at plan version 0; `POST /api/run` starts the day. This is Anay's backend with Diya's scheduler; the mock-backend below is the offline backup and the AgOpenWeb bridge (`:8040`) is a separate real-tractor demo that bypasses the scheduler (its travel/idle/violation zeros are placeholders). Deadlines are a modeled constraint (validator rule "Deadline missed"); "connected backend" (badge) and "real AgOpenWeb tractor" (per-tractor chip) are different things.
+Open `http://localhost:5173/?source=live&api=http://localhost:8000`. It plans the day at startup and stays paused at plan v1; Play (`POST /api/clock {"playing":true}`) starts the day (with `HFA_AUTORUN=0` it starts at plan version 0 and waits for `POST /api/run`). This is Anay's backend with Diya's scheduler; the mock-backend below is the offline backup and the AgOpenWeb bridge (`:8040`) is a separate real-tractor demo that bypasses the scheduler (its travel/idle/violation zeros are placeholders). Deadlines are a modeled constraint (validator rule "Deadline missed"); "connected backend" (badge) and "real AgOpenWeb tractor" (per-tractor chip) are different things.
 
 ## How to test against our simulated backend (offline backup)
 

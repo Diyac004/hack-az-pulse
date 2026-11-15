@@ -1,5 +1,7 @@
 # Integration report: dashboard vs the FastAPI backend (`origin/anay` 945edd1)
 
+> All of this is now on `main`: the backend is `backend/` (from `origin/diya/brain` 20d266e, which includes Anay's 7df3d39) and the dashboard is `dashboard/` (from `divi` f8e903f). Run the backend with `cd backend` as in `backend/README.md`; branch names below are historical.
+
 For Anay (platform) and Diya (planner). Tested 2026-11-15 against `origin/anay` at 945edd1, which already contains `origin/diya/brain` b3aca18, then re-checked against **7df3d39** (cold-start autorun, staged edits, baseline twin) and **`origin/diya/brain` 20d266e** on top of it (capabilities endpoint, configured capacity, error envelope, explanation wording, `HFA_SCRIPTED`). Python 3.13 venv, `pip install -r backend/requirements.txt`, server on port 8000. Dashboard: `divi` with the capability-detection and Start run changes. This report covers the backend only. Nothing under `backend/` was edited.
 
 ## Summary
