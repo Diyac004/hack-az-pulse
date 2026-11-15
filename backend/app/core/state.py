@@ -150,7 +150,8 @@ class World:
         self._color_i = 0
         self.plan = m.Plan(version=0, entries=[], solver="greedy", solve_ms=0, solver_status="feasible")
         self.events = sorted(scenario.get("events", []), key=lambda e: e["t"])
-        self._dirty_jobs: set[str] = set()
+        self._dirty_jobs: set[str] = set()       # status/assignment changes: sent at once
+        self._progress_jobs: set[str] = set()    # progress only: sent by emit_progress (~1 Hz)
         self.other_runs: dict[str, m.RunMetrics] = {}     # last finished run per mode, set by the engine
 
         self.gateway = MockGateway(self.farm(), t0=0.0)
@@ -473,7 +474,7 @@ class World:
                 tr.fuel -= done * tr.burn_work
                 self.counters.productive_min += done
                 busy[tr.id] = busy.get(tr.id, 0) + r.minutes
-                self._dirty_jobs.add(job.id)
+                self._progress_jobs.add(job.id)          # throttled: see emit_progress()
             elif isinstance(r, WorkDone):
                 job = self.jobs.get(r.job)
                 if job and job.status != "done" and job.remaining <= EPS:
@@ -526,7 +527,14 @@ class World:
     def _emit_dirty_jobs(self) -> None:
         if self._dirty_jobs:
             self.emit("jobs", {"jobs": [self.job_view(self.jobs[j]) for j in sorted(self._dirty_jobs) if j in self.jobs]})
+            self._progress_jobs -= self._dirty_jobs
             self._dirty_jobs.clear()
+
+    def emit_progress(self) -> None:
+        """Progress-only job updates; the engine calls this at most once a second."""
+        self._dirty_jobs |= self._progress_jobs
+        self._progress_jobs.clear()
+        self._emit_dirty_jobs()
 
     # ================================================================ brain adapter: snapshot
 
