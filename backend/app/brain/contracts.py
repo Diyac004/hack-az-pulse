@@ -79,6 +79,7 @@ class FrozenEntry(BaseModel):
     kind: Literal['work', 'travel', 'wait', 'refuel', 'swap_implement']
     start_t: float
     end_t: float
+    remaining_route: list[tuple[int, int]] | None = None
 
 
 class Constraints(BaseModel):
@@ -98,6 +99,7 @@ class BrainSnapshot(BaseModel):
     jobs: list[Job]
     frozen: list[FrozenEntry]
     constraints: Constraints
+    previous_plan: "PreviousPlan | None" = None
 
     @model_validator(mode='after')
     def consistent(self):
@@ -112,3 +114,57 @@ class BrainSnapshot(BaseModel):
             if len(ids) != len(set(ids)):
                 raise ValueError('Duplicate work units')
         return self
+
+
+class PlanEntry(BaseModel):
+    tractor: str
+    job: str | None
+    kind: Literal['travel', 'work', 'wait', 'refuel', 'swap_implement']
+    start_t: float
+    end_t: float
+    route: list[tuple[int, int]] = Field(default_factory=list)
+
+
+class PreviousPlan(BaseModel):
+    version: int
+    entries: list[PlanEntry]
+
+
+class Violation(BaseModel):
+    rule: str
+    detail: str
+    tractor: str | None = None
+    job: str | None = None
+
+
+class ValidationResult(BaseModel):
+    passed: bool
+    violations: list[Violation]
+
+
+class ProposedPlan(BaseModel):
+    solver: Literal['greedy'] = 'greedy'
+    solve_ms: int = 0
+    solver_status: Literal['feasible', 'no_feasible_plan'] = 'feasible'
+    entries: list[PlanEntry]
+    diff: dict = Field(default_factory=lambda: {'moved': [], 'retimed': [], 'dropped': [], 'added': []})
+
+
+class Unassigned(BaseModel):
+    job: str
+    reason: str
+    detail: str
+
+
+class PlanningResult(BaseModel):
+    source_state_version: int
+    status: Literal['feasible', 'infeasible', 'unsupported']
+    solver: str = 'greedy'
+    solve_ms: float
+    plan: ProposedPlan
+    unassigned: list[Unassigned]
+    facts: dict
+    validation: ValidationResult
+
+
+BrainSnapshot.model_rebuild()
