@@ -51,11 +51,39 @@ export function baselineLabel(metrics) {
   return 'Baseline: ' + src + '.';
 }
 
+/**
+ * Baseline hold (Anay 7df3d39): metrics.baseline is null for ~0.5 s after startup and after every operator action
+ * while the FCFS twin recomputes. Once a baseline has been seen this run, a transient null keeps the last values
+ * (shown dimmed, "updating…") instead of flipping to "not measured". reset() on a new run (POST /run).
+ * apply(m) -> { metrics: m with the held baseline filled in, updating: bool }.
+ */
+export function createBaselineHold() {
+  let last = null; // { baseline, baseline_source } from this run
+  return {
+    reset() { last = null; },
+    get seen() { return !!last; },
+    apply(m) {
+      if (!m) return { metrics: m, updating: false };
+      if (m.baseline && m.baseline_source) { last = { baseline: m.baseline, baseline_source: m.baseline_source }; return { metrics: m, updating: false }; }
+      if (last) return { metrics: { ...m, baseline: last.baseline, baseline_source: last.baseline_source }, updating: true };
+      // a source without numbers yet (or numbers without a source): a baseline exists for this run, values pending
+      return { metrics: m, updating: !!(m.baseline_source || m.baseline) };
+    },
+  };
+}
+
+/** AgOpenWeb bridge (capabilities.backend === 'bridge'): its numbers never go on the scorecard. */
+export const BRIDGE_SCORE_NOTE = 'Scorecard comes from the planner backend (FastAPI). Bridge mode shows real AgOpenWeb tractors only.';
+export const isBridge = (c) => !!c && c.backend === 'bridge';
+export const jobsDone = (state) => ((state && state.jobs) || []).filter((j) => j && (j.status === 'done' || j.status === 'completed')).length;
+
 export function createPanel({ caps = () => ({}) } = {}) {
   const exp = document.getElementById('exp');
   const score = document.getElementById('score'), viol = document.getElementById('viol'), basesrc = document.getElementById('basesrc');
   const feed = document.getElementById('feed');
   let typer = null, lastExp = null, scoreSig = '', feedSig = '', showDetails = false;
+  const hold = createBaselineHold();
+  let held = { metrics: null, updating: false };
   score.addEventListener('click', (e) => { if (e.target.closest('[data-det]')) { showDetails = !showDetails; scoreSig = ''; } });
 
   return {
@@ -76,22 +104,41 @@ export function createPanel({ caps = () => ({}) } = {}) {
       if (!x || x.id === lastExp) return;
       lastExp = x.id; this.explain(x.text, true);
     },
+    /** New run (POST /run snapshot, or a restarted backend): forget the held baseline. */
+    resetBaseline() { hold.reset(); scoreSig = ''; },
+    /** Metrics as the scorecard shows them (held baseline filled in) + whether the baseline is updating. */
+    shown() { return held; },
     sync(state) {
-      const m = state.metrics;
-      const measured = caps().metricsMeasured !== false;
-      const sig = JSON.stringify(m || null) + showDetails + measured;
+      const c = caps();
+      held = hold.apply(state.metrics);
+      const m = held.metrics, upd = held.updating;
+      const bridge = isBridge(c);
+      const measured = c.metricsMeasured !== false;
+      const sig = (bridge ? 'bridge:' + jobsDone(state) + '/' + (state.jobs || []).length : JSON.stringify(m || null)) + showDetails + measured + upd;
       if (sig !== scoreSig) {
         scoreSig = sig;
-        const { rows, hasBase, violations } = scoreRows(m, { measured });
-        const cell = (v, r) => (v == null ? '<span class="nm">' + (r.nm || NOT_MEASURED) + '</span>' : r.f(v) + (r.sub || ''));
-        const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + cell(r.a, r) + '</span><span style="color:var(--faint)">' + (hasBase ? cell(r.b, { f: r.f }) : '<span class="nm">' + NOT_MEASURED + '</span>') + '</span>';
-        const main = rows.filter((r) => !r.detail), det = rows.filter((r) => r.detail);
-        score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline</span>' + main.map(row).join('') +
-          (det.length ? '<button class="dtl" data-det>' + (showDetails ? 'Hide details' : 'Details') + '</button>' + (showDetails ? det.map(row).join('') : '') : '');
-        viol.textContent = violations == null ? 'Violations ' + NOT_MEASURED_BRIDGE : plural(violations, 'violation');
-        viol.title = 'Broken constraints in applied plans (deadlines, implements, fuel, safety). Jobs that finished late are also shown on their own row.';
-        viol.classList.toggle('bad', violations > 0);
-        basesrc.textContent = baselineLabel(m);
+        score.classList.toggle('bridge', bridge);
+        if (bridge) {
+          // Anay: "keep the bridge's numbers out of the scorecard". Only a plain count of jobs done, labelled bridge.
+          score.innerHTML = '<p class="bnote gl">' + esc(BRIDGE_SCORE_NOTE) + '</p>' +
+            '<span style="color:var(--muted)">Jobs done (bridge)</span><span style="font-weight:600">' + jobsDone(state) + '/' + (state.jobs || []).length + '</span>';
+          viol.textContent = ''; viol.hidden = true; viol.classList.remove('bad');
+          basesrc.textContent = '';
+        } else {
+          viol.hidden = false;
+          const { rows, hasBase, violations } = scoreRows(m, { measured });
+          const pending = '<span class="nm">updating…</span>';
+          const cell = (v, r) => (v == null ? '<span class="nm">' + (r.nm || NOT_MEASURED) + '</span>' : r.f(v) + (r.sub || ''));
+          const bcell = (r) => (hasBase ? cell(r.b, { f: r.f }) : upd ? pending : '<span class="nm">' + NOT_MEASURED + '</span>');
+          const row = (r) => '<span style="color:var(--muted)">' + esc(r.label) + '</span><span style="font-weight:600;color:var(--green)">' + cell(r.a, r) + '</span><span class="bcol' + (upd ? ' stale' : '') + '" style="color:var(--faint)">' + bcell(r) + '</span>';
+          const main = rows.filter((r) => !r.detail), det = rows.filter((r) => r.detail);
+          score.innerHTML = '<span></span><span class="lbl">Ours</span><span class="lbl">Baseline' + (upd && hasBase ? ' <span class="upd">updating…</span>' : '') + '</span>' + main.map(row).join('') +
+            (det.length ? '<button class="dtl" data-det>' + (showDetails ? 'Hide details' : 'Details') + '</button>' + (showDetails ? det.map(row).join('') : '') : '');
+          viol.textContent = violations == null ? 'Violations ' + NOT_MEASURED_BRIDGE : plural(violations, 'violation');
+          viol.title = 'Broken constraints in applied plans (deadlines, implements, fuel, safety). Jobs that finished late are also shown on their own row.';
+          viol.classList.toggle('bad', violations > 0);
+          basesrc.textContent = upd && !hasBase ? 'Baseline: first-come-first-served on the same day & events, updating…' : baselineLabel(m);
+        }
       }
       const log = state.log || [];
       const fs = log.length + ':' + (log[0] ? JSON.stringify(log[0]) : '') + (state.fleet || []).length;

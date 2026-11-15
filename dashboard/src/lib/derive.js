@@ -281,6 +281,27 @@ export function opOutcome(op) {
   }
   return null;
 }
+/**
+ * Plain-words message for a job edit (priority / deadline / pin) the backend did not apply. `res` is either a
+ * terminal failed Operation (the plan check rejected it: SAFETY_REJECTED / no_feasible_plan) or a rejected api
+ * call ({code,message,status}: 409 CONFLICT, 422 SAFETY_REJECTED, ...). The job keeps its old value either way.
+ *   editFailText('priority', 'High', op) -> "Couldn't change priority: no valid plan accepts it — kept High"
+ * Returns null for a success / superseded op (nothing to say) or an outcome-unknown error (UNCONFIRMED).
+ */
+export function editFailText(field, kept, res) {
+  if (!res) return null;
+  let why;
+  if (typeof res.status === 'string') { // Operation
+    if (res.status !== 'failed') return null;
+    why = res.solver_status === 'no_feasible_plan' || (res.error && res.error.code === 'SAFETY_REJECTED') ? 'no valid plan accepts it' : (res.error && res.error.message) || res.message || 'the backend refused it';
+  } else {
+    if (res.code === 'UNCONFIRMED' || res.code === 'NETWORK' || res.code === 'CLIENT_TIMEOUT' || res.code === 'TIMEOUT') return null; // not a rejection
+    const m = String(res.message || '').trim().replace(/\.$/, '');
+    why = m ? m.charAt(0).toLowerCase() + m.slice(1) : res.code === 'SAFETY_REJECTED' ? 'no valid plan accepts it' : 'the backend refused it';
+  }
+  return "Couldn't change " + field + ': ' + why + (kept != null && kept !== '' ? ' — kept ' + kept : '');
+}
+
 /** Toast kind for a rejected api call: outcome-unknown is a warning, not a failure. */
 export const errKind = (err) => (err && err.code === 'UNCONFIRMED' ? 'warn' : 'err');
 export const isTerminal = (op) => !!op && (op.status === 'succeeded' || op.status === 'failed' || op.status === 'superseded');

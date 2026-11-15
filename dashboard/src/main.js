@@ -17,6 +17,7 @@ import { createDock } from './ui/dock.js';
 import { createChips } from './ui/chips.js';
 import { createSheets } from './ui/sheets.js';
 import { createKeynote } from './ui/keynote.js';
+import { createModeSwitch } from './ui/modeSwitch.js';
 import { createControls } from './ui/controls.js';
 import { createJobSheet } from './ui/jobSheet.js';
 import { createLiveFeed } from './scene/livefeed.js';
@@ -99,30 +100,16 @@ function linkProblem(state) {
   if (l && !l.connected && !l.everConnected && l.failures > 0) return { badge: 'no backend', note: "Can't reach " + apiHost + ' · retrying', title: "Can't reach " + sourceInfo.api + ' (WebSocket ' + l.url + '). Retrying with backoff.' };
   return null;
 }
-let badgeKey = '';
-function renderBadge(state) {
-  const kind = (sourceInfo && sourceInfo.kind) || 'mock';
-  const prob = linkProblem(state);
-  const connected = !!(state && state.connected);
-  const ever = !!(state && state.link && state.link.everConnected);
-  // live: LIVE (green) | LIVE · connecting (grey) | LIVE · reconnecting (red) | LIVE · no backend / bad api URL (red)
-  const suffix = prob ? ' · ' + prob.badge : connected ? '' : kind === 'live' ? (ever ? ' · reconnecting' : ' · connecting') : state && state.connected === false && state.clock ? ' · reconnecting' : '';
-  const cls = 'gl ' + (prob || (!connected && (kind !== 'live' || ever) && suffix) ? 'down' : connected ? kind : 'wait');
-  const title = prob ? prob.title : kind === 'live' ? 'Live backend' + (sourceInfo.api ? ' · ' + sourceInfo.api : '') : 'In-browser mock data source (?source=live to switch)';
-  const key = cls + '|' + suffix + '|' + title;
-  if (key === badgeKey) return;
-  badgeKey = key;
-  badge.className = cls;
-  badge.innerHTML = '<i></i>' + (kind === 'live' ? 'LIVE' : 'MOCK') + suffix;
-  badge.title = title;
-}
+// Mock | Live switch (ui/modeSwitch.js) in place of the old MOCK/LIVE badge; same status colours and problems.
+const modeSwitch = createModeSwitch({ el: badge, sourceInfo, caps: capabilities.get, linkProblem });
+function renderBadge(state) { modeSwitch.sync(state); }
 let probToasted = false;
 function noteProblem(state) {
   const prob = linkProblem(state);
   if (!prob || probToasted || sourceInfo.error) return prob;
   if (state.link && state.link.failures >= 2) {
     probToasted = true;
-    toast("Can't reach the backend at " + sourceInfo.api + '. Start it with: cd mock-backend && npm start. Retrying…', 'err');
+    toast("Can't reach the backend at " + sourceInfo.api + '. Start it (backend/README.md), pick another address with ⋯, or use Switch to Mock. Retrying…', 'err');
   }
   return prob;
 }
@@ -162,7 +149,7 @@ function fullReset(state, newRun = true) {
   const rebuilt = ensureScenario(state);
   fx.clear(); tractors.clear(); barriers.clear(); vans.clear(); labels.clear();
   if (newRun || rebuilt) {
-    sheets.reset(); keynote.hide(); island.reset();
+    sheets.reset(); keynote.hide(); island.reset(); panel.resetBaseline();
     seenMoments = new Set(); keynoteShown = false;
   }
   heat = new Set(); farm.setHeat([]);
@@ -283,7 +270,7 @@ function syncUI(state, now) {
   if (c && !keynoteShown && (c.ended || (c.day_minutes && c.t >= c.day_minutes))) {
     keynoteShown = true;
     sheets.close(); syncLayout();
-    keynote.show(state, stageBounds()); world.overview(4000);
+    keynote.show(state, stageBounds(), { ...panel.shown(), caps: capabilities.get() }); world.overview(4000);
     const done = (state.jobs || []).filter((j) => j.status === 'done').length;
     island.moment({ text: 'Day complete · ' + plural(done, 'job') + ' done', dot: '#30D158', sticky: true });
   }

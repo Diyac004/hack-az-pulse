@@ -5,7 +5,9 @@ For Anay (platform) and Diya (planner). Tested 2026-11-15 against `origin/anay` 
 ## Summary
 
 - **Backend tests:** at 945edd1, brain 23, platform 26 and integration 45 all pass (unittest, as documented in `backend/README.md`). At 7df3d39, brain 23 and platform 26 pass, and integration fails 1 of 57 consistently on this Mac: `test_api.BaselineDisplay.test_baseline_appears_only_when_it_matches` (issue 14).
-- **Cold start at 7df3d39:** the server plans at startup (plan v1, paused), so the dashboard shows **Play**. With `HFA_AUTORUN=0` it shows **Start run** (plan v0). `scripts/coldstart-e2e.mjs` passes 39/39 with `HFA_AUTORUN=0`; with autorun on, its two "fresh server is v0 / clock 409" checks fail, as expected.
+- **Cold start at 7df3d39 (fixed: pre-plan at startup):** the server plans at startup (plan v1, paused), so the dashboard shows **Play** and Play works without `/run`. With `HFA_AUTORUN=0` it shows **Start run** (plan v0). `scripts/coldstart-e2e.mjs` now accepts both startups (v0 + clock 409, or pre-planned + Play) and passes against a fresh autorun server.
+- **Staged job edits at 7df3d39 (fixed):** an incompatible pin is refused up front with **422 `SAFETY_REJECTED`** ("Can't pin Hedge D to Tractor 1: it has no hedger.") and `pinned_to` stays unchanged; an edit no valid plan accepts fails its Operation (`SAFETY_REJECTED`, `no_feasible_plan`) and the job keeps its old values, with no WS `jobs` message carrying the staged value. The dashboard's Why sheet says "Couldn't change priority: no valid plan accepts it — kept High". See issue 15 for one case that is accepted instead.
+- **Baseline at 7df3d39 (fixed):** `metrics.baseline` (FCFS twin, `simulated`) is non-null within a few ms of startup, `/run`, `POST /jobs` and a breakdown in the e2e run; the dashboard holds the last values dimmed ("updating…") during the ~0.5 s recompute.
 - **`POST /api/jobs`:** a valid job returns 202, then J13 appears and is assigned. A bad block returns 400 "There is no block Z on this farm."; the dashboard puts that error on the Block field. Pydantic range errors (`details.errors[].loc`) are mapped to the Duration and Priority fields.
 - **Works end to end in the browser** (`?source=live&api=http://localhost:8000`):
   - cold start: plan v0, paused, Start run, plan v1, Pause/Play
@@ -43,6 +45,7 @@ Severity: **blocks demo** / **visible glitch** / **cosmetic**.
 | 11 | WS `capacity`, `weather` | §6: send on pool / conditions change | Never sent. Capacity changes after add/remove reach the client only through the next snapshot. | cosmetic | Broadcast `capacity` after fleet add/remove |
 | 12 | Scripted T1 breakdown at t=50 | n/a | It fires even when the operator already broke down and repaired T1 by hand, so T1 breaks again during the demo | cosmetic (surprising in a demo) | Skip scripted events for a tractor that already had a manual one, or make them opt-in (`HFA_SCRIPTED=0`) |
 | 14 | Backend test `test_baseline_appears_only_when_it_matches` (7df3d39) | n/a | Fails consistently on an Apple Silicon Mac: the test reads `/api/baseline` `status: "computing"`, then reads `metrics.baseline` after the twin has already finished, so the value is not null. This is a check-then-read race in the test, not in the server. | cosmetic (test only) | Assert on one consistent read (status and baseline from the same response), or pause the twin worker in the test |
+| 15 | `PATCH /api/jobs/{id}` impossible deadline mid-day (7df3d39) | README: "applied only if a valid plan accepts it; otherwise SAFETY_REJECTED" | At t=0 `{"deadline_t":5}` on J1 fails (`SAFETY_REJECTED`, job unchanged), as described. Mid-day (t≈1.4-3), `{"deadline_t":1}` on J2/J3 **succeeds**: plan v+1 is applied with the job in `unassigned_job_ids`, `deadline_t` becomes 1 and the job drops to `pending` ("No valid assignment right now … deadline"). So an impossible deadline can silently unassign a job instead of being rejected. | visible glitch (an operator typo unschedules a job) | Treat "the edited job becomes unassigned because of the edit" as a rejection, or document that this is intended |
 | 13 | Planner balance (Diya) | n/a | The initial plan gives T3 (sprayer + mower) no work while T1 and T2 carry 12 jobs. After a repaired breakdown, the repaired tractor gets no work back (everything stays on T3). | visible glitch | Consider an idle-tractor or rebalance move after `tractor_repaired` and at day start |
 
 Not issues (mock-only smoke checks that the real backend legitimately lacks):
@@ -75,5 +78,5 @@ python3 -m venv .venv && .venv/bin/python -m pip install -r backend/requirements
 cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 # dashboard
 cd dashboard && npm install && npx vite --port 5173
-# open http://localhost:5173/?source=live&api=http://localhost:8000  -> Start run
+# open http://localhost:5173/?source=live&api=http://localhost:8000  -> Play (Start run only with HFA_AUTORUN=0)
 ```

@@ -3,8 +3,12 @@
 //
 //   API=http://localhost:8000 node scripts/coldstart-e2e.mjs [--dashboard-capabilities]
 //
-// The backend must have just booted (paused, plan.version 0, no run yet): the script drives
-// the whole lifecycle once, so re-run it against a restarted server, not a used one.
+// The backend must have just booted: the script drives the whole lifecycle once, so re-run it against a
+// restarted server, not a used one. Both cold starts are accepted:
+//   v0 (HFA_AUTORUN=0, or before 7df3d39): paused, plan.version 0, POST /api/clock -> 409 until POST /api/run;
+//   pre-planned (7df3d39 default): paused, plan.version >= 1, Play (POST /api/clock) works without /run.
+// It also checks that a rejected job edit (incompatible pin, impossible deadline) keeps the job's old values,
+// and that metrics.baseline becomes non-null within ~3 s of the run and of each operator action.
 // Node >= 18. Uses built-in fetch + WebSocket (falls back to `ws` from mock-backend/node_modules).
 // Exit 0 = every check passed, 1 = any failure.
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -87,18 +91,36 @@ try {
   ws = await openWs();
 } catch (e) { fatal('websocket connects', String(e)); }
 
-// 1. fresh: paused, plan v0
+// 1. fresh: paused; either plan v0 (no run yet) or pre-planned (plan v >= 1, run op already succeeded)
 let s = await state();
 check('GET /api/state: boots paused', s && s.clock && s.clock.playing === false, s && s.clock);
-check('GET /api/state: plan.version is 0 (fresh server)', s && s.plan && s.plan.version === 0, s && s.plan && s.plan.version);
+const v0 = !!(s && s.plan && s.plan.version === 0);
+const preplanned = !!(s && s.plan && s.plan.version >= 1);
+check('GET /api/state: fresh server is plan v0 or pre-planned (v >= 1) at t = 0', (v0 || preplanned) && s.clock.t === 0, { version: s && s.plan && s.plan.version, t: s && s.clock && s.clock.t });
+note(v0 ? 'cold start: plan v0 (no run yet; HFA_AUTORUN=0 or an older backend)' : 'cold start: pre-planned and paused (autorun)');
 await waitFor(() => ws.msgs.length, 2000);
 check('WS: snapshot arrives first', ws.msgs[0] && ws.msgs[0].type === 'snapshot', ws.msgs[0] && ws.msgs[0].type);
-if (!s || !s.plan || s.plan.version !== 0) note('server is not fresh; the remaining checks may fail. Restart the backend and re-run.');
 const jobsBefore = (s && s.jobs ? s.jobs.length : 0);
 
-// 2. clock before a run: 409
+// metrics.baseline is null for ~0.5 s after startup / each operator action, then filled (7df3d39)
+async function baselineWithin(label, ms = 3000) {
+  const t0 = Date.now();
+  const st = await waitFor(async () => { const x = await state(); return x && x.metrics && x.metrics.baseline && x.metrics.baseline_source ? x : null; }, ms, 100);
+  check(`metrics.baseline non-null within ${ms / 1000} s ${label}`, !!st, st ? null : (await state()).metrics);
+  if (st) note(`baseline ${label}: ${Date.now() - t0} ms, source ${st.metrics.baseline_source}`);
+}
+
+// 2. Play before /run: v0 -> 409; pre-planned -> 200 and t advances
 let r = await http('POST', '/api/clock', { playing: true });
-check('POST /api/clock {playing:true} before a run -> 409', r.status === 409, { status: r.status, body: r.json });
+if (v0) {
+  check('v0: POST /api/clock {playing:true} before a run -> 409', r.status === 409, { status: r.status, body: r.json });
+} else {
+  check('pre-planned: POST /api/clock {playing:true} without /run -> 200', r.status === 200 && r.json && r.json.playing === true, { status: r.status, body: r.json });
+  check('pre-planned: t advances after Play', !!(await waitFor(async () => (await state()).clock.t > 0.3, 4000, 200)), (await state()).clock);
+  await baselineWithin('after startup');
+  r = await http('POST', '/api/clock', { playing: false });
+  check('pre-planned: pause -> 200', r.status === 200, r.status);
+}
 
 // 3. run
 const mark = ws.msgs.length;
@@ -120,8 +142,13 @@ check('WS: operation succeeded', !!(await waitFor(() => opMsg(ws.msgs, runId, 's
   const iOk = idx((m) => m.type === 'operation' && m.data.id === runId && m.data.status === 'succeeded');
   check('WS order: running < plan < succeeded', iRun >= 0 && iRun < iPlan && iPlan < iOk, { iRun, iPlan, iOk });
 }
+if (!v0) {
+  const snap = ws.msgs.slice(mark).find((m) => m.type === 'snapshot');
+  check('Restart (POST /run): snapshot with t back to 0', !!(snap && snap.data && snap.data.clock && snap.data.clock.t === 0), snap && snap.data && snap.data.clock);
+}
 s = await state();
 check('REST: plan.version >= 1 after the run', s.plan.version >= 1, s.plan.version);
+await baselineWithin('after the run');
 const v1 = s.plan.version;
 
 // 4. clock playing
@@ -149,6 +176,57 @@ check('POST /api/clock {playing:true} (resume) -> 200', r.status === 200 && r.js
 const tr = (await state()).clock.t;
 check('resume: t advances', !!(await waitFor(async () => (await state()).clock.t > tr + 0.3, 4000, 200)), { t0: tr });
 
+// 6b. rejected job edits keep the old values (7df3d39: an edit is applied only if a valid plan accepts it)
+{
+  s = await state();
+  const open = s.jobs.filter((j) => j.status !== 'done' && j.status !== 'completed');
+  let pinJob = null, pinTr = null;
+  for (const j of open) { const t = s.fleet.find((x) => !(x.implements || []).includes(j.implement)); if (t) { pinJob = j; pinTr = t; break; } }
+  if (!check('found a job + tractor without its implement (for an incompatible pin)', !!pinJob, null)) { /* skip */ } else {
+    const vBefore = s.plan.version;
+    r = await http('PATCH', '/api/jobs/' + pinJob.id, { pinned_to: pinTr.id });
+    let rejected = false, how = r.status;
+    if (r.status === 422 || r.status === 409) rejected = r.json && r.json.error && r.json.error.code === 'SAFETY_REJECTED' || r.status === 409;
+    else if (r.status === 202 && r.json && r.json.id) {
+      const o = await waitFor(async () => { const x = (await http('GET', '/api/operations/' + r.json.id)).json; return x && (x.status === 'failed' || x.status === 'succeeded') ? x : null; }, 10000);
+      rejected = !!(o && o.status === 'failed' && o.error && o.error.code === 'SAFETY_REJECTED'); how = '202 -> ' + (o && o.status);
+    }
+    check(`incompatible pin ${pinJob.id} -> ${pinTr.id} rejected (422/409 SAFETY_REJECTED)`, rejected, { status: r.status, body: r.json, how });
+    if (r.status === 422) note('incompatible pin answered 422 up front');
+    await sleep(600);
+    const after = await state();
+    const ja = after.jobs.find((j) => j.id === pinJob.id);
+    check('rejected pin: job.pinned_to unchanged', ja && (ja.pinned_to ?? null) === (pinJob.pinned_to ?? null), { before: pinJob.pinned_to, after: ja && ja.pinned_to });
+    check('rejected pin: plan.version unchanged', after.plan.version === vBefore, { before: vBefore, after: after.plan.version });
+  }
+  // impossible deadline: accepted as 202, then the operation fails and the job keeps its deadline + priority
+  s = await state();
+  const dj = s.jobs.find((j) => j.status === 'pending' || j.status === 'assigned');
+  if (dj) {
+    const dmark = ws.msgs.length, vBefore = s.plan.version;
+    const want = Math.max(1, Math.floor(s.clock.t));
+    r = await http('PATCH', '/api/jobs/' + dj.id, { deadline_t: want, priority: dj.priority === 3 ? 1 : 3 });
+    let o = null;
+    if (r.status === 202 && r.json && r.json.id) o = await waitFor(async () => { const x = (await http('GET', '/api/operations/' + r.json.id)).json; return x && (x.status === 'failed' || x.status === 'succeeded') ? x : null; }, 10000);
+    const rej = (r.status === 422 || r.status === 409) || (o && o.status === 'failed' && o.error && o.error.code === 'SAFETY_REJECTED');
+    const after = await state();
+    const ja = after.jobs.find((j) => j.id === dj.id);
+    if (o && o.status === 'succeeded') {
+      // Seen on 7df3d39 mid-day: the planner "accepts" an impossible deadline by leaving the job unassigned.
+      // Not a contract violation (a valid plan was applied), so it is reported, not failed.
+      note(`MISMATCH: impossible deadline on ${dj.id} was ACCEPTED (plan v${o.plan_version}, unassigned ${JSON.stringify(o.result && o.result.unassigned_job_ids)}); job now ${ja && ja.status}, deadline_t ${ja && ja.deadline_t}`);
+      check('accepted edit is committed consistently (values applied, plan.version moved)', ja && ja.deadline_t === want && after.plan.version > vBefore, { after: ja && [ja.deadline_t, ja.priority], v: after.plan.version });
+    } else {
+      check(`impossible deadline on ${dj.id} (deadline_t ${want}) rejected`, rej, { status: r.status, op: o });
+      if (o) note(`edit rejected: ${o.message} / ${o.error && o.error.message}`);
+      check('rejected edit: deadline_t and priority unchanged', ja && ja.deadline_t === dj.deadline_t && ja.priority === dj.priority, { before: [dj.deadline_t, dj.priority], after: ja && [ja.deadline_t, ja.priority] });
+      check('rejected edit: plan.version unchanged', after.plan.version === vBefore, { before: vBefore, after: after.plan.version });
+      const leaked = ws.msgs.slice(dmark).filter((m) => m.type === 'jobs' && Array.isArray(m.data)).some((m) => { const j = m.data.find((x) => x.id === dj.id); return j && (j.deadline_t !== dj.deadline_t || j.priority !== dj.priority); });
+      check('rejected edit: no WS jobs message carried the staged values', !leaked, null);
+    }
+  } else note('no pending/assigned job for the deadline edit check');
+}
+
 // 7. submit a job
 s = await state();
 const beforeIds = new Set(s.jobs.map((j) => j.id));
@@ -165,6 +243,7 @@ s = await state();
 const added = s.jobs.filter((j) => !beforeIds.has(j.id));
 check('new job appears in state.jobs', added.length === 1 && s.jobs.length === beforeIds.size + 1, { added: added.map((j) => j.id), total: s.jobs.length });
 check('plan.version increments after the job', s.plan.version > vBeforeJob, { before: vBeforeJob, after: s.plan.version });
+await baselineWithin('after POST /api/jobs');
 void jobsBefore; void v1;
 
 // 8. breakdown of a working tractor
@@ -195,6 +274,7 @@ check(`${bt}'s jobs moved to other tractors (or are unassigned)`, mine.length > 
 const lost = mine.filter((j0) => { const j = s.jobs.find((x) => x.id === j0.id); return !j || j.progress + 1e-6 < (progBefore[j0.id] || 0); });
 check('progress kept on the moved jobs (never decreases)', mine.length > 0 && lost.length === 0, lost.map((j) => j.id));
 check('plan.version increments after the breakdown', s.plan.version > vBeforeBd, { before: vBeforeBd, after: s.plan.version });
+await baselineWithin('after the breakdown');
 
 // 9. not-implemented routes -> 501 with details.not_implemented
 const routes = [

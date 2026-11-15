@@ -175,6 +175,11 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 #planbadge .wchip.ot{background:#B86E00;color:#fff}
 #planbadge .wchip.late{background:#C2261C;color:#fff}
 #score .nm{font-weight:400;font-size:11px;color:var(--faint)}
+#score .bcol{transition:opacity .25s}
+#score .bcol.stale{opacity:.45}
+#score .upd{font-size:10px;font-weight:400;color:var(--faint);text-transform:none;letter-spacing:0}
+#score.bridge{grid-template-columns:1fr auto}
+#score .bnote{grid-column:1/-1;margin:0 0 6px;padding:9px 11px;border-radius:12px;font-size:12px;line-height:1.4;color:var(--text);background:rgba(120,120,128,.12)}
 #score .dtl{grid-column:1/-1;justify-self:start;background:none;border:0;padding:2px 0;font:inherit;font-size:11px;color:#0A84FF;cursor:pointer}
 /* down tractor chip: short status + a dedicated, always-visible Mark repaired button */
 .chip .cact{display:none;margin-top:3px}

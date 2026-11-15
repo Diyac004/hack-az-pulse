@@ -1,6 +1,6 @@
 // Glass bottom sheets: Why (+ priority control), Mechanic booking, Approval, Add tractor.
 import { clock, esc, tractorColor, priName, IMPLEMENTS, implName, plural } from '../lib/format.js';
-import { errText, whyTieBreak } from '../lib/derive.js';
+import { errText, whyTieBreak, editFailText } from '../lib/derive.js';
 
 export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill, onRepair, caps = () => ({}) }) {
   // caps(): data/capabilities.js. A feature the connected backend lacks is never offered (no error round trip).
@@ -78,9 +78,15 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
       const p = +b.dataset.p, id = whyJob;
       const j = (st().jobs || []).find((x) => x.id === id);
       if (!j || j.priority === p) return;
-      // NOTE: no optimistic change; the pill/segment update when WS plan/jobs arrive.
-      ops.track(api.patchJob(id, { priority: p }), { els: [b, dockPill(id)] }).then((op) => {
+      // NOTE: no optimistic change; the pill/segment update when WS plan/jobs arrive. The backend applies an edit
+      // only if a valid plan accepts it (else SAFETY_REJECTED: failed op, or 409/422 up front) and the job keeps
+      // its old priority, so a failure just says so and leaves the segment on the old value.
+      const kept = priName(j.priority);
+      ops.track(api.patchJob(id, { priority: p }), { els: [b, dockPill(id)], failText: (r) => editFailText('priority', kept, r) }).then((op) => {
+        // the segment may have been re-rendered while waiting (renderWhy copies .busy onto the new buttons)
+        whyEl.querySelectorAll('.seg button[data-p="' + p + '"].busy').forEach((x) => { x.classList.remove('busy'); x.dataset.busy = 0; });
         if (op && op.status === 'succeeded' && whyJob === id) { toast(j.label + ' set to ' + priName(p).toLowerCase() + ' priority'); openWhy(id, true); }
+        else if (whyJob === id) { whyEl._sig = null; renderWhy(); }
       });
     }
   });

@@ -1143,7 +1143,11 @@ export function createMockSource(opts = {}) {
     if (patch.pinned_to !== undefined) j.pinned_to = patch.pinned_to;
     Object.assign(facts, { new_priority: j.priority, new_deadline_t: j.deadline_t, new_pinned_to: j.pinned_to, original_deadline_t: j._origDeadline, reason: patch.reason ?? null });
     addLog({ kind: 'event', type: 'priority_change', job: j.id, priority: j.priority, deadline_t: j.deadline_t, old_priority: facts.old_priority, old_deadline_t: facts.old_deadline_t, original_deadline_t: j._origDeadline, pinned_to: j.pinned_to, reason: patch.reason ?? null });
-    const r = replan('priority_change', { event: { type: 'priority_change', job: j.id, ...event }, facts });
+    let r;
+    // Like the platform backend (7df3d39): an edit is committed only with a valid applied plan; otherwise the job
+    // keeps its old values and the op fails.
+    try { r = replan('priority_change', { event: { type: 'priority_change', job: j.id, ...event }, facts }); }
+    catch (e) { j.priority = facts.old_priority; j.deadline_t = facts.old_deadline_t; j.pinned_to = facts.old_pinned_to; throw e; }
     afterReplan();
     return planResult(r, `${j.label} updated; plan v${r.version} applied.`);
   }

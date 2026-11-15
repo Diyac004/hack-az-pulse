@@ -693,5 +693,62 @@ section('wording: clock wrap, plurals, feed = explanation, overtime, priority wo
   ok(D2.whyTieBreak({ tractor: 'T3', finish_t: 130, travel_delta_min: 0 }, { tractor: 'T1', finish_t: 100 }, fl, null) === null, 'why: clear loser gets no tie text');
 }
 
+section('rejected job edit keeps old values + plain-words message (Anay 7df3d39: staged edits, 422 pin)');
+{
+  const D3 = await import('../lib/derive.js');
+  const R = harness();
+  R.tick(3);
+  const before = R.store.get().jobs.find((j) => j.id === 'J10');
+  const vBefore = R.store.get().plan.version;
+  R.src.debug.failNext();
+  const op = await R.api.patchJob('J10', { priority: before.priority === 3 ? 1 : 3 });
+  R.tick();
+  const fin = opMsgs(R.msgs, op.id).at(-1).data;
+  ok(fin.status === 'failed' && fin.error.code === 'SAFETY_REJECTED' && fin.solver_status === 'no_feasible_plan', 'mock: rejected priority edit => failed SAFETY_REJECTED');
+  const after = R.store.get().jobs.find((j) => j.id === 'J10');
+  ok(after.priority === before.priority && after.deadline_t === before.deadline_t && R.store.get().plan.version === vBefore, 'mock: rejected edit keeps priority, deadline and plan version');
+  const { priName } = await import('../lib/format.js');
+  const txt = D3.editFailText('priority', priName(before.priority), fin);
+  ok(txt === "Couldn't change priority: no valid plan accepts it — kept " + priName(before.priority), `failed op message: ${txt}`);
+  // incompatible pin (mock: failed op) keeps pinned_to
+  const pin = await R.api.patchJob('J2', { pinned_to: 'T1' }); R.tick();
+  ok(opMsgs(R.msgs, pin.id).at(-1).data.status === 'failed' && (R.store.get().jobs.find((j) => j.id === 'J2').pinned_to ?? null) === null, 'mock: incompatible pin fails, pinned_to unchanged');
+  // up-front rejections (live 409 / 422) read the same way; outcome-unknown errors are not called rejections
+  const e422 = { code: 'SAFETY_REJECTED', message: "Can't pin Hedge D to Tractor 1: it has no hedger.", details: { rule: 'implement_match' }, status: 422 };
+  ok(D3.editFailText('priority', 'High', e422) === "Couldn't change priority: can't pin Hedge D to Tractor 1: it has no hedger — kept High", '422 SAFETY_REJECTED message: ' + D3.editFailText('priority', 'High', e422));
+  ok(D3.editFailText('priority', 'Low', { code: 'CONFLICT', message: 'Mow G is already done.', status: 409 }) === "Couldn't change priority: mow G is already done — kept Low", '409 CONFLICT message');
+  ok(D3.editFailText('priority', 'High', { code: 'SAFETY_REJECTED', message: '', status: 422 }) === "Couldn't change priority: no valid plan accepts it — kept High", '422 without message');
+  ok(D3.editFailText('priority', 'High', { code: 'UNCONFIRMED', message: 'x', status: 0 }) === null && D3.editFailText('priority', 'High', { ...fin, status: 'succeeded' }) === null, 'no rejection text for UNCONFIRMED / succeeded');
+  // liveSource maps a 422 body exactly like 409: rejects {code, message, details, status}
+  const { createLiveSource } = await import('./liveSource.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: e422 }), { status: 422 });
+  const live = createLiveSource({ api: 'http://host:8000', onMessage() {} });
+  const got = await live.request('PATCH', '/jobs/J5', { pinned_to: 'T1' }).then(() => null, (e) => e);
+  ok(got && got.code === 'SAFETY_REJECTED' && got.status === 422 && got.message === e422.message && got.details.rule === 'implement_match', 'live: 422 SAFETY_REJECTED rejects {code,message,details,status}');
+  globalThis.fetch = realFetch;
+}
+
+section('baseline hold: transient null keeps last values (Anay 7df3d39 twin recompute)');
+{
+  const P = await import('../ui/panel.js');
+  const h = P.createBaselineHold();
+  const ours = { completed: 1, on_time: 1, travel_min: 10, idle_min: 2, violations: 0 };
+  const base = { completed: 1, on_time: 1, travel_min: 20, idle_min: 5, violations: 0 };
+  let r = h.apply({ ours, baseline: null, baseline_source: null });
+  ok(!r.updating && P.scoreRows(r.metrics).hasBase === false && P.baselineLabel(r.metrics) === 'Baseline not run yet.', 'no baseline seen yet => not measured');
+  r = h.apply({ ours, baseline: base, baseline_source: 'simulated' });
+  ok(!r.updating && P.scoreRows(r.metrics).hasBase, 'baseline arrives');
+  r = h.apply({ ours: { ...ours, completed: 2 }, baseline: null, baseline_source: null });
+  ok(r.updating && P.scoreRows(r.metrics).hasBase && r.metrics.baseline.travel_min === 20 && r.metrics.ours.completed === 2, 'transient null => last baseline held, marked updating, ours stays live');
+  r = h.apply({ ours, baseline: { ...base, travel_min: 21 }, baseline_source: 'simulated' });
+  ok(!r.updating && r.metrics.baseline.travel_min === 21, 'fresh baseline replaces the held one');
+  h.reset();
+  r = h.apply({ ours, baseline: null, baseline_source: null });
+  ok(!r.updating && !P.scoreRows(r.metrics).hasBase, 'reset on a new run => not measured again');
+  ok(h.apply({ ours, baseline: null, baseline_source: 'simulated' }).updating, 'source without numbers => updating, not "not measured"');
+  ok(P.isBridge({ backend: 'bridge' }) && !P.isBridge({ backend: 'fastapi' }) && P.jobsDone({ jobs: [{ status: 'done' }, { status: 'working' }] }) === 1, 'bridge helpers');
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed${failures ? `, ${failures} FAILED` : ''}`);
 process.exit(failures ? 1 : 0);

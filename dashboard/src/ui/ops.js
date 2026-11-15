@@ -22,7 +22,9 @@ export function createOps({ store, api, toast }) {
     waiting.delete(op.id);
     w.els.forEach((el) => busy(el, false));
     const out = opOutcome(op);
-    if (out && out.kind === 'err') toast(out.text, 'err');
+    const custom = out && out.kind === 'err' && w.failText ? w.failText(op) : null;
+    if (custom) toast(custom, 'err');
+    else if (out && out.kind === 'err') toast(out.text, 'err');
     else if (out && out.kind === 'warn') toast(out.text, 'warn');
     else if (out && w.okText) toast(typeof w.okText === 'function' ? w.okText(op) : w.okText);
     w.resolve(op);
@@ -86,9 +88,10 @@ export function createOps({ store, api, toast }) {
   return {
     /**
      * Track an api call. Resolves with the terminal Operation, the raw non-Operation body,
-     * or null on rejection (already toasted).
+     * or null on rejection (already toasted). failText(opOrErr) -> string|null replaces the toast for a failed
+     * op or a rejected call (e.g. editFailText for job edits); null falls back to the default wording.
      */
-    track(promise, { els = [], okText = null } = {}) {
+    track(promise, { els = [], okText = null, failText = null } = {}) {
       els = (Array.isArray(els) ? els : [els]).filter(Boolean);
       els.forEach((el) => busy(el, true));
       return Promise.resolve(promise).then((res) => {
@@ -96,12 +99,12 @@ export function createOps({ store, api, toast }) {
         const seen = lookup(res.id);
         const op = seen && same(res, seen) && isTerminal(seen) ? seen : res;
         return new Promise((resolve) => {
-          waiting.set(op.id, { els, resolve, since: Date.now(), okText, kind: res.kind, source: res.source });
+          waiting.set(op.id, { els, resolve, since: Date.now(), okText, failText, kind: res.kind, source: res.source });
           if (isTerminal(op)) finish(op);
         });
       }, (err) => {
         els.forEach((el) => busy(el, false));
-        toast(errText(err), errKind(err));
+        toast((failText && failText(err)) || errText(err), errKind(err));
         return null;
       });
     },
