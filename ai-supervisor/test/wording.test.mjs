@@ -124,3 +124,15 @@ test('prompt asks for short sentences led by the outcome', () => {
   assert.match(p.system, /Lead with the outcome/);
   assert.match(p.system, /not longer than the original/);
 });
+
+test('a repeated name is fine (names compared as sets), a new or dropped name is not', () => {
+  const o = 'Tractor 1 broke down 60% of the way through Spray E. Tractor 3 has 81% fuel, so it finishes the remaining 40% at 10:40 AM. All deadlines are still met.';
+  const rep = 'Tractor 3 finishes the remaining 40% of Spray E at 10:40 AM. Tractor 1 broke down at 60%, and Tractor 3 has 81% fuel. All deadlines are still met.';
+  assert.equal(validateWording(o, rep, { names: NAMES }).ok, true);
+  assert.match(validateWording(o, rep.replace('Tractor 1 broke', 'Tractor 2 broke'), { names: NAMES }).reason, /name/);
+  assert.match(validateWording(o, rep.replace('Tractor 1 broke down at 60%, and ', ''), { names: NAMES }).reason, /dropped|name|60/);
+});
+test('repeating a number is still rejected', () => {
+  const o = 'Tractor 3 has 81% fuel. All deadlines are still met.';
+  assert.match(validateWording(o, 'Tractor 3 has 81% fuel, 81% in total. All deadlines are still met.', { names: NAMES }).reason, /number/);
+});

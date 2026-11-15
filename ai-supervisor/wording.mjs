@@ -71,9 +71,11 @@ export function validateWording(original, rewrite, { names = [] } = {}) {
   if (r.length > Math.max(160, Math.round(o.length * 1.25))) return { ok: false, reason: 'longer than the original' };
   const a = factTokens(o, names), b = factTokens(r, names);
   for (const k of ['ids', 'times', 'nums']) {
-    const lost = missing(a[k], b[k]);
+    // names are compared as sets (a name may be repeated); numbers and times stay strict
+    const A = k === 'ids' ? [...new Set(a[k])] : a[k], B = k === 'ids' ? [...new Set(b[k])] : b[k];
+    const lost = missing(A, B);
     if (lost.length) return { ok: false, reason: `changed or dropped ${k === 'ids' ? 'name' : k === 'times' ? 'time' : 'number'}: ${lost.slice(0, 3).join(', ')}` };
-    const added = missing(b[k], a[k]);
+    const added = missing(B, A);
     if (added.length) return { ok: false, reason: `added ${k === 'ids' ? 'name' : k === 'times' ? 'time' : 'number'}: ${added.slice(0, 3).join(', ')}` };
   }
   for (const [name, re] of CLAIMS) {
