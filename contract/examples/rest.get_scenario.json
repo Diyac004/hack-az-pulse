@@ -32,6 +32,7 @@
       "ripeness": 0.4
     }
   ],
+  "disabled_blocks": [],
   "blocked_cells": [
     [
       7,

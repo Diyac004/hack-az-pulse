@@ -288,7 +288,7 @@ function unassignedReason(j, tractors) {
  * the compatible schedulable tractor with the earliest finish.
  * @param {{tractors:object[], jobs:object[], blocked:Set<string>, t:number}} p
  */
-export function planAssign({ tractors, jobs, blocked, t, wx = null }) {
+export function planAssign({ tractors, jobs, blocked, t, wx = null, disabled = null }) {
   const byId = new Map(jobs.map((j) => [j.id, j]));
   const sched = tractors.filter(schedulable);
   const frozen = new Set(sched.map((tr) => tr.current_job).filter(Boolean));
@@ -300,6 +300,8 @@ export function planAssign({ tractors, jobs, blocked, t, wx = null }) {
   const unassigned = new Map(), why = new Map();
   let rejected = 0;
   for (const j of jobs.filter((j) => unfinished(j) && !frozen.has(j.id)).sort(order)) {
+    // block_disabled (AI Supervisor contract proposal): work on an excluded block waits, progress kept
+    if (disabled && disabled.has(j.block)) { unassigned.set(j.id, `Block ${j.block} is excluded from planning: ${disabled.get(j.block).reason}`); continue; }
     const noWin = wx && j.implement === 'sprayer' ? wx.noWindowReason(j) : null;
     if (noWin) { unassigned.set(j.id, noWin); continue; }
     let best = null;
@@ -490,6 +492,7 @@ export function createMockSource(opts = {}) {
   const scenarioOut = () => ({
     name: 'queen_creek_citrus_day1', grid: { width: GW, height: GH }, depot: { ...DEPOT }, roads: { rows: RY.slice(), cols: RX.slice() },
     blocks: BLOCKS.map((b) => ({ ...b })), blocked_cells: [...w.blocked].map((k) => k.split(',').map(Number)),
+    disabled_blocks: [...w.disabled].map(([block, d]) => ({ block, reason: d.reason, t: d.t, proposed_by: d.proposed_by })), // contract proposal (AI Supervisor)
     sensitive: [{ block: 'E', what: 'canal', dir_deg: 90 }, { block: 'H', what: 'houses', dir_deg: 0 }, { block: 'B', what: 'apiary', dir_deg: 270 }],
     basemap: { image_url: '/static/naip.png', west: -111.74666891, east: -111.73374758, south: 33.45461238, north: 33.4632364 }, // naip.png true extent (5-cell margin), public/static/naip.json
     geo: { ...GEO },
@@ -566,7 +569,7 @@ export function createMockSource(opts = {}) {
   function resetWorld(mode = 'ours') {
     w = {
       t: 0, playing: true, speed: w?.speed ?? 1, ended: false, mode, tractors: [], jobs: SEED_JOBS.map((a) => makeJob(...a)),
-      blocked: new Set(), planVersion: 0,
+      blocked: new Set(), disabled: new Map(), planVersion: 0,
       plan: { version: 0, entries: [], solver: 'greedy', solve_ms: 0, solver_status: 'feasible', diff: { moved: [], retimed: [], dropped: [], added: [] } },
       explanations: [], pending: [], log: [], heat: false, wx: newWx(), created: 0,
       acc: { travel: 0, idle: 0, productive: 0, violations: 0, replanMs: null, rejected: null },
@@ -654,7 +657,7 @@ export function createMockSource(opts = {}) {
       j.status = j.progress > 0 ? 'paused' : 'pending'; j.weather_blocked = j.progress > 0; j.tractor = null;
       tr.current_job = null; tr.status = 'idle'; tr.path = []; tr.pi = 0;
     }
-    const res = planAssign({ tractors: w.tractors, jobs: w.jobs, blocked: w.blocked, t: w.t, wx: wxP() });
+    const res = planAssign({ tractors: w.tractors, jobs: w.jobs, blocked: w.blocked, t: w.t, wx: wxP(), disabled: w.disabled });
     for (const tr of w.tractors) {
       if (!schedulable(tr)) continue;
       tr.queue = res.assign.get(tr.id) || [];
@@ -878,6 +881,15 @@ export function createMockSource(opts = {}) {
         for (const j of on) s += ` ${j.label} goes to ${nameOf(j.tractor)}, starting at ${fmtClock(j.start_t)}${j.end_t != null && j.end_t > j.deadline_t + 1e-9 ? '' : ', before its ' + fmtClock(j.deadline_t) + ' deadline'}.`;
         if (off.length) s += ` ${listText(off.map((j) => j.label))} ${verb(off.length, 'waits', 'wait')}: ${off[0].unassigned_reason}`;
         return s + changesText(facts, added.map((j) => j.id)) + lateText(late);
+      }
+      case 'block_disabled': case 'block_enabled': {
+        const c = ctx.facts, on = trigger === 'block_enabled';
+        const who = c.proposed_by === 'ai_supervisor' ? ' AI Supervisor proposed, operator approved, Safety check passed.' : '';
+        const held = c.jobs.map(labelOf);
+        let s = on ? `Block ${c.block} is back in planning.` : `Block ${c.block} excluded from planning: ${c.reason}${/[.!?]$/.test(c.reason) ? '' : '.'}`;
+        s += who;
+        if (!on) s += held.length ? ` ${listText(held)} ${verb(held.length, 'waits', 'wait')} unassigned with ${held.length === 1 ? 'its' : 'their'} progress kept.` : ' No open job was planned there.';
+        return s + (changesText(facts, on ? [] : c.jobs, 'Changed') || '') + lateText(late);
       }
       case 'operator_action': {
         if (ctx.manual !== undefined) {
@@ -1302,6 +1314,28 @@ export function createMockSource(opts = {}) {
             return planResult(r, paused.length ? `Spraying paused on ${listText(paused.map((p) => nameOf(p.tractor)))}; plan v${r.version} applied.` : `Spray windows rechecked; plan v${r.version} applied.`);
           }, meta);
         }
+        case 'block_disabled': case 'block_enabled': {
+          // Contract proposal (AI Supervisor): exclude a block from planning (e.g. the satellite image shows houses),
+          // or bring it back. Jobs there become pending with unassigned_reason; progress is kept.
+          const b = BLOCK[ev.block];
+          if (!b) throw apiError('NOT_FOUND', `Block ${ev.block} does not exist.`, { field: 'block' });
+          const off = ev.type === 'block_disabled';
+          if (off && w.disabled.has(b.id)) throw apiError('CONFLICT', `Block ${b.id} is already excluded from planning.`, { block: b.id });
+          if (!off && !w.disabled.has(b.id)) throw apiError('CONFLICT', `Block ${b.id} is not excluded.`, { block: b.id });
+          const reason = String(ev.reason || 'Excluded by the operator.').slice(0, 200);
+          const proposedBy = ev.proposed_by === 'ai_supervisor' ? 'ai_supervisor' : 'operator';
+          return enqueue('replan', 'events', off ? `Excluding Block ${b.id} from planning. Replanning.` : `Bringing Block ${b.id} back. Replanning.`, () => {
+            const jobs = w.jobs.filter((j) => j.block === b.id && unfinished(j)).map((j) => j.id);
+            if (off) {
+              w.disabled.set(b.id, { reason, t: r2(w.t), proposed_by: proposedBy });
+              for (const tr of w.tractors) if (tr.current_job && jobById(tr.current_job).block === b.id) releaseHeld(tr);
+            } else w.disabled.delete(b.id);
+            addLog({ kind: 'event', type: ev.type, block: b.id, reason: off ? reason : null, proposed_by: proposedBy, jobs });
+            const r = replan(ev.type, { event: { type: ev.type, block: b.id, reason }, facts: { block: b.id, reason, proposed_by: proposedBy, jobs } });
+            afterReplan();
+            return planResult(r, off ? `Block ${b.id} excluded; plan v${r.version} applied.` : `Block ${b.id} back in planning; plan v${r.version} applied.`);
+          }, meta);
+        }
         default:
           throw apiError('INVALID_INPUT', `Event type "${ev.type}" is not supported. Use POST /fleet to add or remove tractors.`, { field: 'type' });
       }
@@ -1533,7 +1567,7 @@ export function createMockSource(opts = {}) {
   function counterfactual(jobId, trId) {
     const jobs = w.jobs.map((j) => ({ ...j, pinned_to: j.id === jobId ? trId : j.pinned_to }));
     const tractors = w.tractors.map((tr) => ({ ...tr, queue: [] }));
-    const res = planAssign({ tractors, jobs, blocked: w.blocked, t: w.t, wx: wxP() });
+    const res = planAssign({ tractors, jobs, blocked: w.blocked, t: w.t, wx: wxP(), disabled: w.disabled });
     const byId = new Map(jobs.map((j) => [j.id, j]));
     let travel = 0, finish = null; const ends = [];
     const late = [];

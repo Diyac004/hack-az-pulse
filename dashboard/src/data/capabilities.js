@@ -14,7 +14,7 @@
 /** Every feature on: the in-browser mock, the Node mock-backend, or a backend we cannot identify. */
 export const ALL_ON = Object.freeze({
   backend: 'mock', // mock | mock-backend | fastapi | bridge | unknown
-  events: Object.freeze({ breakdown: true, block_route: true, unblock_route: true, tractor_repaired: true, priority_change: true, heat_alert: true, weather_change: true }),
+  events: Object.freeze({ breakdown: true, block_route: true, unblock_route: true, tractor_repaired: true, priority_change: true, heat_alert: true, weather_change: true, block_disabled: true, block_enabled: true }), // block_*: AI_SUPERVISOR_PROPOSAL.md (not in ARCHITECTURE.md yet)
   why: true, // GET /why/{job}
   controls: true, // cockpit: /tractors/{id}/controls, control, preview, manual
   mechanics: true, // GET /mechanics + POST /mechanics/book
@@ -34,11 +34,11 @@ const PROFILES = {
   unknown: {},
   // Anay's FastAPI + MockGateway (backend/README.md "What's mocked or unfinished"): weather is a static
   // placeholder and heat_alert / weather_change return 400; approve and scale-test return 501.
-  fastapi: { events: { heat_alert: false, weather_change: false }, approve: false, scaleTest: false, weatherEnforced: false },
+  fastapi: { events: { heat_alert: false, weather_change: false, block_disabled: false, block_enabled: false }, approve: false, scaleTest: false, weatherEnforced: false },
   // AgOpenWeb bridge (agopenweb-bridge/server.mjs): drives real AgOpenWeb tractors and bypasses the Python
   // scheduler. Only breakdown / tractor_repaired events; no job edits, Why or approvals; metrics are placeholders.
   bridge: {
-    events: { block_route: false, unblock_route: false, priority_change: false, heat_alert: false, weather_change: false },
+    events: { block_route: false, unblock_route: false, priority_change: false, heat_alert: false, weather_change: false, block_disabled: false, block_enabled: false },
     why: false, approve: false, scaleTest: false, submitJobs: false, patchJob: false, weatherEnforced: false, metricsMeasured: false,
   },
 };

@@ -19,6 +19,7 @@ Source-of-truth docs (read the relevant one before coding):
   - `mock-backend/` (`:8000`): offline backup. Wraps the dashboard's in-browser simulation behind the REST/WS contract. Not our Python scheduler. Same port as `backend/`, run one at a time.
   - `agopenweb-bridge/` (`:8040`): real headless AgOpenWeb containers through the same contract. **Bypasses the Python scheduler**; its travel/idle/violation zeros are placeholders, not measured results. Use only for the "real AgOpenWeb tractors" moment. Protocol notes in its README.
 - Wording: the source badge says which backend is **connected**; only a tractor whose card says "AgOpenWeb ... heartbeat" is a **real AgOpenWeb** tractor. Never conflate them.
+- `ai-supervisor/`: LLM reviewer (`:8060`) that proposes plan, implement and plot fixes the operator approves (contract proposal: `AI_SUPERVISOR_PROPOSAL.md`; README there).
 - `contract/examples/`: one JSON per REST response and WS message.
 - `textures/`: tractor, house and orchard SVG concepts (`node textures/_build/build.mjs` regenerates). `reference/`: `ui-mock.html`, the visual reference. `tools/fetch-basemap.mjs`: satellite basemap fetch script. `sketch/`: throwaway first sketch.
 
@@ -44,6 +45,9 @@ npm install && ./run-agopenweb.sh && ./run-agopenweb.sh stop   # first time: bui
 npm test                          # decoder tests, no Docker
 # from repo root, one line (Docker Desktop must run):
 MAX_TRACTORS=3 REAL_SLOTS=3 node agopenweb-bridge/server.mjs   # full mode; REAL_SLOTS=1 = hot-seat
+
+# AI Supervisor (cd ai-supervisor && npm install; npm test). Dashboard: &ai=http://localhost:8060 (without it: in-browser "rules" reviewer)
+AI_PROVIDER=agy API=http://localhost:8000 node ai-supervisor/server.mjs   # or AI_PROVIDER=openai|anthropic|rules
 ```
 
 URL params: `?source=mock|live`, `&api=http://localhost:8000` (FastAPI backend, or mock-backend instead) or `:8040` (bridge), `?pace=` (farm min per real second, default 1.2), `?view=map|3d`, `?debug=perf`.

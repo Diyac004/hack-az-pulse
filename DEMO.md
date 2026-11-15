@@ -138,3 +138,34 @@ Other controls: **3D | Map** toggle, **Wind gust** / **Calm the wind**, Pause/Pl
 | Demo state is messy | Reload the tab (live resets the day) and restart the script; skip to section 3's 30-second version if time is short. |
 | Pace wrong | Reload with `?pace=6`. |
 | Stuck on a click | Say the sentence anyway, move to the next row. Never apologize on stage. |
+
+## 6. AI Supervisor (optional beat, 20-30 s)
+
+An LLM reviews the plan, implements and plots and **proposes** fixes; the operator approves; the planner re-plans and Safety checks the result. Contract proposal: `AI_SUPERVISOR_PROPOSAL.md`; details in `ai-supervisor/README.md`.
+
+Run it with agy (Antigravity CLI) against the simulated backend, which supports block exclusion:
+
+```sh
+cd ai-supervisor && npm install                       # once (deps: ws)
+PORT=8001 node mock-backend/server.mjs                # from repo root: simulated backend (Live preset "mock-backend")
+AI_PROVIDER=agy AGY_MODEL=claude-sonnet-5-5-low API=http://localhost:8001 node ai-supervisor/server.mjs   # :8060
+# dashboard: http://localhost:5173/?source=live&api=http://localhost:8001&ai=http://localhost:8060
+# against the planner instead: API=http://localhost:8000 ... and &api=http://localhost:8000
+```
+
+The panel follows the **Mock | Live** switch (the switch keeps `&ai=`):
+
+- **Mock**, no `&ai=`: in-browser **rules** reviewer (no model). Plan and implement findings only (late jobs, overtime, idle tractors, missing implement); approvals go to the in-browser simulation. No plot review: that needs the vision model.
+- **Mock** with `&ai=`: the service reviews its own `API=` backend, not the in-browser simulation; the panel says so. For the plot beat, use Live on that backend.
+- **Live, mock-backend** (`:8001`): everything approvable, including **Exclude Block A**.
+- **Live, planner backend** (FastAPI `:8000`): advice only, except **priority** and **pin job** (its `/api/capabilities` reports no controls and no `block_disabled`). Plot findings show as advice ("Not supported by this backend").
+
+What to show:
+
+1. Switch to **Satellite**. Click **Review now** on the AI Supervisor card (a review with agy takes about 15-60 s).
+2. Plots: Blocks **A** and **E** are flagged "houses, not orchard", outlined on the map. Open the card, **Show Block A**, then **Approve** "Exclude Block A". Say: "The AI proposed it, I approved it, the planner re-planned and Safety checked it." Block A's jobs go back to Unassigned with the reason; the Latest explanation card says who decided.
+3. On the planner backend: show one plan finding, approve a **priority** change, and say plot findings stay advice there until the backend accepts the proposal.
+
+With a model (agy/openai/anthropic) the Latest explanation card shows the model's rewording of the planner's text, only when it kept every number, job, tractor, time and claim (else the template). The AI card header says "AI: <model> via <provider>" and what it is doing; the "AI" chip next to Mock | Live opens the panel; findings say "Proposed by <model>".
+
+If agy is slow or fails: drop `&ai=` (rules reviewer) or skip the beat. Never claim the rules reviewer is an LLM.

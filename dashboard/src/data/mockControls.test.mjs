@@ -274,6 +274,22 @@ section('manual: always 202, idempotent retry');
   s3.stop();
 }
 
+section('preview respects excluded blocks (block_disabled)');
+{
+  const s4 = createMockSource({ realtime: false });
+  s4.connect({ onMessage: () => {} });
+  await s4.api.postEvent({ type: 'block_disabled', block: 'C', reason: 'test' });
+  s4.tick(); s4.tick();
+  const snap = s4.debug.snapshot();
+  ok(snap.scenario.disabled_blocks.some((d) => d.block === 'C'), 'scenario lists C as excluded');
+  const pv = await s4.api.preview('T2', { control: 'implements', value: ['mower', 'hedger'] });
+  const onC = (pv.plan?.entries || []).filter((e) => e.kind === 'work' && snap.jobs.find((j) => j.id === e.job)?.block === 'C');
+  ok(pv.allowed && onC.length === 0, `preview plans no work on excluded Block C (${onC.map((e) => e.job)})`);
+  const pin = await s4.api.preview('T2', { control: 'pin_job', value: 'J2' }); // Mow C
+  ok(!(pin.plan?.entries || []).some((e) => e.kind === 'work' && e.job === 'J2'), 'pinning a job on an excluded block still leaves it unplanned');
+  s4.stop();
+}
+
 src.stop();
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures) { console.error(failures + ' FAILED'); process.exit(1); }

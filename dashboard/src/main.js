@@ -25,6 +25,8 @@ import { createViewToggle } from './ui/viewToggle.js';
 import { createWeather } from './ui/weather.js';
 import { createControlPanel } from './ui/controlPanel.js';
 import { createMapPick } from './scene/mapPick.js';
+import { createAiPanel } from './ui/aiPanel.js';
+import { createAiMapMarks } from './ui/aiMapMarks.js';
 
 const stage = document.getElementById('stage');
 const world = createWorld(stage);
@@ -88,6 +90,9 @@ capabilities.subscribe((c) => {
 // tractor in 3D/Map switches the cockpit to it instead.
 stage.addEventListener('hf:readout', (e) => { if (cockpit.id && e.detail && e.detail.id && e.detail.id !== cockpit.id) cockpit.open(e.detail.id); });
 createWeather({ store, world, farm, tractors, caps: capabilities.get }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
+// AI Supervisor: side card + sheet (proposals the operator approves) and plot marks on the Map/3D view
+const aiPanel = createAiPanel({ stage, store, api, ops, toast, sheets, focusBlock, modeEl: document.getElementById('srcbadge'), sourceInfo });
+const aiMarks = createAiMapMarks({ stage, store, world, live });
 
 // ---------- source badge ----------
 const badge = document.getElementById('srcbadge');
@@ -259,9 +264,11 @@ function syncUI(state, now) {
   dock.badge(state, ops.active(state));
   chips.sync(state);
   panel.sync(state);
+  { const x = (state.explanations || [])[0], w = x && state.ai && state.ai.wording && state.ai.wording[x.id]; if (w && w.status === 'ok') panel.setWording(x.id, w.text); }
   controls.sync(state);
   jobSheet.sync(state);
   cockpit.sync(state);
+  aiPanel.sync(state);
   labels.sync(state, L.unassigned.map((j) => j.id));
   vans.sync(state);
   sheets.sync(state, now > holdPendingUntil && !keynoteOpen());
@@ -294,6 +301,7 @@ function loop(now) {
   if (now - lastSync > 200 || (dirty && now - lastSync > 100)) { lastSync = now; dirty = false; syncUI(state, now); }
   island.tick(state, now, (linkProblem(state) || {}).note);
   live.tick(now);
+  aiMarks.tick(now);
   if (live.simVisible) world.render(now); // diorama isn't drawn while the Live feed fully covers it
 }
 
