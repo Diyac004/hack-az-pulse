@@ -21,7 +21,7 @@ function wxAt(forecast, t) {
   return p || (forecast && forecast[0]) || null;
 }
 
-export function createWeather({ store, world, farm, tractors }) {
+export function createWeather({ store, world, farm, tractors, caps = () => ({}) }) {
   const stage = document.getElementById('stage');
   const side = document.querySelector('.side');
   const ctl = side && side.querySelector('.ctl');
@@ -112,14 +112,18 @@ export function createWeather({ store, world, farm, tractors }) {
     elTemp.textContent = cur.temp_f != null ? Math.round(cur.temp_f) + '°F' : '–';
     elRain.textContent = cur.rain_prob != null ? Math.round(cur.rain_prob) + '%' : '–';
     const state3 = okN === ids.length ? 'all' : okN === 0 ? 'none' : 'part';
-    elPill.className = 'wx-pill ' + state3;
-    elPill.textContent = state3 === 'all' ? 'Spraying OK' : state3 === 'none' ? 'No spraying' : 'Spray OK on ' + okN + ' of ' + ids.length;
+    // Backend that does not enforce weather (capabilities.weatherEnforced false): say so, claim no spray verdict.
+    const placeholder = caps().weatherEnforced === false;
+    card.classList.toggle('wx-placeholder', placeholder);
+    elPill.className = 'wx-pill ' + (placeholder ? 'part' : state3);
+    elPill.textContent = placeholder ? 'Placeholder' : state3 === 'all' ? 'Spraying OK' : state3 === 'none' ? 'No spraying' : 'Spray OK on ' + okN + ' of ' + ids.length;
     // the most useful reason: a wind/temp/rain limit shared by every block, else the per-block sensitive-area ones
     let reason = '';
     if (reasons.length) {
       const first = reasons[0][1];
       reason = reasons.every(([, r]) => r === first) && reasons.length === ids.length ? first : reasons.map(([b, r]) => 'Block ' + b + ': ' + r).slice(0, 3).join(' · ');
     } else reason = 'Wind inside the ' + SPRAY_MIN + '–' + SPRAY_MAX + ' mph spray range';
+    if (placeholder) reason = 'Placeholder weather — not used for spraying decisions';
     if (elReason.textContent !== reason) elReason.textContent = reason;
     elReason.className = 'wx-reason' + (reasons.length ? ' bad' : '');
     comp.classList.toggle('hi', mph > SPRAY_MAX);

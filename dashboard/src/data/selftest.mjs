@@ -138,7 +138,8 @@ section('Tractor Control Panel traffic through the contract checker (instance C)
 
 // ===================================================================
 section('index.js exports');
-ok(Object.keys(index).sort().join(',') === 'api,sourceInfo,start,store', 'index exports exactly api, sourceInfo, start, store');
+ok(Object.keys(index).sort().join(',') === 'api,capabilities,sourceInfo,start,store', 'index exports exactly api, capabilities, sourceInfo, start, store');
+ok(index.capabilities.get().why === true && index.capabilities.get().events.heat_alert === true, 'mock source: every capability on');
 ok(index.sourceInfo.kind === 'mock' && index.sourceInfo.api === null, 'no location => mock');
 ok(typeof index.store.get === 'function' && typeof index.store.subscribe === 'function', 'store.get/subscribe');
 for (const k of ['run', 'setClock', 'postEvent', 'patchJob', 'addTractor', 'removeTractor', 'why', 'mechanics', 'bookMechanic', 'approve', 'scaleTest', 'getLog', 'getOperation', 'getControls', 'control', 'preview', 'manual']) ok(typeof index.api[k] === 'function', 'api.' + k);

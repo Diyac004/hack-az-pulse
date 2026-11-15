@@ -5,6 +5,7 @@
 import { createStore } from './store.js';
 import { createMockSource, parsePace } from './mockSource.js';
 import { createLiveSource, newIdempotencyKey } from './liveSource.js';
+import { ALL_ON, detectCapabilities } from './capabilities.js';
 
 const MUTATION_RETRY_MS = 45000; // how long an unanswered async mutation is re-sent (same key) before UNCONFIRMED
 
@@ -56,7 +57,11 @@ function liveAdapter() {
     return attempt(0);
   };
   return {
-    start: () => src.start(),
+    start: () => src.start().then(() => {
+      // Capability detection runs once the first snapshot is in (probe ids come from it); never blocks start.
+      detectCapabilities({ root: sourceInfo.api, request: req, state: _store.get() })
+        .then(setCaps, (e) => console.warn('[live] capability detection failed', e));
+    }),
     resync: () => src.resync(),
     api: {
       run: (mode = 'ours', o) => mutate('POST', '/run', { mode }, o),
@@ -82,6 +87,17 @@ function liveAdapter() {
     },
   };
 }
+
+// ---- capabilities (data/capabilities.js): what the connected backend supports. Mock: everything.
+let _caps = ALL_ON;
+const _capSubs = new Set();
+function setCaps(c) { _caps = c; for (const fn of _capSubs) { try { fn(c); } catch (e) { console.error('[caps] subscriber error', e); } } }
+export const capabilities = {
+  /** Current capabilities (ALL_ON until live detection finishes). */
+  get: () => _caps,
+  /** fn(caps) now and on every change; returns an unsubscribe function. */
+  subscribe: (fn) => { _capSubs.add(fn); try { fn(_caps); } catch (e) { console.error('[caps] subscriber error', e); } return () => _capSubs.delete(fn); },
+};
 
 /** Mock adapter: in-process simulation; start() resolves after its snapshot is applied. */
 function mockAdapter() {

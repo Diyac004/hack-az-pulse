@@ -1,17 +1,42 @@
 // Side-panel buttons. Every action goes through `api` and is tracked per Operation.
 import { tractorColor, isDown, esc } from '../lib/format.js';
 
-export function createControls({ store, api, ops, toast, world, sheets, onBreakdownRequested }) {
+export const UNSUPPORTED_TIP = 'Not supported by this backend';
+/** No run yet on this backend (fresh FastAPI server: plan version 0, nothing scheduled): Play must start a run. */
+export const needsRun = (state) => !!state && !!state.plan && (state.plan.version ?? 0) === 0;
+const runActive = (state) => ((state && state.operations) || []).some((o) => o && o.kind === 'run' && (o.status === 'queued' || o.status === 'running'));
+
+export function createControls({ store, api, ops, toast, world, sheets, onBreakdownRequested, caps = () => ({}) }) {
   const $ = (id) => document.getElementById(id);
   const bPlay = $('bPlay'), bBreak = $('bBreak'), bBlock = $('bBlock'), bHeat = $('bHeat'), bFast = $('bFast'), bFx = $('bFx'), bAdd = $('bAdd'), bCam = $('bCam');
   const pick = $('breakpick');
   const st = () => store.get() || {};
   let slowmo = null; // { restore } while a breakdown slow-motion override is active
 
+  // Play / Start run: a fresh backend has no plan (version 0) and refuses /clock with 409 "Start a run first", so
+  // the first press is POST /api/run (a tracked Operation; the backend starts the clock when the plan is applied).
+  // After that the button only pauses and resumes through /clock.
   bPlay.onclick = () => {
-    const c = st().clock || {};
+    const s = st();
+    if (needsRun(s)) { if (!runActive(s)) ops.track(api.run('ours'), { els: bPlay, okText: 'Run started. Plan v1 is in.' }); return; }
+    const c = s.clock || {};
     ops.track(api.setClock({ playing: !c.playing }), { els: bPlay });
   };
+
+  // Restart day: POST /api/run again after an in-app glass confirm (never window.confirm).
+  const restartWrap = document.createElement('div'); restartWrap.className = 'popwrap';
+  const bRestart = document.createElement('button'); bRestart.id = 'bRestart'; bRestart.textContent = 'Restart day';
+  const confirmPop = document.createElement('div'); confirmPop.className = 'pop gl confirm'; confirmPop.setAttribute('role', 'dialog'); confirmPop.setAttribute('aria-label', 'Restart the day?');
+  confirmPop.innerHTML = '<p class="cq"><b>Restart the day?</b><br>The clock goes back to 6:00 AM, every job starts over and the plan is rebuilt.</p>' +
+    '<div class="crow"><button type="button" class="cyes">Restart</button><button type="button" class="cno">Cancel</button></div>';
+  restartWrap.append(bRestart, confirmPop);
+  bCam.after(restartWrap);
+  bRestart.onclick = (e) => { e.stopPropagation(); pick.classList.remove('on'); confirmPop.classList.toggle('on'); };
+  confirmPop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.target.closest('.cno')) { confirmPop.classList.remove('on'); return; }
+    if (e.target.closest('.cyes')) { confirmPop.classList.remove('on'); ops.track(api.run('ours'), { els: bRestart, okText: 'Day restarted' }); }
+  });
   bFast.onclick = () => {
     const c = st().clock || {};
     const fast = (slowmo ? slowmo.restore : c.speed) > 1;
@@ -66,15 +91,21 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
     onBreakdownRequested && onBreakdownRequested(id);
     ops.track(api.postEvent({ type: 'breakdown', tractor: id }), { els: bBreak });
   });
-  document.addEventListener('click', () => pick.classList.remove('on'));
+  document.addEventListener('click', () => { pick.classList.remove('on'); confirmPop.classList.remove('on'); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') confirmPop.classList.remove('on'); });
 
   return {
     /** Labels derive from state.clock, ignoring our own temporary slow-motion override. */
     sync(state) {
       const c = state.clock || {};
       const ended = !!c.ended;
-      bPlay.textContent = ended ? 'Day over' : c.playing ? 'Pause' : 'Play';
-      bPlay.disabled = ended;
+      const fresh = needsRun(state), starting = fresh && runActive(state);
+      bPlay.textContent = starting ? 'Starting…' : fresh ? 'Start run' : ended ? 'Day over' : c.playing ? 'Pause' : 'Play';
+      bPlay.disabled = (ended && !fresh) || starting;
+      bPlay.classList.toggle('blue', fresh);
+      bPlay.title = fresh ? 'Plan the day and start the clock (POST /api/run)' : ended ? 'The day is over. Use Restart day to run it again.' : '';
+      restartWrap.hidden = fresh;
+      bFast.disabled = fresh;
       const speed = slowmo ? slowmo.restore : c.speed;
       bFast.textContent = speed > 1 ? 'Normal speed' : 'Skip to sunset';
       const g = gusty();
@@ -82,14 +113,24 @@ export function createControls({ store, api, ops, toast, world, sheets, onBreakd
       bWind.title = g ? 'Send weather_change: wind drops to 6 mph, away from sensitive areas' : 'Send weather_change: 14 mph gust toward a sensitive area (above the 10 mph spray limit)';
       // nothing happens after the workday ends (6:00 PM): no new breakdowns, road blocks or weather
       const over = ended || (c.t != null && c.day_minutes != null && c.t >= c.day_minutes);
-      bWind.disabled = over || !state.weather;
+      // capability gating (data/capabilities.js): unsupported events are disabled with a tooltip, never error-tested
+      const ev = caps().events || {};
+      const evOf = new Map([[bBreak, 'breakdown'], [bBlock, 'block_route'], [bHeat, 'heat_alert'], [bWind, 'weather_change']]);
+      const OVER = 'The workday is over (6:00 PM). Events can only happen during the day.';
       for (const b of [bBreak, bBlock, bHeat, bWind]) {
-        b.disabled = over || (b === bWind && !state.weather);
-        if (over) b.title = 'The workday is over (6:00 PM). Events can only happen during the day.';
-        else if (b !== bWind && b.title === 'The workday is over (6:00 PM). Events can only happen during the day.') b.title = '';
+        const unsupported = ev[evOf.get(b)] === false;
+        b.disabled = fresh || unsupported || over || (b === bWind && !state.weather);
+        b.classList.toggle('unsup', unsupported);
+        if (unsupported) b.title = UNSUPPORTED_TIP;
+        else if (fresh) b.title = 'Start a run first.';
+        else if (over) b.title = OVER;
+        else if (b !== bWind && (b.title === OVER || b.title === UNSUPPORTED_TIP || b.title === 'Start a run first.')) b.title = '';
       }
       if (over) pick.classList.remove('on');
-      const cap = state.capacity, full = !!(cap && cap.max != null && cap.used >= cap.max);
+      // Pre-emptive "fleet is full" only for a real compute pool. A backend with no container pool (every host
+      // docker "none", e.g. MockGateway) reports max = current fleet size; the server still answers AT_CAPACITY.
+      const cap = state.capacity, pool = !!(cap && (cap.hosts || []).some((h) => h && h.docker && h.docker !== 'none'));
+      const full = !!(cap && pool && cap.max != null && cap.used >= cap.max);
       bAdd.disabled = full;
       bAdd.title = full ? `Fleet is full: ${cap.used} of ${cap.max} tractors. Remove one to add another.` : '';
     },

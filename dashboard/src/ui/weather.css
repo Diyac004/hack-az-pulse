@@ -68,3 +68,4 @@
 .pill .wx-tag[hidden]{display:none}
 
 @media (prefers-reduced-motion:reduce){.wx-arrow,#wxcompass .wx-needle{transition:none}}
+.wx-placeholder .wx-strip,.wx-placeholder .wx-legend{opacity:.4}

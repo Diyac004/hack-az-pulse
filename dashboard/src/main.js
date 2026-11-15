@@ -1,6 +1,6 @@
 // Harvest Fleet AI dashboard: visual layer. Reads ONLY from the data layer (store/api/sourceInfo).
 import './style.css';
-import { start, store, api, sourceInfo } from './data/index.js';
+import { start, store, api, sourceInfo, capabilities } from './data/index.js';
 import { makeGrid, missingScenarioFields, blockedCells, islandMoment, timelineLayout } from './lib/derive.js';
 import { clock, isDown, plural } from './lib/format.js';
 import { createWorld } from './scene/world.js';
@@ -45,7 +45,7 @@ const viewToggle = createViewToggle(stage, (v) => live.setView(v, 'user'));
 const markRepaired = (id, els) => ops.track(api.postEvent({ type: 'tractor_repaired', tractor: id }), { els: els || [] });
 // Tractor Control Panel (M9b): opened from the readout card, a chip's controls button, or a timeline lane label.
 let cockpit = null;
-const openControls = (id) => cockpit && cockpit.open(id);
+const openControls = (id) => cockpit && capabilities.get().controls !== false && cockpit.open(id);
 const live = createLiveFeed({ stage, world, store, sourceInfo, toggle: viewToggle, dioramaTractors: tractors, onRepair: markRepaired, onControls: openControls });
 const mapPick = createMapPick({ stage, world, getScenario: () => (store.get() || {}).scenario, view: () => live.pickView() });
 live.setPickGuard(() => mapPick.active);
@@ -63,20 +63,28 @@ const sheets = createSheets({
   dockPill: (id) => (dock ? dock.pillEl(id) : null),
   onBooked: (tr, bookT, arr) => { if (!vans.has(tr)) vans.dispatch(store.get(), tr, bookT, arr); },
   onRepair: markRepaired,
+  caps: capabilities.get,
 });
 dock = createDock({ onPill: (id) => sheets.openWhy(id), onLane: openControls });
 // chip click: fly to the tractor and open its readout card
 const chips = createChips({ api, ops, onRepair: markRepaired, onControls: openControls, onFocus: (id) => { const p = tractors.worldPos(id); if (p) world.focus(p, 2400); live.select(id); } });
-const controls = createControls({ store, api, ops, toast, world, sheets });
+const controls = createControls({ store, api, ops, toast, world, sheets, caps: capabilities.get });
 cockpit = createControlPanel({
   stage, store, api, ops, toast, mapPick,
   onOpen: (id) => { sheets.close(); stage.classList.add('cp-open'); const p = tractors.worldPos(id); if (p) world.focus(p, 2400); },
   onClose: () => stage.classList.remove('cp-open'),
 });
+// Features the connected backend lacks are hidden (data/capabilities.js); body classes drive the CSS.
+capabilities.subscribe((c) => {
+  const b = document.body.classList;
+  b.toggle('cap-no-controls', c.controls === false);
+  b.toggle('cap-no-mechanics', c.mechanics === false);
+  if (c.controls === false && cockpit && cockpit.id && cockpit.close) cockpit.close();
+});
 // Never readout card + cockpit at once: while the cockpit is open the card is hidden (style.css) and tapping a
 // tractor in 3D/Map switches the cockpit to it instead.
 stage.addEventListener('hf:readout', (e) => { if (cockpit.id && e.detail && e.detail.id && e.detail.id !== cockpit.id) cockpit.open(e.detail.id); });
-createWeather({ store, world, farm, tractors }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
+createWeather({ store, world, farm, tractors, caps: capabilities.get }); // M9a weather UI: card, compass, bands, wind/mist/sensitive areas
 
 // ---------- source badge ----------
 const badge = document.getElementById('srcbadge');

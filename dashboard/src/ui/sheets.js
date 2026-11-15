@@ -2,7 +2,9 @@
 import { clock, esc, tractorColor, priName, IMPLEMENTS, implName, plural } from '../lib/format.js';
 import { errText, whyTieBreak } from '../lib/derive.js';
 
-export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill, onRepair }) {
+export function createSheets({ store, api, ops, toast, island, focusBlock, onBooked, dockPill, onRepair, caps = () => ({}) }) {
+  // caps(): data/capabilities.js. A feature the connected backend lacks is never offered (no error round trip).
+  const has = (k) => caps()[k] !== false;
   const whyEl = document.getElementById('why'), mechEl = document.getElementById('mech'), addEl = document.getElementById('addsheet');
   const all = [whyEl, mechEl, addEl];
   // Hiding the mechanic sheet for any reason counts as "shown" for that pending item: it never re-pops by itself
@@ -37,6 +39,8 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
       html += '<p style="font-size:13px;margin:0 0 10px">Completed by ' + esc(trName(j.tractor)) + ' at ' + clock(j.end_t) + (j.end_t != null && j.deadline_t != null ? (j.end_t <= j.deadline_t ? ', before its ' + clock(j.deadline_t) + ' deadline.' : ', after its ' + clock(j.deadline_t) + ' deadline.') : '.') + '</p>';
     } else if (w === 'loading') {
       html += '<p style="font-size:13px;color:#6e6e73;margin:0 0 10px">Re-solving with this job on each tractor…</p>';
+    } else if (w && w.unsupported) {
+      html += '<p style="font-size:13px;color:#6e6e73;margin:0 0 10px">Comparing tractors for this job is not supported by this backend.</p>';
     } else if (w && w.error) {
       html += '<p style="font-size:13px;color:#B3261E;margin:0 0 10px">' + esc(w.error) + '</p>';
     } else if (w && Array.isArray(w.options)) {
@@ -58,7 +62,7 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
         html += '<div style="margin:0 0 9px;opacity:' + (isC ? 1 : 0.5) + '"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:600">' + esc(trName(o.tractor)) + '</span><span style="text-align:right">' + txt + '</span></div><div style="height:8px;border-radius:4px;background:rgba(0,0,0,.07)"><div style="height:8px;border-radius:4px;width:' + width + '%;background:' + col + ';transition:width .6s cubic-bezier(.34,1.56,.64,1)"></div></div></div>';
       });
     }
-    if (j.status !== 'done') {
+    if (j.status !== 'done' && has('patchJob')) {
       html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px"><p style="font-size:11px;color:#6e6e73;margin:0">Deadline ' + clock(j.deadline_t) + (w && w.method ? ' · ' + (w.method === 'counterfactual' ? 'compared by re-planning with each tractor' : 'estimated') : '') + '</p>' +
         '<div class="seg" data-seg>' + [1, 2, 3].map((p) => '<button data-p="' + p + '" class="' + (j.priority === p ? 'on' : '') + '">' + (p === 1 ? 'Low' : p === 2 ? 'Med' : 'High') + '</button>').join('') + '</div></div>';
     }
@@ -87,6 +91,7 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
     const j = (st().jobs || []).find((x) => x.id === id);
     if (j && j.block && !keepOpen) focusBlock(j.block);
     if (j && j.status === 'done') return;
+    if (!has('why')) { whyData = { unsupported: true }; renderWhy(); return; }
     api.why(id).then((w) => { if (req !== whyReq) return; whyData = w || { options: [] }; renderWhy(); },
       (err) => { if (req !== whyReq) return; whyData = { error: errText(err) }; renderWhy(); });
   }
@@ -116,6 +121,7 @@ export function createSheets({ store, api, ops, toast, island, focusBlock, onBoo
       '<div style="display:flex;gap:8px"><button class="abtn" data-book ' + (opts.length ? '' : 'disabled') + '>Approve and book</button><button class="gbtn" data-later>Not now</button></div>';
   }
   function openPending(p) {
+    if ((p.kind === 'mechanic' && !has('mechanics')) || (p.kind === 'approval' && !has('approve'))) return;
     mechPending = p; msel = 0; mechOpts = Array.isArray(p.options) ? p.options : [];
     closeAll(mechEl); whyJob = null; mechEl.classList.add('on'); renderMech();
     if (p.kind === 'mechanic' && p.tractor) {

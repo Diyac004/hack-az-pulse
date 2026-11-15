@@ -214,3 +214,14 @@ header p{margin:0;font-size:13px;color:var(--muted)}
 .chip.has-cpb .ctxt{padding-right:20px}
 .chip .mbdg{flex:none}
 .chip.has-cpb .cx{right:4px}
+/* Capability gating (data/capabilities.js): features the connected backend lacks are hidden, not error-tested. */
+.cap-no-controls .chip .cpb, .cap-no-controls .lf-card button.ctl{display:none}
+.cap-no-controls .chip.has-cpb .ctxt{padding-right:0}
+.cap-no-mechanics .hint.mech-hint{display:none}
+/* Restart day: in-app glass confirm (never window.confirm) */
+.pop.confirm{left:auto;right:0;width:240px;padding:12px;gap:10px}
+.pop.confirm .cq{margin:0;font-size:12px;line-height:1.45;color:#1d1d1f}
+.pop.confirm .crow{display:flex;gap:6px}
+.pop.confirm .crow button{flex:1;justify-content:center;font-weight:600}
+.pop.confirm .cyes{background:rgba(255,69,58,.14);color:#c4271c}
+button.unsup{opacity:.45}
