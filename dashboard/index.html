@@ -30,17 +30,30 @@
       </div>
     </div>
     <div class="side">
-      <div class="ctl">
-        <button id="bPlay">Pause</button>
-        <div class="popwrap"><button id="bBreak" class="red">Break down…</button><div id="breakpick" class="pop gl"></div></div>
-        <button id="bBlock">Block a road</button>
-        <button id="bHeat">Heat alert</button>
-        <button id="bFast">Skip to sunset</button>
-        <button id="bFx">Effects: on</button>
-        <button id="bAdd" class="blue">Add tractor</button>
-        <button id="bJobs" class="blue">Add jobs</button>
-        <button id="bCam">Reset view</button>
-      </div>
+      <section class="ctl" id="ctlbar" aria-label="Simulation controls">
+        <div class="cb-row cb-run" role="group" aria-label="Run">
+          <button type="button" id="bPlay" class="cb-play"><span class="cb-lbl">Pause</span></button>
+          <div class="cb-seg" role="group" aria-label="Speed">
+            <button type="button" id="bSpd1" aria-pressed="true" title="Normal speed (1×)">1×</button>
+            <button type="button" id="bFast" aria-pressed="false" title="Skip to sunset: run the clock at 6×">6×</button>
+          </div>
+          <div class="cb-view" id="cbView">
+            <button type="button" id="bFx" class="cb-icon" aria-pressed="true" aria-label="Effects" title="Effects: on"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75l1.3 3.45L12.75 6.5 9.3 7.8 8 11.25 6.7 7.8 3.25 6.5 6.7 5.2zM12.5 10.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg></button>
+            <button type="button" id="bCam" class="cb-icon" aria-label="Reset view" title="Reset view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.5V3.25C2 2.56 2.56 2 3.25 2H5.5M10.5 2h2.25c.69 0 1.25.56 1.25 1.25V5.5M14 10.5v2.25c0 .69-.56 1.25-1.25 1.25H10.5M5.5 14H3.25C2.56 14 2 13.44 2 12.75V10.5"/><circle cx="8" cy="8" r="2"/></svg></button>
+          </div>
+        </div>
+        <div class="cb-row cb-events" role="group" aria-label="Events">
+          <div class="popwrap"><button type="button" id="bBreak" class="cb-chip red" aria-haspopup="true" title="Break down a tractor…"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.3 2.2a3.2 3.2 0 0 0-3.9 4.1L2.2 10.5a1.3 1.3 0 0 0 0 1.9l1.4 1.4a1.3 1.3 0 0 0 1.9 0l4.2-4.2a3.2 3.2 0 0 0 4.1-3.9l-1.9 1.9-1.9-.4-.4-1.9z"/></svg><span class="cb-lbl">Breakdown</span></button><div id="breakpick" class="pop gl"></div></div>
+          <button type="button" id="bBlock" class="cb-chip" title="Block a road"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="5" width="12.5" height="4" rx="1"/><path d="M4.5 9v4.5M11.5 9v4.5M5 5l3 4M9 5l3 4"/></svg><span class="cb-lbl">Block road</span></button>
+          <button type="button" id="bHeat" class="cb-chip" title="Heat alert: 112°F"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.3V3a1.5 1.5 0 0 1 3 0v6.3a3 3 0 1 1-3 0z"/><path d="M8 6.5v4.5"/></svg><span class="cb-lbl">Heat</span></button>
+          <button type="button" id="bWind" class="cb-chip"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 6h8.2a2 2 0 1 0-2-2M1.5 10h11a2 2 0 1 1-2 2M1.5 8h6"/></svg><span class="cb-lbl">Wind</span></button>
+          <p class="cb-note" id="cbUnavail" tabindex="0" hidden></p>
+        </div>
+        <div class="cb-row cb-fleet" id="cbFleet" role="group" aria-label="Fleet">
+          <button type="button" id="bAdd" class="cb-chip blue"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span class="cb-lbl">Add tractor</span></button>
+          <button type="button" id="bJobs" class="cb-chip blue"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h7M2.5 8h7M2.5 12h4.5M12 9.5v5M9.5 12h5"/></svg><span class="cb-lbl">Add jobs</span></button>
+        </div>
+      </section>
       <div class="card"><p class="lbl">Latest explanation</p><p id="exp"></p></div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><p class="lbl">Ours vs first come, first served</p><span class="ok" id="viol">0 violations</span></div>

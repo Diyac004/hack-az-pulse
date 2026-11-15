@@ -1,0 +1,85 @@
+/* Compact control bar (side column, above the weather card). Three rows: Run, Events, Fleet.
+   Scoped to #ctlbar so it wins over the legacy .ctl grid rules in style.css without editing them.
+   Busy spinners and the disabled look still come from style.css (.ctl button.busy / :disabled). */
+#ctlbar{
+  --cb-h:28px; --cb-chip-h:26px;
+  --cb-fill:var(--card);
+  --cb-fill-hover:color-mix(in srgb, var(--card) 88%, var(--text));
+  --cb-seg-bg:rgba(120,120,128,.16);
+  --cb-focus:#0A84FF;
+  display:flex; flex-direction:column; gap:6px;
+}
+#ctlbar [hidden]{display:none !important}
+#ctlbar .cb-row{display:flex; align-items:center; flex-wrap:wrap; gap:5px; min-width:0}
+#ctlbar .cb-row.cb-run{flex-wrap:nowrap}
+
+/* shared button reset (overrides .ctl button: width 100%, 11px padding, 14px radius) */
+#ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button){
+  position:relative; width:auto; margin:0; padding:0 10px; height:var(--cb-chip-h);
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  font-family:inherit; font-size:12px; font-weight:500; line-height:1; letter-spacing:0;
+  color:var(--text); background:var(--cb-fill);
+  border:0.5px solid var(--line); border-radius:999px; cursor:pointer; white-space:nowrap;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform .1s ease-out, background-color .15s ease-out;
+}
+#ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button):hover:not(:disabled){background:var(--cb-fill-hover)}
+#ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button):active:not(:disabled){transform:scale(.96)}
+#ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button):focus-visible{outline:2px solid var(--cb-focus); outline-offset:2px}
+#ctlbar svg{width:14px; height:14px; flex:none; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round}
+
+/* Row 1: primary Play/Pause (filled), speed segments, view icons pushed right */
+#ctlbar .cb-play{
+  height:var(--cb-h); padding:0 14px 0 11px; min-width:92px;
+  background:var(--text); color:var(--bg); border-color:transparent; font-weight:600;
+}
+#ctlbar .cb-play:hover:not(:disabled){background:color-mix(in srgb, var(--text) 86%, var(--bg))}
+#ctlbar .cb-play.blue{background:#0A84FF; color:#fff}
+#ctlbar .cb-play.blue:hover:not(:disabled){background:#2a94ff}
+#ctlbar .cb-play svg{fill:currentColor; stroke-width:1.2}
+
+#ctlbar .cb-seg{display:inline-flex; padding:2px; gap:2px; border-radius:999px; background:var(--cb-seg-bg); height:var(--cb-h); box-sizing:border-box}
+#ctlbar .cb-seg button{
+  height:24px; min-width:34px; padding:0 9px; border:0; background:transparent; color:var(--muted);
+  font-variant-numeric:tabular-nums; font-weight:600;
+}
+#ctlbar .cb-seg button:hover:not(:disabled){background:rgba(120,120,128,.14)}
+#ctlbar .cb-seg button[aria-pressed="true"]{background:color-mix(in srgb, var(--card) 80%, var(--text)); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.18)}
+
+#ctlbar .cb-view{display:inline-flex; align-items:center; gap:4px; margin-left:auto}
+#ctlbar .cb-icon{width:var(--cb-h); height:var(--cb-h); padding:0; color:var(--muted)}
+#ctlbar .cb-icon:hover:not(:disabled){color:var(--text)}
+#ctlbar .cb-icon svg{width:15px; height:15px}
+#ctlbar #bFx[aria-pressed="true"]{color:#0A84FF}
+#ctlbar #bFx[aria-pressed="false"]{color:var(--faint)}
+#ctlbar #bFx[aria-pressed="true"] svg{fill:currentColor; fill-opacity:.18}
+
+/* Row 2: event chips, icon tinted by kind */
+#ctlbar .cb-chip{padding:0 9px 0 7px; gap:4px}
+#ctlbar #bBreak svg{color:#FF453A}
+#ctlbar #bBreak.red{color:#FF453A}
+#ctlbar #bBlock svg{color:#FF9F0A}
+#ctlbar #bHeat svg{color:#FF6B3D}
+#ctlbar #bWind svg{color:#64D2FF}
+#ctlbar .cb-note{margin:0 0 0 2px; font-size:11px; line-height:1.3; color:var(--faint); cursor:help; border-radius:4px}
+#ctlbar .cb-note:focus-visible{outline:2px solid var(--cb-focus); outline-offset:2px}
+
+/* Row 3: fleet, secondary blue */
+#ctlbar .cb-chip.blue{color:#0A84FF}
+
+/* popovers anchored to the small chips */
+#ctlbar #breakpick{right:auto; min-width:200px}
+#ctlbar .cb-view .popwrap{display:inline-flex}
+
+/* light theme: chips need a hairline to separate from the light page background */
+@media (prefers-color-scheme:light){
+  #ctlbar{--cb-seg-bg:rgba(120,120,128,.12)}
+  #ctlbar .cb-seg button[aria-pressed="true"]{background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04)}
+}
+@media (prefers-reduced-motion:reduce){
+  #ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button){transition:background-color .15s ease-out}
+  #ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button):active:not(:disabled){transform:none}
+}
+@media (prefers-contrast:more){
+  #ctlbar :where(.cb-chip,.cb-play,.cb-icon,.cb-seg button){border-color:var(--text)}
+}
