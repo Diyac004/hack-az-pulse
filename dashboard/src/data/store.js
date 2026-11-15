@@ -29,6 +29,7 @@ export function emptyState(source = 'mock') {
     log: [],
     operations: [],
     link: null, // live only: {url, connected, everConnected, failures} from liveSource
+    ai: null, // AI Supervisor state (GET /ai/state shape) from aiSource; not a backend slice, survives snapshots
   };
 }
 
@@ -61,6 +62,15 @@ function applyBlockedFromLog(scenario, entry) {
   else if (entry.type === 'unblock_route') entry.cells.forEach((c) => cur.delete(key(c)));
   else return scenario;
   return { ...scenario, blocked_cells: [...cur.values()] };
+}
+
+// Excluded blocks (AI Supervisor contract proposal) only arrive in Scenario; keep scenario.disabled_blocks current
+// from block_disabled / block_enabled event-log lines, like blocked cells.
+function applyDisabledFromLog(scenario, entry) {
+  if (!scenario || entry.kind !== 'event' || (entry.type !== 'block_disabled' && entry.type !== 'block_enabled') || !entry.block) return scenario;
+  const rest = (scenario.disabled_blocks || []).filter((d) => d.block !== entry.block);
+  if (entry.type === 'block_disabled') rest.push({ block: entry.block, reason: entry.reason ?? null, t: entry.t ?? null, proposed_by: entry.proposed_by ?? null });
+  return { ...scenario, disabled_blocks: rest };
 }
 
 // A resync snapshot (GET /api/state after a seq gap, same connection) can be older than operation
@@ -118,7 +128,7 @@ export function reduce(s, msg) {
     case 'explanation':
       return { ...s, explanations: [d, ...s.explanations.filter((x) => x.id !== d.id)].slice(0, EXPLANATIONS_CAP) };
     case 'log':
-      return { ...s, log: [d, ...s.log].slice(0, LOG_CAP), scenario: applyBlockedFromLog(s.scenario, d) };
+      return { ...s, log: [d, ...s.log].slice(0, LOG_CAP), scenario: applyDisabledFromLog(applyBlockedFromLog(s.scenario, d), d) };
     case 'operation':
       return { ...s, operations: normalizeOperations([d, ...s.operations.filter((o) => o.id !== d.id)]) };
     default: return s; // e.g. `coverage`: no State slot; passed through to subscribers only.
@@ -172,5 +182,10 @@ export function createStore(opts = {}) {
       notify({ type: 'connection', t: state.clock?.t ?? 0, seq: state.seq, data: { connected: state.connected, link } });
     },
     setResync(fn) { resyncFn = fn; },
+    /** AI Supervisor state (not a server message, never touches seq); notifies with a synthetic {type:'ai'}. */
+    setAi(ai) {
+      state = { ...state, ai };
+      notify({ type: 'ai', t: state.clock?.t ?? 0, seq: state.seq, data: ai });
+    },
   };
 }

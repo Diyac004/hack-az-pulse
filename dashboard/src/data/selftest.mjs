@@ -551,6 +551,45 @@ section('idempotency replay after state changed (book + approve, §13.3)');
   ok(C.src.debug.snapshot().operations.length === opsBefore, 'replay creates no new operation');
 }
 
+section('block_disabled / block_enabled (AI Supervisor contract proposal)');
+{
+  const D = harness();
+  D.until(() => D.store.get().jobs.some((j) => j.block === 'A' && ['traveling', 'working'].includes(j.status)) || D.w().t > 300, 6000);
+  const before = D.store.get().jobs.filter((j) => j.block === 'A' && j.status !== 'done');
+  ok(before.length > 0, 'Block A has open work before');
+  const op = await D.api.postEvent({ type: 'block_disabled', block: 'A', reason: 'Aerial photo shows houses', proposed_by: 'ai_supervisor' });
+  opOk(op, 'block_disabled 202');
+  D.tick(3);
+  const s = D.store.get();
+  const fin = opMsgs(D.msgs, op.id).at(-1).data;
+  ok(fin.status === 'succeeded' && fin.kind === 'replan' && fin.source === 'events', `block_disabled op succeeded (${fin.status})`);
+  ok(JSON.stringify(s.scenario.disabled_blocks.map((d) => d.block)) === '["A"]', 'store scenario.disabled_blocks updated from the log line');
+  ok(D.src.debug.snapshot().scenario.disabled_blocks[0].reason === 'Aerial photo shows houses', 'snapshot scenario.disabled_blocks carries the reason');
+  for (const j of s.jobs.filter((x) => x.block === 'A' && x.status !== 'done')) {
+    ok(j.status === 'pending' && j.tractor === null && /excluded from planning/.test(j.unassigned_reason), `${j.id} on A pending with unassigned_reason (${j.status}: ${j.unassigned_reason})`);
+    ok(!s.fleet.some((t) => t.current_job === j.id || t.queue.includes(j.id)), `${j.id} held by nobody`);
+  }
+  const ex = s.explanations[0];
+  ok(ex.trigger === 'block_disabled' && /AI Supervisor proposed, operator approved, Safety check passed/.test(ex.text), `explanation names who decided (${ex.text.slice(0, 120)})`);
+  ok(!s.plan.entries.some((e) => e.kind === 'work' && s.jobs.find((j) => j.id === e.job)?.block === 'A' && e.start_t >= D.w().t), 'no future work planned on Block A');
+  const dup = await D.api.postEvent({ type: 'block_disabled', block: 'A' }).then(() => null, (e) => e);
+  ok(dup?.code === 'CONFLICT', 'disabling twice => CONFLICT');
+  const bad = await D.api.postEvent({ type: 'block_disabled', block: 'Z' }).then(() => null, (e) => e);
+  ok(bad?.code === 'NOT_FOUND', 'unknown block => NOT_FOUND');
+  const pv = await D.api.preview('T1', { control: 'off_duty_t', value: null });
+  ok(!(pv.plan?.entries || []).some((e) => e.kind === 'work' && s.jobs.find((j) => j.id === e.job)?.block === 'A'), 'control preview also keeps Block A out (preview == apply)');
+  D.tick(30);
+  ok(D.store.get().jobs.filter((j) => j.block === 'A').every((j) => j.status === 'pending' || j.status === 'done'), 'Block A stays unworked while excluded');
+  const on = await D.api.postEvent({ type: 'block_enabled', block: 'A' });
+  D.tick(3);
+  ok(opMsgs(D.msgs, on.id).at(-1).data.status === 'succeeded', 'block_enabled op succeeded');
+  ok(D.store.get().scenario.disabled_blocks.length === 0, 'store drops the block from disabled_blocks');
+  ok(D.store.get().jobs.filter((j) => j.block === 'A' && j.status !== 'done').every((j) => j.tractor && !j.unassigned_reason), 'Block A work is planned again');
+  D.invariants = () => {}; // a new run resets progress on purpose
+  await D.api.run('ours'); D.tick(3);
+  ok(D.src.debug.snapshot().scenario.disabled_blocks.length === 0, 'new run clears excluded blocks');
+}
+
 section('store: reconnect vs resync snapshot');
 {
   const st = createStore({ source: 'live' });

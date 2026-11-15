@@ -154,6 +154,26 @@ section('POST /api/jobs -> 202 Operation; validation 400 with row locs');
   ok(jobsNow.length === n0 + 1 && jobsNow.at(-1).label === 'Mow G', `job ${jobsNow.at(-1).id} added (Mow G)`);
 }
 
+section('POST /api/events block_disabled / block_enabled (AI Supervisor proposal)');
+{
+  const oa = await http('GET', '/openapi.json');
+  ok(Array.isArray(oa.json.event_types) && oa.json.event_types.includes('block_disabled'), 'openapi.json lists event_types incl. block_disabled');
+  const bd = await http('POST', '/api/events', { type: 'block_disabled', block: 'E', reason: 'Aerial photo shows houses', proposed_by: 'ai_supervisor' }, { 'Idempotency-Key': randomUUID() });
+  ok(bd.status === 202 && bd.json.source === 'events', 'block_disabled -> 202 events Operation', bd.json);
+  const bdEnd = await A.until(opTerminal(bd.json.id), 5000, 'block_disabled op terminal');
+  ok(bdEnd.data.status === 'succeeded', 'block_disabled op succeeded', bdEnd.data);
+  ok(A.msgs.some((m) => m.type === 'log' && m.data.type === 'block_disabled' && m.data.block === 'E'), 'WS log line {kind:event, type:block_disabled, block}');
+  const st = (await http('GET', '/api/state')).json;
+  ok(st.scenario.disabled_blocks.some((d) => d.block === 'E' && /houses/.test(d.reason)), 'GET /api/state scenario.disabled_blocks has E');
+  const eJobs = st.jobs.filter((j) => j.block === 'E' && j.status !== 'done');
+  ok(eJobs.length > 0 && eJobs.every((j) => j.status === 'pending' && /excluded/.test(j.unassigned_reason || '')), 'jobs on E are pending with unassigned_reason', eJobs.map((j) => [j.id, j.status, j.unassigned_reason]));
+  const dup = await http('POST', '/api/events', { type: 'block_disabled', block: 'E' });
+  ok(dup.status === 409 && dup.json.error.code === 'CONFLICT', 'disabling twice -> 409 CONFLICT');
+  const be = await http('POST', '/api/events', { type: 'block_enabled', block: 'E' }, { 'Idempotency-Key': randomUUID() });
+  const beEnd = await A.until(opTerminal(be.json.id), 5000, 'block_enabled op terminal');
+  ok(beEnd.data.status === 'succeeded' && (await http('GET', '/api/state')).json.scenario.disabled_blocks.length === 0, 'block_enabled restores the block');
+}
+
 section('POST /api/fleet add tractor');
 const add = await http('POST', '/api/fleet', { name: 'Smoke Tractor', implements: ['mower', 'hedger'], fuel_pct: 80, speed: 1.0, start: { x: 3, y: 6 }, endpoint: 'auto' });
 ok(add.status === 202 && add.json.tractor && add.json.tractor.status === 'starting', `POST /api/fleet -> 202 {tractor} starting (${add.json && add.json.tractor && add.json.tractor.id})`, add);

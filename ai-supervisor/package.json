@@ -1,0 +1,16 @@
+{
+  "name": "harvest-fleet-ai-supervisor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Supervisor: an LLM reviews fleet plans, implements and plot validity and proposes fixes the operator approves. Talks to any ARCHITECTURE.md contract backend.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

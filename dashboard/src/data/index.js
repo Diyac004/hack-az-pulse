@@ -6,6 +6,7 @@ import { createStore } from './store.js';
 import { createMockSource, parsePace } from './mockSource.js';
 import { createLiveSource, newIdempotencyKey } from './liveSource.js';
 import { ALL_ON, detectCapabilities } from './capabilities.js';
+import { createAiSource } from './aiSource.js';
 
 const MUTATION_RETRY_MS = 45000; // how long an unanswered async mutation is re-sent (same key) before UNCONFIRMED
 
@@ -122,8 +123,16 @@ function ensureSource() {
 
 /** Connect the chosen source. Resolves after the first snapshot has been applied. */
 export function start() {
-  if (!started) started = ensureSource().start();
+  if (!started) { started = ensureSource().start(); ensureAi().start(); }
   return started;
+}
+
+// AI Supervisor (?ai=http://localhost:8060 -> ai-supervisor service; absent -> in-browser rules reviewer).
+// state.ai holds GET /ai/state; api.aiReview / aiApprove / aiDismiss below.
+let ai = null;
+function ensureAi() {
+  if (!ai) ai = createAiSource({ store: { get: () => _store.get(), subscribe: (fn) => _store.subscribe(fn) }, api, sourceInfo, capabilities, setAi: (x) => _store.setAi(x) });
+  return ai;
 }
 
 export const store = {
@@ -171,4 +180,10 @@ export const api = {
   preview: call('preview'),
   /** POST /tractors/{id}/manual {on} -> Operation */
   manual: call('manual'),
+  /** AI Supervisor: run a review now -> {queued} */
+  aiReview: (...a) => ensureAi().api.aiReview(...a),
+  /** AI Supervisor: approve finding id -> Operation (track it like any mutation) or the finding */
+  aiApprove: (...a) => ensureAi().api.aiApprove(...a),
+  /** AI Supervisor: dismiss finding id -> {finding} */
+  aiDismiss: (...a) => ensureAi().api.aiDismiss(...a),
 };

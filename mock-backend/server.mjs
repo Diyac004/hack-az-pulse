@@ -176,6 +176,7 @@ function openapi() {
     note: 'Simulated backend (mock-backend/server.mjs). FastAPI would serve a full OpenAPI document here; this is a static route list.',
     contract: 'ARCHITECTURE.md §5, §6, §13',
     websocket: '/ws',
+    event_types: ['breakdown', 'block_route', 'unblock_route', 'heat_alert', 'priority_change', 'tractor_repaired', 'weather_change', 'block_disabled', 'block_enabled'], // POST /api/events types this backend accepts
     routes: compiled.map((r) => ({ method: r.method, path: r.pattern.replace(/:(\w+)/g, '{$1}'), returns: r.note })),
   };
 }
