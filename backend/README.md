@@ -2,6 +2,19 @@
 
 A runnable backend that plans a farm day with Diya's brain (`app/brain`), executes it on simulated tractors (MockGateway), and recovers from breakdowns. Divi's dashboard connects to it over REST and `/ws`.
 
+## Which backend to demo
+
+**The validated coordinator path is this server: FastAPI + Diya's brain + MockGateway.** It is the only one that runs our scheduler, our breakdown recovery, and a measured comparison against FCFS.
+
+| Backend | Port | Runs our scheduler? | Tractors | Use it for |
+|---|---|---|---|---|
+| **This server** (`backend/`) | 8000 | **Yes** (Diya's brain) | MockGateway (simulated) | Planning, re-planning, explanations, scorecard |
+| Divi's `agopenweb-bridge/` | 8040 | No (one job per tractor, no optimizer) | Real headless AgOpenWeb | Showing AgOpenWeb steering only |
+| Divi's `mock-backend/` | 8000 | No (in-browser simulation's own planner) | Simulated | Rehearsal without Python |
+
+- **AgOpenWeb is not connected to this server.** Divi's bridge is a separate program and does not execute our scheduler.
+- **Don't mix numbers.** The bridge's metrics are placeholders (counts only, static fuel), and the mock backend's come from a different planner. Only this server's `metrics` (and `python -m app.core.runner`) are measured results of our scheduler vs FCFS. Present them separately, and say which backend is on screen.
+
 API shapes follow [ARCHITECTURE.md](../ARCHITECTURE.md) sections 4–8, with the **section 13** amendment (202 Operations, `operation` WS messages, `Idempotency-Key`, `unassigned_reason`, `solver_status`, nullable metrics). Anything not built yet is listed under [What's mocked or unfinished](#whats-mocked-or-unfinished).
 
 ## Setup (once)
@@ -26,9 +39,20 @@ cd backend
 ```
 
 - REST: `http://localhost:8000/api/...`, WebSocket: `ws://localhost:8000/ws`, OpenAPI: `http://localhost:8000/docs`
-- The server loads [`data/scenario.json`](../data/scenario.json) **paused**, with plan version 0. Nothing moves until `POST /api/run`.
-- Event logs are written to `logs/event_log_<mode>.jsonl` (git-ignored).
-- Optional environment variables: `HFA_SCENARIO` (another scenario file), `HFA_LOG_DIR`.
+- **Cold start:** the server loads [`data/scenario.json`](../data/scenario.json), plans the day straight away (operation `O1`, kind `run`) and stays **paused** at farm minute 0. Play (`POST /api/clock {"playing": true}`) starts it; no `/run` call is needed. `POST /api/run {"mode":"ours"}` resets and re-plans the day at any time.
+- Event logs are written to `logs/event_log_ours.jsonl` (git-ignored).
+- Optional environment variables: `HFA_SCENARIO` (another scenario file), `HFA_LOG_DIR`, `HFA_AUTORUN=0` (start with plan version 0 and wait for `POST /api/run`).
+
+## Connect Divi's dashboard
+
+With this server running on port 8000 (Divi's dashboard and its README are on the `divi` branch):
+
+```bash
+cd dashboard
+npx vite --port 5173            # rehearsal; for the demo: npx vite build && npx vite preview --port 5173
+```
+
+Open `http://localhost:5173/?source=live&api=http://localhost:8000`. The plan badge shows plan v1 before Play, because the server planned the day at startup. Press **Play**. From another machine, replace `localhost` in `api=` with this laptop's IP (`ipconfig`); CORS allows any origin.
 
 ## Acceptance check: run, breakdown, see the update
 
@@ -77,8 +101,8 @@ In PowerShell, run `$env:PYTHONPATH = "backend"` first, then the same commands w
 |---|---|
 | `tests/platform` (26) | MockGateway executes routes and work on sim time, stops failed tractors, never teleports. See [its README](tests/platform/README.md). |
 | `tests/integration/test_world.py` (20) | **Execution:** all 12 jobs done on time, every work row done exactly once, tractors follow the plan, deterministic. **Progress preservation:** the T1 breakdown keeps J1's progress (≈59%) and it never goes back. **Valid reassignment:** J1 goes to T3 (the only other sprayer), the broken tractor gets no work, no lost or duplicated minutes. **Adapter gates:** stale results refused, invalid results refused and logged as `safety_reject`, a gateway refusal applies nothing, snapshots always pass `BrainSnapshot` validation, re-planning a driving tractor keeps its arrival time. Also blocked roads, new jobs mid-day, repairs. |
-| `tests/integration/test_api.py` (12) | The running server: 202 Operations and their lifecycle, `Idempotency-Key` replay and 409, contract error shape, fleet add/remove, manual and scripted breakdowns over HTTP, and on `/ws`: snapshot first, gap-free `seq`, ping/pong, and section 13.3 order (`operation` running, `plan`, `explanation`, `jobs`, …, `operation` succeeded). The full plan `diff` (`moved`, `retimed`, `dropped`, `added`) and `solver`/`solver_status` are identical in REST state and the WS `plan` message. An unmeetable constraint fails the operation with `SAFETY_REJECTED` / `no_feasible_plan`. |
-| `tests/integration/test_review_fixes.py` (13) | Diya's review items. **Idle time:** identical full-day metrics at dt = 0.2, 1 and 5 for both policies, and idle stops at a job's exact finish time inside a long tick. **Plan diff:** every diff field and the solver name/status forwarded; invalid values (`solver: "magic"`, `no_feasible_plan`, malformed `moved`) rejected with nothing dispatched. **Mid-drive commitment:** public position stays actual; the remaining drive is in the public plan and matches execution; work starts at arrival; four re-plans during one trip leave arrival, travel minutes and fuel unchanged; breakdown and blockage during travel; an unmeetable deadline is rejected explicitly. |
+| `tests/integration/test_api.py` (18) | The running server: 202 Operations and their lifecycle, `Idempotency-Key` replay and 409, contract error shape, fleet add/remove, manual and scripted breakdowns over HTTP, and on `/ws`: snapshot first, gap-free `seq`, ping/pong, and section 13.3 order (`operation` running, `plan`, `explanation`, `jobs`, …, `operation` succeeded). The full plan `diff` (`moved`, `retimed`, `dropped`, `added`) and `solver`/`solver_status` are identical in REST state and the WS `plan` message. An unmeetable deadline edit fails with `SAFETY_REJECTED` / `no_feasible_plan`, leaves `deadline_t` unchanged, and a later valid edit applies. **Cold start:** planned and paused at startup, Play works without `/run`. **Baseline:** shown only when it matches; after an operator action it is `null` until recomputed; at day end it equals the headless FCFS run. |
+| `tests/integration/test_review_fixes.py` (19) | **Staged edits:** a failed edit leaves deadline, priority, pin and plan version intact, is logged `edit_rejected`, isn't broadcast or replayed; later valid edits and re-plans work; a rollback never overwrites a newer value; scripted priority changes are staged too. **Baseline twin:** with no operator actions it equals headless FCFS; operator actions replay at the same farm minute. Diya's earlier review items: **Idle time:** identical full-day metrics at dt = 0.2, 1 and 5 for both policies, and idle stops at a job's exact finish time inside a long tick. **Plan diff:** every diff field and the solver name/status forwarded; invalid values (`solver: "magic"`, `no_feasible_plan`, malformed `moved`) rejected with nothing dispatched. **Mid-drive commitment:** public position stays actual; the remaining drive is in the public plan and matches execution; work starts at arrival; four re-plans during one trip leave arrival, travel minutes and fuel unchanged; breakdown and blockage during travel; an unmeetable deadline is rejected explicitly. |
 
 ## Headless comparison (next milestone starter)
 
@@ -101,6 +125,23 @@ idle_min                  80.0       272.0
 productive_min           700.0       700.0
 violations                   0           0
 ```
+
+## Baseline comparison on the dashboard
+
+The scorecard's "Ours vs first come, first served" column is `metrics.baseline`. On this server it is filled automatically; there is no separate baseline run to start.
+
+**What it is.** FCFS (`plan(..., policy="fcfs")`) on the same scenario, through the same simulator, with every operator action from the live run (breakdowns, repairs, road blocks, accepted job edits, new jobs, fleet changes) replayed at the same farm time. It is read at the same farm minute as the live run (the most recent whole minute), so mid-day both columns describe the same moment of the same day. At day end it is the complete matching FCFS day. `baseline_source` is `"simulated"`: a Python twin on the same simulator, not a second live run. The dashboard labels it "first-come-first-served on the same day & events (simulated, not a live run)", which is accurate.
+
+**When it's unavailable.** `metrics.baseline` and `metrics.baseline_source` are both `null` (the dashboard shows "Baseline not run yet.") until the twin for the current set of operator actions is computed. That takes about half a second after startup and after each operator action. A baseline from a different day or an older set of actions is never shown.
+
+**Steps to populate it:**
+1. Start the server (`uvicorn` above). The day is planned at startup.
+2. Open the dashboard on `?source=live&api=http://localhost:8000`.
+3. Wait about a second: the scorecard fills in at minute 0.
+4. Press Play. Operator actions blank the column for about half a second while it recomputes.
+5. To check from a terminal: `GET /api/baseline` returns `status: "ready"` or `"computing"`, the number of operator actions replayed, and the farm minute compared. This is a platform diagnostic, not part of the dashboard contract.
+
+For the hand-in logs and table, use the headless runner above (`--mode both`); its FCFS column equals the dashboard's end-of-day baseline when no operator actions were taken (tested).
 
 These numbers are the same at any tick size (`--dt` is fixed at 1 in the runner; the tests check 0.2, 1, 5 and 7.3). Every plan search completed (`search_complete: true` in both logs). Both policies finish every job on time here, so on this scenario the measured difference is efficiency only: half the travel and about 30% of the idle time. One scenario is not a general claim.
 
@@ -142,7 +183,8 @@ It writes `logs/event_log_ours.jsonl` and `logs/event_log_baseline.jsonl`. Metri
 **Not implemented (return HTTP 501, code `INTERNAL`, `details.not_implemented: true`)**
 - `/api/tractors/{id}/controls`, `/control`, `/preview`, `/manual`, `/api/why/{job}`, `/api/mechanics`, `/api/mechanics/book`, `/api/approve`, `/api/scale-test`.
 - Events `weather_change`, `heat_alert` and `ripening_change` return 400 (`INVALID_INPUT`): weather and agronomy aren't modeled.
-- `POST /api/run` with `mode: "both"` returns 400. Use the headless runner for the side-by-side comparison. The live server runs one mode at a time and shows the other mode's last finished run in `metrics`.
+- `POST /api/run` accepts only `mode: "ours"`; `"baseline"` and `"both"` return 400 with a pointer to the automatic baseline and the headless runner. The live FCFS column is the twin described above.
+- The baseline twin replays operator actions at whole-event granularity. It doesn't model the dashboard's Why/Preview/cockpit actions (not built).
 - Refuelling (`constraints.refuel` is off; Diya's v1 returns "unsupported" if it's on). Implement swaps, `pending` approvals, coverage, and `rejected_candidates` (always `null`; the brain doesn't expose it yet).
 
 **Integration decisions to review with Diya**
@@ -157,3 +199,15 @@ It writes `logs/event_log_ours.jsonl` and `logs/event_log_baseline.jsonl`. Metri
 - **Idle tractors re-plan.** When a tractor runs out of orders while a compatible job is pending or paused, a re-plan runs. This picks up work that was infeasible earlier.
 - **Unassigned reasons.** `unassigned_reason` turns the brain's "unavailable or incompatible" into "No operational tractor has the right implement for this job." Other reasons pass through.
 - **Breakdown status.** The broken tractor's jobs show `paused` (some progress) or `pending` until the re-plan finishes. After that, unassigned jobs are `pending` with a reason (13.1).
+- **Operator job edits are staged.** `PATCH /api/jobs/{id}` and `priority_change` events are checked at once (unknown job → 404, finished job → 409 `CONFLICT`, incompatible pin → 422 `SAFETY_REJECTED`), then accepted as a 202 Operation. The new values are given to the planner only. If a valid plan is applied, they're committed: logged as `job_patch`/`priority_change`, broadcast in `jobs`, and replayed in the baseline. Otherwise the previous values are restored, the operation fails (`SAFETY_REJECTED`, `solver_status: no_feasible_plan`), and the log gets `safety_reject` then `edit_rejected`. While the plan is being computed (about 0.4 s), REST reads can show the staged value; nothing is broadcast until the outcome is known.
+
+## Notes for the dashboard (Divi)
+
+No new fields. Everything follows ARCHITECTURE.md section 13. Behaviour to rely on:
+- **Cold start:** the day is already planned (plan v1, paused at t = 0) when the dashboard connects. Play = `POST /api/clock {"playing": true}`. `POST /api/run` resets the day: the server sends a `snapshot` (t back to 0), then the run operation's lifecycle. `POST /api/clock {"playing": true}` before any plan exists returns 409 `CONFLICT` (only with `HFA_AUTORUN=0`).
+- **Clock speed** = farm minutes per real second (1 = a 12-minute day). The dashboard's "fast" button (`speed: 6`) gives a 2-minute day.
+- **Operations:** `POST /api/run`, `POST /api/jobs`, `PATCH /api/jobs/{id}` and `POST /api/events` always return 202 + Operation. Track `queued → running → succeeded | failed | superseded` over WS `operation` messages (or `GET /api/operations/{id}`). `Idempotency-Key` retries return the original operation; reusing a key with a different body returns 409. Fleet add/remove keep their old shapes and start a re-plan Operation with `source: "events"` (§13 has no `fleet` source).
+- **`POST /api/jobs`** works (`{"jobs":[{"type","implement","block","duration_min","priority","deadline_t"}]}`; `id` optional). It is accepted as 202 and the new jobs appear in `jobs` messages. The dashboard has no form for it yet.
+- **A failed edit** (e.g. a deadline that can't be met) never changes the job: watch for the operation's `failed` status and its `error.message`.
+- **HTTP statuses:** `INVALID_INPUT` 400, `NOT_FOUND` 404, `CONFLICT` 409, `SAFETY_REJECTED` 422, unbuilt endpoints 501 (code `INTERNAL`, `details.not_implemented: true`).
+- **Not on this server yet** (501 or 400): Why, Preview, cockpit controls, manual mode, mechanics, approvals, scale test, weather/heat events. The demo's mechanic, wind and Why moments need Divi's mock backend for now.

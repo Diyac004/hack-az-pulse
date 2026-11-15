@@ -28,13 +28,19 @@ def _error(status: int, code: str, message: str, details: dict | None = None) ->
                         content={"error": {"code": code, "message": message, "details": details or {}}})
 
 
-def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | None = None) -> FastAPI:
+def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | None = None,
+               autorun: bool | None = None) -> FastAPI:
+    """autorun (env HFA_AUTORUN, default on): plan the day at startup and stay
+    paused, so a dashboard that only sends POST /api/clock {"playing": true}
+    works from a cold start. POST /api/run still resets and re-plans."""
     engine = Engine(scenario_path or os.environ.get("HFA_SCENARIO", ROOT / "data" / "scenario.json"),
                     log_dir or os.environ.get("HFA_LOG_DIR", ROOT / "logs"))
+    if autorun is None:
+        autorun = os.environ.get("HFA_AUTORUN", "1") not in {"0", "false", "no"}
 
     @asynccontextmanager
     async def lifespan(_):
-        await engine.start()
+        await engine.start(autorun=autorun)
         yield
         await engine.stop()
 
@@ -73,7 +79,10 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
     @app.post("/api/jobs")
     async def post_jobs(body: m.JobsBody, request: Request):
         def start():
-            ids = engine.world.add_jobs(body.jobs)
+            w = engine.world
+            ids = w.add_jobs(body.jobs)
+            w.record_injected({"type": "jobs_submitted",
+                               "jobs": [{**j.model_dump(), "id": jid} for j, jid in zip(body.jobs, ids)]})
             engine.after_mutation()
             return engine.submit_replan("jobs", f"Planning {len(ids)} new job(s): {', '.join(ids)}.",
                                         {"type": "jobs_submitted", "jobs": ids})
@@ -82,10 +91,10 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
     @app.patch("/api/jobs/{job_id}")
     async def patch_job(job_id: str, body: m.JobPatch, request: Request):
         def start():
-            engine.world.patch_job(job_id, body)
-            engine.after_mutation()
-            return engine.submit_replan("job_patch", f"{job_id} changed. Replanning.",
-                                        {"type": "job_patch", "job": job_id})
+            engine.world.check_patch(job_id, body)        # cheap checks now; applied only with a valid plan
+            edit = {"job": job_id, "patch": body.model_dump(exclude_none=True), "log_type": "job_patch"}
+            return engine.submit_replan("job_patch", f"{job_id} change: checking it against a new plan.",
+                                        {"type": "job_patch", "job": job_id, "edits": [edit]})
         return accepted(request, f"job_patch:{job_id}", body.model_dump(), start)
 
     @app.post("/api/events")
@@ -98,23 +107,30 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
             return getattr(body, field)
 
         def start():
+            trigger = body.model_dump(exclude_none=True)
             if body.type == "breakdown":
                 w.breakdown(need("tractor"), body.issue)              # stop first, then plan
+                w.record_injected({"type": "breakdown", "tractor": body.tractor, "issue": body.issue})
                 msg = f"{body.tractor} broke down. Replanning unfinished work."
             elif body.type == "tractor_repaired":
                 w.repaired(need("tractor"))
+                w.record_injected({"type": "tractor_repaired", "tractor": body.tractor})
                 msg = f"{body.tractor} is back in service. Replanning."
             elif body.type in {"block_route", "unblock_route"}:
                 cells = w.block_route(body.cells, unblock=body.type == "unblock_route")
+                w.record_injected({"type": body.type, "cells": [list(c) for c in cells]})
                 msg = f"Road {'re-opened' if body.type == 'unblock_route' else 'blocked'} at {[list(c) for c in cells]}. Replanning."
             elif body.type == "priority_change":
-                w.priority_change(need("job"), body.priority, body.deadline_t, body.reason)
-                msg = f"{body.job} priority changed. Replanning."
+                patch = m.JobPatch(priority=body.priority, deadline_t=body.deadline_t)
+                w.check_patch(need("job"), patch)                     # applied only with a valid plan
+                trigger["edits"] = [{"job": body.job, "patch": patch.model_dump(exclude_none=True),
+                                     "log_type": "priority_change", "reason": body.reason}]
+                msg = f"{body.job} priority change: checking it against a new plan."
             else:
                 raise WorldError(400, "INVALID_INPUT",
                                  f"'{body.type}' events are not modeled in this build (weather is off).")
             engine.after_mutation()
-            return engine.submit_replan("events", msg, body.model_dump(exclude_none=True))
+            return engine.submit_replan("events", msg, trigger)
         return accepted(request, "events", body.model_dump(), start)
 
     # ------------------------------------------------------------ fleet (unchanged shapes, 13.2)
@@ -122,6 +138,9 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
     @app.post("/api/fleet", status_code=202)
     async def post_fleet(body: m.FleetEntry):
         tractor = engine.world.add_tractor(body)
+        p = tractor["pose"]
+        engine.world.record_injected({"type": "tractor_added", "entry": {
+            **body.model_dump(exclude_none=True), "id": tractor["id"], "start": {"x": int(p["x"]), "y": int(p["y"])}}})
         engine.after_mutation()
         engine.submit_replan("events", f"{tractor['id']} joined the fleet. Replanning.",
                              {"type": "tractor_added", "tractor": tractor["id"]})
@@ -130,6 +149,7 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
     @app.delete("/api/fleet/{tractor_id}")
     async def delete_fleet(tractor_id: str):
         engine.world.remove_tractor(tractor_id)
+        engine.world.record_injected({"type": "tractor_removed", "tractor": tractor_id})
         engine.after_mutation()
         engine.submit_replan("events", f"{tractor_id} left the fleet. Replanning.",
                              {"type": "tractor_removed", "tractor": tractor_id})
@@ -168,6 +188,16 @@ def create_app(scenario_path: Path | str | None = None, log_dir: Path | str | No
     @app.get("/api/log", response_class=PlainTextResponse)
     async def get_log():
         return "".join(json.dumps(e) + "\n" for e in engine.world.log)
+
+    @app.get("/api/baseline")
+    async def get_baseline():
+        """Platform diagnostic (not in the dashboard contract): is metrics.baseline a matching run?"""
+        w = engine.world
+        base = engine._baseline_at(w.t)
+        return {"status": engine.baseline_status(), "policy": "fcfs", "source": "simulated",
+                "scenario": engine.scenario.get("name"), "operator_actions_replayed": len(w.injected),
+                "compared_at_farm_minute": int(w.t + 1e-6) if base else None,
+                "baseline": m.dump(base) if base else None}
 
     @app.get("/api/operations/{op_id}")
     async def get_operation(op_id: str):

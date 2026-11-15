@@ -22,7 +22,8 @@ from app import models as m
 from app.brain import explain
 
 from .operations import Operations
-from .planner import MAX_ATTEMPTS, merge_triggers, run_planner
+from .planner import MAX_ATTEMPTS, edit_failure_reason, merge_triggers, run_planner
+from .twin import lookup, run_twin, twin_key
 from .runner import load_scenario
 from .state import World, WorldError
 from app.ws.hub import Hub
@@ -39,9 +40,10 @@ class Engine:
         self.log_dir = Path(log_dir)
         self.hub = Hub()
         self.ops = Operations()
-        self.other_runs: dict[str, m.RunMetrics] = {}
         self.epoch = 0
         self.busy = False
+        self._twin: tuple[str, dict] | None = None        # (key it was computed for, samples)
+        self._twin_task: asyncio.Task | None = None
         self.world = self._new_world("ours")
         self._queue: asyncio.Queue | None = None
         self._tasks: list[asyncio.Task] = []
@@ -50,14 +52,42 @@ class Engine:
     def _new_world(self, mode: str) -> World:
         base = self.world.state_version + 1 if hasattr(self, "world") else 0
         w = World(copy.deepcopy(self.scenario), mode, self.log_dir / f"event_log_{mode}.jsonl", version_base=base)
-        w.other_runs = {k: v for k, v in self.other_runs.items() if k != mode}
+        w.counterpart = self._baseline_at
         return w
+
+    # ================================================================ baseline twin (core/twin.py)
+
+    def _twin_key(self) -> str:
+        return twin_key(self.scenario.get("name", ""), self.world.injected)
+
+    def _baseline_at(self, t: float) -> m.RunMetrics | None:
+        """The matching baseline at farm time t, or None if it isn't ready."""
+        if self._twin and self._twin[0] == self._twin_key():
+            return lookup(self._twin[1], t)
+        return None
+
+    def baseline_status(self) -> str:
+        return "ready" if self._twin and self._twin[0] == self._twin_key() else "computing"
+
+    def _refresh_twin(self) -> None:
+        """Start computing the twin for the current operator actions, if needed."""
+        key = self._twin_key()
+        if (self._twin and self._twin[0] == key) or (self._twin_task and not self._twin_task.done()):
+            return
+        injected = copy.deepcopy(self.world.injected)
+
+        async def compute():
+            samples = await asyncio.to_thread(run_twin, self.scenario, injected, "baseline")
+            self._twin = (key, samples)
+        self._twin_task = asyncio.create_task(compute())
 
     # ================================================================ lifecycle
 
-    async def start(self) -> None:
+    async def start(self, autorun: bool = False) -> None:
         self._queue = asyncio.Queue()
         self._tasks = [asyncio.create_task(self._tick_loop()), asyncio.create_task(self._worker())]
+        if autorun:
+            self.run("ours", play=False)     # cold start: day planned, paused until Play
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -115,37 +145,54 @@ class Engine:
 
     async def _replan(self, op_id: str, trigger: dict, on_success: Callable[[], None] | None) -> None:
         self._op(op_id, status="running")
+        world = self.world
+        # Operator edits are staged for this plan only (state.py: stage_edits).
+        undos = world.stage_edits(trigger.get("edits", []))
+        if trigger.get("edits") and not undos:
+            self.flush()
+            self._op(op_id, status="failed", message="The change no longer applies; nothing was changed.",
+                     error=m.OperationError(code="CONFLICT", message=world.log[-1].get("reason", "Edit rejected.")))
+            return
+        outcome: dict = {"applied": False, "reason": "superseded"}
         for _ in range(MAX_ATTEMPTS):
-            epoch, world = self.epoch, self.world
+            epoch = self.epoch
             snap = world.to_brain_snapshot(trigger)
             result = await asyncio.to_thread(run_planner, snap, world.policy)
             if epoch != self.epoch:
                 return                          # reset happened; already superseded
             outcome = world.apply_result(result, trigger, explain)
-            if outcome.get("reason") == "stale":
-                continue
-            if outcome["applied"]:
-                if on_success:
-                    on_success()
-                self.flush()                    # plan, explanation, jobs, fleet, metrics (in order)
-                self._op(op_id, status="succeeded", plan_version=outcome["plan_version"],
-                         solver_status=outcome["solver_status"], message="New plan applied.",
-                         result=m.PlanOperationResult(applied_plan_version=outcome["plan_version"],
-                                                      unassigned_job_ids=outcome["unassigned"]))
-            else:
-                self.flush()                    # safety_reject log line
-                detail = "; ".join(v.get("detail", "") for v in outcome.get("violations", [])) or "No valid plan."
-                self._op(op_id, status="failed", solver_status="no_feasible_plan",
-                         message="No valid plan could be applied; the previous plan stays in place.",
-                         error=m.OperationError(code="SAFETY_REJECTED", message=detail,
-                                                details={"violations": outcome.get("violations", [])}))
-            return
-        self._op(op_id, status="superseded", message="State kept changing while planning; a newer re-plan will follow.")
+            if outcome.get("reason") != "stale":
+                break
+        world.finish_edits(undos, outcome["applied"], edit_failure_reason(outcome))
+        if outcome["applied"]:
+            if on_success:
+                on_success()
+            self.flush()                        # plan, explanation, jobs, (edit log + job), fleet, metrics
+            self._op(op_id, status="succeeded", plan_version=outcome["plan_version"],
+                     solver_status=outcome["solver_status"], message="New plan applied.",
+                     result=m.PlanOperationResult(applied_plan_version=outcome["plan_version"],
+                                                  unassigned_job_ids=outcome["unassigned"]))
+        elif outcome.get("reason") == "superseded":
+            self.flush()
+            self._op(op_id, status="superseded", message="State kept changing while planning; a newer re-plan will follow.")
+        else:
+            self.flush()                        # safety_reject (+ edit_rejected) log lines
+            detail = "; ".join(v.get("detail", "") for v in outcome.get("violations", [])) or "No valid plan."
+            msg = ("No valid plan accepts this change; it was not applied and the previous plan stays in place."
+                   if undos else "No valid plan could be applied; the previous plan stays in place.")
+            self._op(op_id, status="failed", solver_status="no_feasible_plan", message=msg,
+                     error=m.OperationError(code="SAFETY_REJECTED", message=detail,
+                                            details={"violations": outcome.get("violations", [])}))
 
     # ================================================================ actions used by the API
 
-    def run(self, mode: str) -> m.Operation:
-        new = self._new_world(mode)                          # raises WorldError for unsupported modes
+    def run(self, mode: str, play: bool = True) -> m.Operation:
+        """Reset the day and plan it. `play=False` leaves the clock paused (cold start)."""
+        if mode != "ours":
+            raise WorldError(400, "INVALID_INPUT", "The live server runs mode 'ours'. The FCFS baseline is "
+                             "computed automatically on the same day and events (metrics.baseline); "
+                             "for logs use: python -m app.core.runner --mode both.")
+        new = self._new_world(mode)
         self.epoch += 1
         for op in self.ops.active():
             self._op(op.id, status="superseded", message="Replaced by a new run.")
@@ -154,7 +201,7 @@ class Engine:
         self.hub.broadcast("snapshot", new.t, self.snapshot())
 
         def go():
-            self.world.playing = True
+            self.world.playing = play
         return self.submit_replan("run", "Planning the day.", {"type": "run"}, kind="run", on_success=go)
 
     def set_clock(self, playing: bool | None, speed: float | None) -> dict:
@@ -190,8 +237,8 @@ class Engine:
                 if trigger:
                     self.submit_replan("events", self._trigger_message(trigger), trigger)
                 if w.ended:
-                    self.other_runs[w.mode] = w.run_metrics()
                     self.hub.broadcast("clock", w.t, w.clock_view())
+            self._refresh_twin()                # baseline for the current operator actions
             if now - last_progress >= PROGRESS_EVERY_S and not self.busy:
                 w.emit_progress()
                 last_progress = now

@@ -27,8 +27,10 @@ def wait_for(fn, timeout=10.0, every=0.05):
 
 
 class ApiCase(unittest.TestCase):
+    AUTORUN = False            # most tests start the day explicitly; ColdStart uses the server default
+
     def setUp(self):
-        self.client = TestClient(create_app(log_dir=tempfile.mkdtemp()))
+        self.client = TestClient(create_app(log_dir=tempfile.mkdtemp(), autorun=self.AUTORUN))
         self.client.__enter__()
         self.c = self.client
 
@@ -197,7 +199,73 @@ class PlanDiffAndRejection(ApiCase):
         self.assertEqual((op["status"], op["solver_status"], op["error"]["code"]),
                          ("failed", "no_feasible_plan", "SAFETY_REJECTED"))
         self.assertIsNone(op["result"])
-        self.assertEqual(self.c.get("/api/state").json()["plan"]["version"], version)
+        state = self.c.get("/api/state").json()
+        self.assertEqual(state["plan"]["version"], version)
+        j6 = next(j for j in state["jobs"] if j["id"] == "J6")
+        self.assertEqual(j6["deadline_t"], 420)                              # the failed edit left no trace
+        self.assertIn("edit_rejected", [e.get("type") for e in state["log_tail"]])
+        # a later valid edit is applied normally
+        r = self.c.patch("/api/jobs/J6", json={"deadline_t": 500, "priority": 3})
+        self.assertEqual(self.finished(r.json()["id"])["status"], "succeeded")
+        j6 = next(j for j in self.c.get("/api/jobs").json() if j["id"] == "J6")
+        self.assertEqual((j6["deadline_t"], j6["priority"]), (500, 3))
+
+    def test_incompatible_pin_is_refused_before_accepting(self):
+        self.start_run()
+        r = self.c.patch("/api/jobs/J1", json={"pinned_to": "T2"})           # T2 has no sprayer
+        self.assertEqual((r.status_code, r.json()["error"]["code"]), (422, "SAFETY_REJECTED"))
+
+
+class ColdStart(ApiCase):
+    """The dashboard never calls /run: Play is POST /api/clock {"playing": true}."""
+    AUTORUN = True
+
+    def test_day_is_planned_and_paused_at_startup(self):
+        s = wait_for(lambda: (lambda s: s if s["plan"]["version"] >= 1 else None)(self.c.get("/api/state").json()))
+        self.assertEqual((s["clock"]["playing"], s["clock"]["t"]), (False, 0))
+        self.assertEqual(s["operations"][0]["kind"], "run")
+        self.assertEqual(s["operations"][0]["status"], "succeeded")
+
+    def test_play_from_cold_start_runs_the_day(self):
+        wait_for(lambda: self.c.get("/api/state").json()["plan"]["version"] >= 1)
+        r = self.c.post("/api/clock", json={"playing": True, "speed": 30})
+        self.assertEqual(r.status_code, 200)
+        wait_for(lambda: self.c.get("/api/state").json()["clock"]["t"] > 5)
+
+    def test_run_resets_and_mode_baseline_is_explained(self):
+        wait_for(lambda: self.c.get("/api/state").json()["plan"]["version"] >= 1)
+        r = self.c.post("/api/run", json={"mode": "baseline"})
+        self.assertEqual((r.status_code, r.json()["error"]["code"]), (400, "INVALID_INPUT"))
+        self.assertEqual(self.finished(self.c.post("/api/run", json={"mode": "ours"}).json()["id"])["status"], "succeeded")
+
+
+class BaselineDisplay(ApiCase):
+    def baseline(self):
+        return self.c.get("/api/metrics").json()
+
+    def test_baseline_appears_only_when_it_matches(self):
+        self.start_run()
+        self.c.post("/api/clock", json={"playing": False})
+        mt = wait_for(lambda: (lambda x: x if x["baseline"] else None)(self.baseline()))
+        self.assertEqual(mt["baseline_source"], "simulated")
+        self.assertEqual(self.c.get("/api/baseline").json()["status"], "ready")
+        # an operator action changes the day: the old baseline must not be shown
+        self.c.post("/api/events", json={"type": "breakdown", "tractor": "T2"})
+        info = self.c.get("/api/baseline").json()
+        if info["status"] == "computing":
+            self.assertIsNone(self.baseline()["baseline"])
+            self.assertIsNone(self.baseline()["baseline_source"])
+        info = wait_for(lambda: (lambda b: b if b["status"] == "ready" else None)(self.c.get("/api/baseline").json()))
+        self.assertEqual(info["operator_actions_replayed"], 1)
+
+    def test_end_of_day_baseline_is_the_full_matching_fcfs_run(self):
+        from app.core.runner import load_scenario, run_day
+        expected = run_day(load_scenario(), "baseline").run_metrics()
+        self.start_run(speed=600)
+        wait_for(lambda: self.c.get("/api/state").json()["clock"]["ended"], timeout=20)
+        mt = wait_for(lambda: (lambda x: x if x["baseline"] else None)(self.baseline()))
+        for k in ("completed", "on_time", "travel_min", "idle_min", "violations", "productive_min"):
+            self.assertEqual(mt["baseline"][k], getattr(expected, k), k)
 
 
 class WebSocket(ApiCase):

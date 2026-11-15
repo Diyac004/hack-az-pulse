@@ -28,13 +28,29 @@ def replan_sync(world: World, trigger: dict) -> dict:
     Returns the World.apply_result outcome, or {"applied": False,
     "reason": "superseded"} if the state kept changing under the planner.
     """
+    # Operator edits in the trigger are staged for this plan only, and committed
+    # or rolled back depending on whether a valid plan is applied.
+    undos = world.stage_edits(trigger.get("edits", []))
+    if trigger.get("edits") and not undos:
+        return {"applied": False, "reason": "edit_rejected"}
+    outcome = {"applied": False, "reason": "superseded"}
     for _ in range(MAX_ATTEMPTS):
         snapshot = world.to_brain_snapshot(trigger)
         result = run_planner(snapshot, world.policy)
         outcome = world.apply_result(result, trigger, explain)
         if outcome.get("reason") != "stale":
-            return outcome
-    return {"applied": False, "reason": "superseded"}
+            break
+    world.finish_edits(undos, outcome["applied"], edit_failure_reason(outcome))
+    return outcome
+
+
+def edit_failure_reason(outcome: dict) -> str:
+    if outcome.get("applied"):
+        return ""
+    if outcome.get("reason") == "superseded":
+        return "The farm kept changing while planning; previous values kept."
+    rules = sorted({v.get("rule", "") for v in outcome.get("violations", [])} - {""})
+    return "No valid plan accepts this change" + (f" ({', '.join(rules)})" if rules else "") + "; previous values kept."
 
 
 def merge_triggers(triggers: list[dict]) -> dict | None:
@@ -42,6 +58,9 @@ def merge_triggers(triggers: list[dict]) -> dict | None:
     if not triggers:
         return None
     first = dict(triggers[0])
+    edits = [e for t in triggers for e in t.get("edits", [])]
+    if edits:
+        first["edits"] = edits
     if len(triggers) > 1:
         first["also"] = [t["type"] for t in triggers[1:]]
     return first

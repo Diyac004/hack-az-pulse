@@ -153,7 +153,10 @@ class World:
         self._dirty_jobs: set[str] = set()       # status/assignment changes: sent at once
         self._progress_jobs: set[str] = set()    # progress only: sent by emit_progress (~1 Hz)
         self._zero_cut_at: float | None = None
-        self.other_runs: dict[str, m.RunMetrics] = {}     # last finished run per mode, set by the engine
+        self.injected: list[dict] = []                     # operator actions with farm time (for the twin)
+        # Set by the engine: farm time -> the matching baseline's metrics at that
+        # time, or None when no matching baseline is ready (see core/twin.py).
+        self.counterpart = None
 
         self.gateway = MockGateway(self.farm(), t0=0.0)
         self.tractors: dict[str, TractorRec] = {}
@@ -292,25 +295,69 @@ class World:
         self._emit_dirty_jobs()
         return added
 
-    def patch_job(self, jid: str, patch: m.JobPatch, log_type: str = "job_patch",
-                  reason: str | None = None) -> None:
+    # ---------------------------------------------------------------- operator edits (staged)
+    #
+    # A job edit (PATCH /jobs, priority_change) is not authoritative until a valid
+    # plan accepts it: stage_edits() applies it for the planner only (no log, no
+    # broadcast), finish_edits() then commits it, or restores the previous values
+    # if no valid plan could be applied. A failed edit leaves no trace in state.
+
+    def check_patch(self, jid: str, patch: m.JobPatch) -> None:
+        """Cheap checks done before accepting the request (section 13.2)."""
         job = self._get_job(jid)
         if job.status in {"done", "dropped"}:
             raise WorldError(409, "CONFLICT", f"{jid} is already {job.status}.")
+        if not patch.model_dump(exclude_none=True):
+            raise WorldError(400, "INVALID_INPUT", "Nothing to change: send priority, deadline_t or pinned_to.")
         if patch.pinned_to is not None:
             tr = self._get_tractor(patch.pinned_to)
             if job.implement not in tr.implements:
-                raise WorldError(409, "SAFETY_REJECTED",
+                raise WorldError(422, "SAFETY_REJECTED",
                                  f"Can't pin {self.label(job)} to {tr.name}: it has no {job.implement}.",
                                  {"rule": "implement_match"})
-        changes = patch.model_dump(exclude_none=True)
-        for k, v in changes.items():
-            setattr(job, k, v)
-        self.bump()
-        self.write_log("event", type=log_type, job=jid, changes=changes,
-                       original_deadline_t=job.original_deadline_t, reason=reason)
-        self._dirty_jobs.add(jid)
-        self._emit_dirty_jobs()
+
+    def stage_edits(self, edits: list[dict]) -> list[dict]:
+        """Apply edits for planning. Each edit: {job, patch, log_type, reason}.
+        Returns undo records. An edit that is no longer valid is skipped and logged."""
+        undos = []
+        for e in edits:
+            patch = m.JobPatch(**e["patch"])
+            try:
+                self.check_patch(e["job"], patch)
+            except WorldError as err:
+                self.write_log("event", type="edit_rejected", job=e["job"], changes=e["patch"], reason=err.message)
+                continue
+            job = self.jobs[e["job"]]
+            changes = patch.model_dump(exclude_none=True)
+            undos.append({**e, "changes": changes, "old": {k: getattr(job, k) for k in changes}})
+            for k, v in changes.items():
+                setattr(job, k, v)
+        if undos:
+            self.bump()
+        return undos
+
+    def finish_edits(self, undos: list[dict], applied: bool, why: str = "") -> None:
+        """Commit staged edits after a valid plan was applied, or restore them."""
+        for u in undos:
+            job = self.jobs.get(u["job"])
+            if job is None:
+                continue
+            if applied:
+                self.write_log("event", type=u.get("log_type", "job_patch"), job=u["job"], changes=u["changes"],
+                               original_deadline_t=job.original_deadline_t, reason=u.get("reason"))
+                if not u.get("replayed"):                       # scenario/twin edits are already scripted
+                    self.record_injected({"type": "job_patch", "job": u["job"], "patch": u["changes"],
+                                          "log_type": u.get("log_type", "job_patch"), "reason": u.get("reason")})
+                self._dirty_jobs.add(u["job"])
+            else:
+                for k, v in u["old"].items():
+                    if getattr(job, k) == u["changes"][k]:       # untouched since staging
+                        setattr(job, k, v)
+                self.write_log("event", type="edit_rejected", job=u["job"], changes=u["changes"],
+                               reason=why or "No valid plan accepts this change; previous values kept.")
+        if undos:
+            self.bump()
+            self._emit_dirty_jobs()
 
     # ================================================================ events (immediate part)
 
@@ -385,9 +432,10 @@ class World:
                     return [c]
         raise WorldError(409, "CONFLICT", "No tractor is driving right now, so there's no route to block. Pass cells explicitly.")
 
-    def priority_change(self, jid: str, priority: int | None, deadline_t: float | None, reason: str | None) -> None:
-        self.patch_job(jid, m.JobPatch(priority=priority, deadline_t=deadline_t),
-                       log_type="priority_change", reason=reason)
+    def record_injected(self, ev: dict) -> None:
+        """An operator action accepted by the API, kept with its farm time so the
+        baseline twin can replay exactly the same day (see core/twin.py)."""
+        self.injected.append({"t": self.t, **ev})
 
     def _release_work(self, tid: str, why: str) -> None:
         """Jobs owned by a tractor that stops: keep progress, drop the owner."""
@@ -435,6 +483,7 @@ class World:
         return [t for t in triggers if t]
 
     def apply_scheduled(self, ev: dict) -> dict | None:
+        """Scenario events, and operator actions replayed by the baseline twin."""
         kind = ev["type"]
         try:
             if kind == "breakdown":
@@ -443,8 +492,18 @@ class World:
                 self.repaired(ev["tractor"])
             elif kind in {"block_route", "unblock_route"}:
                 self.block_route(ev.get("cells"), unblock=kind == "unblock_route")
-            elif kind == "priority_change":
-                self.priority_change(ev["job"], ev.get("priority"), ev.get("deadline_t"), ev.get("reason"))
+            elif kind in {"priority_change", "job_patch"}:
+                patch = ev.get("patch") or {"priority": ev.get("priority"), "deadline_t": ev.get("deadline_t")}
+                patch = {k: v for k, v in patch.items() if v is not None}
+                return {"type": kind, "job": ev["job"], "scheduled": True,
+                        "edits": [{"job": ev["job"], "patch": patch, "reason": ev.get("reason"),
+                                   "log_type": ev.get("log_type", kind), "replayed": True}]}
+            elif kind == "jobs_submitted":
+                self.add_jobs([m.JobInput(**j) for j in ev["jobs"]])
+            elif kind == "tractor_added":
+                self.add_tractor(m.FleetEntry(**ev["entry"]))
+            elif kind == "tractor_removed":
+                self.remove_tractor(ev["tractor"])
             else:
                 self.write_log("event", type=kind, skipped="not supported in this build")
                 return None
@@ -842,17 +901,18 @@ class World:
         )
 
     def metrics_view(self) -> dict:
-        """This run's metrics, next to the last finished run of the other mode (if any)."""
-        mine = self.run_metrics()
-        other = self.other_runs
-        if self.mode == "ours":
-            mt = m.Metrics(ours=mine, baseline=other.get("baseline"),
-                           baseline_source="simulated" if other.get("baseline") else None)
-        else:
-            ours = other.get("ours") or m.RunMetrics(jobs_total=mine.jobs_total, completed=0, on_time=0,
-                                                     travel_min=0, idle_min=0, violations=0)
-            mt = m.Metrics(ours=ours, baseline=mine, baseline_source="simulated")
-        return m.dump(mt)
+        """This run's metrics, and the baseline only when it is a matching run.
+
+        `baseline` is FCFS on the same scenario with every operator action so
+        far replayed at the same farm time, read at the same farm minute
+        (core/twin.py). `baseline_source` is "simulated" (the Python twin runs
+        on the same simulator). When no matching baseline is ready (just
+        started, or still recomputing after an operator action), both are
+        null: never a stale or different-day run.
+        """
+        base = self.counterpart(self.t) if self.counterpart else None
+        return m.dump(m.Metrics(ours=self.run_metrics(), baseline=base,
+                                baseline_source="simulated" if base is not None else None))
 
     def clock_view(self) -> dict:
         return m.dump(m.Clock(t=round(self.t, 3), playing=self.playing, speed=self.speed,

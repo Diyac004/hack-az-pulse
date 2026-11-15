@@ -25,6 +25,11 @@ def advance(w, until, dt=0.5):
             replan_sync(w, trig)
 
 
+def measured(metrics):
+    """Simulation metrics only: replan_ms_last is wall-clock planning time."""
+    return {k: v for k, v in metrics.model_dump().items() if k != "replan_ms_last"}
+
+
 def plan_and_apply(w, trigger):
     """Like replan_sync, but also returns the brain's own result for comparison."""
     result = run_planner(w.to_brain_snapshot(trigger), w.policy)
@@ -201,16 +206,97 @@ class MidDrive(unittest.TestCase):
     def test_plan_that_breaks_a_constraint_is_rejected_explicitly(self):
         """J6 can't finish before minute 51 (arrive 11 + 40 min). Moving its deadline to 30
         makes every plan that keeps the committed trip invalid: refuse, keep driving."""
-        self.w.patch_job("J6", m.JobPatch(deadline_t=30))
         version = self.w.plan.version
-        out = replan_sync(self.w, {"type": "job_patch", "job": "J6"})
+        out = replan_sync(self.w, edit("J6", deadline_t=30))
         self.assertFalse(out["applied"])
         self.assertEqual(out["reason"], "rejected")
         self.assertIn("deadline", {v["rule"] for v in out["violations"]})
         self.assertEqual(self.w.plan.version, version)
-        self.assertEqual(self.w.log[-1]["kind"], "safety_reject")
+        self.assertIn("safety_reject", [e["kind"] for e in self.w.log[-2:]])
         advance(self.w, 12)
         self.assertEqual(self.w.gateway.pose("T2").job, "J6")              # still executing the last valid plan
+
+
+def edit(job, log_type="job_patch", **patch):
+    """The trigger the API builds for PATCH /jobs/{id} (staged edit)."""
+    return {"type": log_type, "job": job, "edits": [{"job": job, "patch": patch, "log_type": log_type}]}
+
+
+class StagedEdits(unittest.TestCase):
+    """Diya's item 1: a failed edit must leave the previous state intact."""
+
+    def setUp(self):
+        self.w = started()
+        advance(self.w, 5)                                   # T2 driving to J6: J6 can't finish before 51
+
+    def state(self):
+        j = self.w.jobs["J6"]
+        return (j.deadline_t, j.priority, j.pinned_to, j.original_deadline_t, self.w.plan.version)
+
+    def test_failed_edit_leaves_previous_state_intact(self):
+        before = self.state()
+        injected = list(self.w.injected)
+        self.w.drain()
+        out = replan_sync(self.w, edit("J6", deadline_t=30, priority=1))
+        self.assertFalse(out["applied"])
+        self.assertEqual(self.state(), before)                              # deadline, priority, plan unchanged
+        self.assertEqual(self.w.injected, injected)                         # not replayed in the baseline
+        kinds = [(e["kind"], e.get("type")) for e in self.w.log[-2:]]
+        self.assertEqual(kinds, [("safety_reject", None), ("event", "edit_rejected")])
+        self.assertNotIn(("event", "job_patch"), [(e["kind"], e.get("type")) for e in self.w.log])
+        sent = [d for k, d in self.w.drain() if k == "jobs"]
+        self.assertTrue(all(j["deadline_t"] == 420 for msg in sent for j in msg["jobs"] if j["id"] == "J6"))
+
+    def test_later_valid_edits_and_replans_still_work(self):
+        replan_sync(self.w, edit("J6", deadline_t=30))
+        out = replan_sync(self.w, edit("J6", deadline_t=500, priority=3))
+        self.assertTrue(out["applied"])
+        j = self.w.jobs["J6"]
+        self.assertEqual((j.deadline_t, j.priority, j.original_deadline_t), (500, 3, 420))
+        self.assertEqual(self.w.log[-1]["type"] if self.w.log[-1]["kind"] == "event" else
+                         next(e for e in reversed(self.w.log) if e["kind"] == "event")["type"], "job_patch")
+        self.assertEqual(self.w.injected[-1]["patch"], {"deadline_t": 500, "priority": 3})
+        self.w.breakdown("T1", "later")                                     # an ordinary later re-plan
+        self.assertTrue(replan_sync(self.w, {"type": "breakdown", "tractor": "T1"})["applied"])
+        advance(self.w, 720)
+        r = self.w.run_metrics()
+        self.assertEqual((r.completed, r.violations), (12, 0))
+
+    def test_rollback_does_not_clobber_a_newer_value(self):
+        undos = self.w.stage_edits(edit("J6", deadline_t=30)["edits"])
+        self.w.jobs["J6"].deadline_t = 450                                  # changed again meanwhile
+        self.w.finish_edits(undos, applied=False)
+        self.assertEqual(self.w.jobs["J6"].deadline_t, 450)
+
+    def test_scheduled_priority_change_is_staged_too(self):
+        sc = copy.deepcopy(SCENARIO)
+        sc["events"] = [{"t": 5, "type": "priority_change", "job": "J6", "deadline_t": 30, "reason": "test"}]
+        w = run_day(sc)
+        self.assertEqual(w.jobs["J6"].deadline_t, 420)
+        self.assertIn("edit_rejected", [e.get("type") for e in w.log])
+        self.assertEqual(w.run_metrics().completed, 12)
+
+
+class BaselineTwin(unittest.TestCase):
+    """Item 4: the displayed baseline is FCFS on the same day and the same operator actions."""
+
+    def test_no_operator_actions_matches_headless_fcfs(self):
+        from app.core.twin import lookup, run_twin
+        samples = run_twin(SCENARIO, [])
+        full = run_day(copy.deepcopy(SCENARIO), "baseline").run_metrics()
+        self.assertEqual(measured(lookup(samples, 720)), measured(full))
+
+    def test_operator_actions_are_replayed_at_the_same_time(self):
+        from app.core.twin import lookup, run_twin
+        w = started()
+        advance(w, 30)
+        w.breakdown("T2", "operator"); w.record_injected({"type": "breakdown", "tractor": "T2", "issue": "operator"})
+        replan_sync(w, {"type": "breakdown", "tractor": "T2"})
+        samples = run_twin(SCENARIO, w.injected)
+        self.assertLess(lookup(samples, 720).completed, 12)                 # FCFS also lost T2 at minute 30
+        self.assertEqual(measured(lookup(samples, 30.7)), measured(samples[30]))
+        unaffected = run_twin(SCENARIO, [])
+        self.assertEqual(measured(samples[29]), measured(unaffected[29]))   # identical until the action
 
 
 if __name__ == "__main__":
